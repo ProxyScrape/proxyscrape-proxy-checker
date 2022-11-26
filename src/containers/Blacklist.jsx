@@ -7,7 +7,7 @@ import Checkbox from '../components/ui/Checkbox';
 
 const Blacklist = ({ filter, items, changePath, add, remove, setActive, toggleOption, selectPath }) => (
     <>
-        <div className="block middle">
+        <div className="block middle black-middle">
             <div className="title">
                 <span className="name">Currently active</span>
             </div>
@@ -21,7 +21,7 @@ const Blacklist = ({ filter, items, changePath, add, remove, setActive, toggleOp
                 </div>
             </div>
         </div>
-        <div className="block middle">
+        <div className="block sub-middle">
             <div className="sub-block">
                 <div className="title">
                     <span className="name">Options</span>

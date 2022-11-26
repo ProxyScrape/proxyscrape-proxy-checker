@@ -1,10 +1,15 @@
 footer {
-    padding: 2em;
+    padding-top: 30px;
+    padding-left: 50px;
+    padding-right: 50px;
     display: flex;
     flex-flow: row wrap;
-    max-width: 1600px;
+    width: 100%;
     margin: auto;
-
+    background-color: #E9F6FF;
+    position: fixed;
+    bottom: 0;
+    font-size: 12px;
     & .links {
         margin-right: 1.5em;
         display: flex;
@@ -22,26 +27,18 @@ footer {
             &:hover {
                 color: var(--grey-color);
 
-                & svg {
-                    fill: var(--grey-color);
-                }
-            }
-
-            &.rocket svg {
-                height: 1.75em;
-                width: 1.75em;
             }
 
             & span {
-                font-weight: 700;
+                font-weight: 600;
                 margin-left: 0.5em;
                 transition: color 0.5s easeOne;
             }
 
             & svg {
-                width: 2em;
-                height: 2em;
-                fill: color(var(--grey-color) alpha(80%));
+                width: 20px;
+                height: 20px;
+                fill: #3464E0;
                 transition: fill 0.5s easeOne;
             }
         }
@@ -56,22 +53,22 @@ footer {
         & p {
             margin: 0;
             border-radius: 1.25em;
-            color: var(--blue-color);
+            color: var(--grey-color);
 
             & a {
                 display: inline-flex;
                 align-items: center;
                 margin: 0 0.25em;
-                text-decoration: none;
+                text-decoration: underline;
                 font-weight: 700;
                 transition: color 0.5s easeOne;
-                color: color(var(--green-color) alpha(70%));
+                color: #3464E0;
 
                 &:hover {
-                    color: var(--green-color);
+                    color: var(--blue-color);
 
                     & svg {
-                        fill: var(--green-color);
+                        fill: var(--blue-color);
                     }
                 }
 
@@ -80,7 +77,7 @@ footer {
                     height: 1em;
                     margin-left: 0.35em;
                     transition: fill 0.5s easeOne;
-                    fill: color(var(--green-color) alpha(70%));
+                    fill: color(var(--blue-color) alpha(70%));
                 }
             }
         }
@@ -89,14 +86,18 @@ footer {
     & .ops {
         display: flex;
         width: 100%;
-        margin: 2em auto 0 auto;
-        padding: 0.5em 1em;
-        max-width: 960px;
-        font-weight: 700;
-        border-radius: 1.5em;
+        margin: 20px auto 0 auto;
+        padding: 10px 30px;
+        font-weight: 600;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
         position: relative;
-        color: var(--white-color-back);
-        background: linear-gradient(127deg, color(var(--green-color) alpha(35%)), color(var(--blue-color) alpha(35%)));
+        color: #f0f2fa;
+        background: #3A4368;
+        align-items: center;
+        justify-content: space-between;
+        flex-direction: row-reverse;
+
 
         & .d {
             margin-left: auto;
@@ -104,31 +105,22 @@ footer {
 
         &:before {
             content: attr(data-version);
-            position: absolute;
-            width: 80px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            color: color(var(--green-color) alpha(65%));
-            height: 50px;
-            margin-top: -17px;
-            border-radius: 50px;
-            left: calc(50% - 40px);
-            background-color: color(var(--white-color-back) alpha(85%));
+            color: #fff;
+            font-size: 12px;
         }
 
         & a {
-            display: flex;
             text-decoration: none;
-            align-items: center;
-            color: var(--white-color-back);
-            transition: color 0.5s easeOne;
+            color: #f0f2fa;
+            transition: color 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+            font-size: 15px;
+            font-weight: 700;
 
             &:nth-child(1):hover {
-                color: var(--green-color);
+                color: var(--blue-color);
 
                 & svg {
-                    fill: var(--green-color);
+                    fill: var(--blue-color);
                 }
             }
 
@@ -141,10 +133,7 @@ footer {
             }
 
             & svg {
-                margin-right: 0.5em;
-                width: 1em;
                 transition: fill 0.5s easeOne;
-                height: 1em;
                 fill: var(--white-color-back);
             }
         }
@@ -171,10 +160,10 @@ footer {
         color: var(--back-black-color);
 
         &:nth-child(1):hover {
-            color: var(--green-color);
+            color: var(--blue-color);
 
             & svg {
-                fill: var(--green-color);
+                fill: var(--blue-color);
             }
         }
 
@@ -192,18 +181,18 @@ footer {
     }
 
     & .links a {
-        color: color(var(--green-color) alpha(60%));
+        color: color(var(--blue-color) alpha(60%));
 
         &:hover {
-            color: color(var(--green-color) alpha(85%));
+            color: #3464E0;
 
             & svg {
-                fill: var(--green-color);
+                fill: var(--blue-color);
             }
         }
 
         & svg {
-            fill: color(var(--green-color) alpha(60%));
+            fill: color(var(--blue-color) alpha(60%));
         }
     }
 }

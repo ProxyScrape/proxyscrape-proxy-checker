@@ -15,16 +15,15 @@
     }
 
     & svg {
-        width: 1em;
-        height: 1em;
-        animation: color-change 6s infinite;
+        color: #4888C7;
+        fill: #4888C7;
     }
 
     & span.title {
-        font-size: 0.85em;
+        font-size: 15px;
         display: inline-flex;
-        margin-left: 1em;
         animation: color-change 6s infinite;
+        font-weight: 700;
     }
 
     & .misc {
@@ -33,11 +32,12 @@
         height: 100%;
         margin-left: auto;
     }
-
     & ul.buttons {
         display: flex;
         list-style: none;
         height: 100%;
+        position: absolute;
+        right: 0;
 
         & svg {
             height: 0.75em;
@@ -85,15 +85,15 @@
 
 @keyframes color-change {
     0% {
-        color: #31bc86;
-        fill: #31bc86;
+        color: #3A4368;
+        fill: #3A4368;
     }
     50% {
         color: #5396d8;
         fill: #5396d8;
     }
     100% {
-        color: #31bc86;
-        fill: #31bc86;
+        color: #4888C7;
+        fill: #4888C7;
     }
 }

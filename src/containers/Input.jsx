@@ -1,14 +1,18 @@
 import React from 'react';
 import { connect } from 'react-redux';
-import { loadFromTxt, pasteFromClipboard } from '../actions/InputActions';
+import { loadFromTxt, 
+        pasteFromClipboard,
+        overrideEventDefaults,
+        onFileDrop} from '../actions/InputActions';
 import { start } from '../actions/CheckingActions';
 import Checkbox from '../components/ui/Checkbox';
 import { splitByKK } from '../misc/text';
 import { toggleOption } from '../actions/CoreActions';
 
 import '../../public/styles/Input.postcss';
+import DropDocIcon from '../components/ui/DropDocIcon';
 
-const Input = ({ loaded, total, errors, unique, name, loadFromTxt, pasteFromClipboard, start, shuffle, toggleOption }) => {
+const Input = ({ loaded, total, errors, unique, name, size, loadFromTxt, onFileDrop, overrideEventDefaults, pasteFromClipboard, start, shuffle, toggleOption }) => {
     const copyErrors = () => {
         navigator.clipboard.writeText(errors.join('\r\n'));
     };
@@ -16,29 +20,40 @@ const Input = ({ loaded, total, errors, unique, name, loadFromTxt, pasteFromClip
     return (
         <div className='proxy-input'>
             <section className='load-file-area'>
+                
                 <div className='wrap'>
+                    <div className="title"><span className="name">Load from Txt</span></div>
                     <div className='from-clipboard' onClick={pasteFromClipboard}>
                         Paste From Clipboard
                     </div>
-                    <div className='select-event' onClick={loadFromTxt}>
-                        <svg viewBox='0 -25 396 396'>
-                            <path d='m363 82.699219h-146.300781c-2.410157.003906-4.820313-.195313-7.199219-.597657-.832031.316407-1.710938.488282-2.601562.5h-206.898438v229.898438c.0195312 18.21875 14.78125 32.980469 33 33h330c18.21875-.019531 32.980469-14.78125 33-33v-196.800781c-.019531-18.21875-14.78125-32.980469-33-33zm0 0' />
-                            <path d='m175 57.398438-20.601562-39.597657c-5.644532-10.964843-16.964844-17.8437498-29.296876-17.800781h-92.101562c-18.21875.0195312-32.9804688 14.78125-33 33v35.699219h183.199219c-3.261719-3.351563-6.019531-7.160157-8.199219-11.300781zm0 0' />
-                        </svg>
-                        Load From Files
+                    <div className='select-event' 
+                        onClick={loadFromTxt} 
+                        onDragEnter = {overrideEventDefaults}
+                        onDragLeave={overrideEventDefaults}
+                        onDragOver={overrideEventDefaults}
+                        onDrop={onFileDrop}>
+
+                        <DropDocIcon scale="70" />
+                        <div>
+                            <div> Drag & Drop Txt Here </div>
+                            <div> <span>or </span> <span className="text-underline"> Browse File </span> </div>
+                        </div>
                     </div>
+                    <button className='button check-button' onClick={start}>
+                        Check
+                    </button>
                 </div>
                 {loaded ? (
                     <div className='data'>
                         <Checkbox id='core-shuffle' name='shuffle' checked={shuffle} onChange={toggleOption} text='Shuffle' />
                         <div className='stat'>
                             <div className='item'>
-                                <span>Total Lines</span>
-                                <span>{splitByKK(total)}</span>
+                                <div>Total</div>
+                                <div>{splitByKK(total)}</div>
                             </div>
                             <div className='item'>
-                                <span>Unique Parsed</span>
-                                <span>{splitByKK(unique)}</span>
+                                <div>Unique</div>
+                                <div>{splitByKK(unique)}</div>
                             </div>
                             {errors.length > 0 ? (
                                 <div className='item'>
@@ -51,13 +66,16 @@ const Input = ({ loaded, total, errors, unique, name, loadFromTxt, pasteFromClip
                                 </div>
                             ) : (
                                 <div className='item'>
-                                    <span>Parse Errors</span>
-                                    <span>0</span>
+                                    
                                 </div>
                             )}
                             <div className='item'>
-                                <span>File Names</span>
-                                <span>{name}</span>
+                                <div>File Names</div>
+                                <div>{name}</div>
+                            </div>
+                            <div className='item'>
+                                <div>Size</div>
+                                <div>{splitByKK(size)} bytes</div>
                             </div>
                         </div>
                     </div>
@@ -71,11 +89,6 @@ const Input = ({ loaded, total, errors, unique, name, loadFromTxt, pasteFromClip
                     </svg>
                 )}
             </section>
-            <section className='bottom'>
-                <button className='button check-button' onClick={start}>
-                    Check
-                </button>
-            </section>
         </div>
     );
 };
@@ -88,6 +101,8 @@ const mapStateToProps = state => ({
 const mapDispatchToProps = {
     loadFromTxt,
     pasteFromClipboard,
+    overrideEventDefaults,
+    onFileDrop,
     start,
     toggleOption
 };
