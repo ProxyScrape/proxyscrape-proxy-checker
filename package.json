@@ -1,5 +1,5 @@
 {
-    "name": "proxy-checker",
+    "name": "proxyscrape-proxy-checker",
     "version": "1.0.0",
     "main": "public/main.js",
     "license": "MIT",
@@ -113,7 +113,7 @@
             {
                 "provider": "github",
                 "owner": "ProxyScrape",
-                "repo": "proxy-checker",
+                "repo": "proxyscrape-proxy-checker",
                 "private": false
             }
         ],
