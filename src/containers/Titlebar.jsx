@@ -3,6 +3,7 @@ import { ipcRenderer } from 'electron';
 
 import LogoIcon from '../components/ui/LogoIcon';
 
+import Logo from '../../public/icons/Logo-ProxyScrape-colored.png';
 import '../../public/styles/Titlebar.postcss';
 
 export default class Titlebar extends React.PureComponent {
@@ -41,7 +42,7 @@ export default class Titlebar extends React.PureComponent {
 
         return (
             <div className={`titlebar ${dark ? 'dark' : ''}`}>
-                <img src="../icons/Logo-ProxyScrape-colored.png" width="120" height="15.25"/>
+                <img src="{Logo}" width="120" height="15.25"/>
                 {/*<LogoIcon/>*/}
                 {/*<span className="title">ProxyScrape</span>*/}
 {/*<div className="misc">

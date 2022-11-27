@@ -36,7 +36,6 @@ class Main extends React.PureComponent {
                             <Settings />
                             <Input />
                         </div>
-                        <Footer toggleModal={this.toggleModal}/>
                     </div>
                     <Info show={this.state.showInfo} releases={releases} />
                     <LicenseModal show={this.state.showModal} toggleModal={this.toggleModal}/>
@@ -44,6 +43,7 @@ class Main extends React.PureComponent {
                     <Checking />
                     <Overlay />
                     <Update />
+                    <Footer toggleModal={this.toggleModal}/>
                 </div>
             </>
         );
