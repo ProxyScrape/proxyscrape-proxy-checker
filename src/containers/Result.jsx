@@ -71,7 +71,7 @@ class Result extends React.PureComponent {
 
         const activeCountries = countries.items.filter(item => item.active);
         const displayActiveCountries = activeCountries.length == 0 ? 'Select countries' : countries.items.length == activeCountries.length ? 'All' : activeCountries.map(item => item.name).join(', ');
-
+        
         return (
             <div className={`result-container ${isOpened ? 'opened' : ''}`}>
                 <div className='result-content-pre'>
@@ -179,7 +179,6 @@ class Result extends React.PureComponent {
                             </button>
                         </div>
                     </div>
-                    <Footer stats={stats} />
                 </div>
                 <ResultCountries {...countries} toggleCountries={toggleCountries} activeCount={activeCountries.length} toggle={toggleCountry} />
                 <ResultExport
