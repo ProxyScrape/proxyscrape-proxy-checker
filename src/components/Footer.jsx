@@ -6,6 +6,8 @@ import GitIcon from '../components/ui/GitIcon';
 import DocIcon from '../components/ui/DocIcon';
 import LicenseIcon from '../components/ui/LicenseIcon';
 
+import WhiteLogo from "../../public/icons/Logo-ProxyScrape-white.png"
+
 import '../../public/styles/Footer.postcss';
 
 const Footer = ({ toggleModal }) => (
@@ -34,7 +36,7 @@ const Footer = ({ toggleModal }) => (
         </div>
         <div className='ops' data-version={`v${currentVersion}`}>
             <a href='https://proxyscrape.com/home' title='Official Website' onClick={openLink}>
-                <img src="../icons/Logo-ProxyScrape-white.png" width="120" height="15.25"/>
+                <img src={WhiteLogo} width="120" height="15.25"/>
             </a>
         </div>
     </footer>
