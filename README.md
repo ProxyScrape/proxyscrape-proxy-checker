@@ -6,10 +6,10 @@
 </p>
 
 
-![](https://cdn.proxyscrape.com/img/proxy-checker-results.png)
+![](https://cdn.proxyscrape.com/img/proxy-checker/proxy-results.png)
 
 Full description & Documentation for [Proxy Checker](https://proxyscrape.com/proxy-checker)
 
 #### ProxyScrape
-[Premium](https://proxyscrape.com/premium) - ProxyScrape premium
-[Free Proxy List](https://proxyscrape.com/free-proxy-list) - Free proxy list updated every 5 minutes
+[Premium](https://proxyscrape.com/premium) - ProxyScrape premium  
+[Free Proxy List](https://proxyscrape.com/free-proxy-list) - Free proxy list updated every 5 minutes  
