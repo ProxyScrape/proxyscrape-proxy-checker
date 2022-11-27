@@ -21,7 +21,7 @@
         top: 0;
         position: fixed;
         width: 100%;
-        height: calc(100% - 114px);
+        height: calc(100% - 106px);
         margin-bottom: 64px;
         overflow-y: auto;
     }
@@ -31,6 +31,7 @@
         padding: 50px 40px 0 40px;
         margin: auto;
         background-color: var(--white-color);
+        padding-bottom: 2em;
         
         & input.search {
             padding: 5px 12px;
@@ -74,20 +75,22 @@
                 }
 
                 &.ports-filter .states {
-                    font-size: 13px;
-                    font-weight: 500;
-                    color: #3A4368;
+                    padding: 0.25em 0;
+                    color: color(var(--grey-color) alpha(65%));
 
                     &.allow span.allow-key,
                     &.disallow span.disallow-key {
-                        font-weight: 700;
-                        text-decoration-line: underline;
+                        color: var(--white-color);
+                        background-color: color(var(--blue-color) alpha(85%));
                     }
 
                     & span {
-                        margin-left: 15px;
+                        margin-left: 0.75em;
                         cursor: pointer;
+                        padding: 0.25em 0.75em;
+                        border-radius: 1em;
                         transition: background-color 0.5s easeOne, color 0.5s easeOne;
+                        background-color: color(var(--grey-color) alpha(5%));
                     }
                 }
 
@@ -178,6 +181,7 @@
                 justify-content: space-between;
                 
                 & .open-countries-button {
+                    max-width: 70%;
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
@@ -248,13 +252,11 @@
                         color: color(var(--blue-color) alpha(80%));
 
                         & span {
-                            background-color: color(var(--blue-color) alpha(80%));
+                            background-color: #3464E0;
                             color: var(--white-color);
                         }
 
-                        & .country .ico-wrap {
-                            border: 1px dashed color(var(--blue-color) alpha(75%));
-                        }
+
 
                         & .main-block.with-data:hover {
                             color: var(--blue-color);
@@ -274,15 +276,27 @@
                         color: color(var(--blue-color) alpha(80%));
 
                         & span {
-                            background-color: color(var(--blue-color) alpha(80%));
+                            background-color: #3464E0;
                             color: var(--white-color);
                         }
 
-                        & .country .ico-wrap {
-                            border: 1px dashed color(var(--blue-color) alpha(75%));
+                        & .main-block.with-data .server span {
+                            background-color: #3464E0;
+                            display: inline-flex;
+                            font-size: 0.75em;
+                            font-weight: 700;
+                            padding: 0.25em 0.75em;
+                            border-radius: 1em;
+                            margin-right: 0.5em;
+                            text-transform: capitalize;
+                            
+                        }
+                        & .main-block.with-data .count span {
+                            background-color: #3464E0;
                         }
 
                         & .main-block.with-data:hover {
+                            transition: background-color 0.3s easeOne;
                             color: var(--blue-color);
                             cursor: pointer;
 
@@ -302,7 +316,6 @@
                         & span::before {
                             counter-increment: items-counter;
                             content: counter(items-counter);
-                            background-color: #3464E0;
                             padding: 2px 13px;
                             border-radius: 10px;
                             color: #fff;
@@ -346,6 +359,7 @@
                             border-radius: 10px;
                             color : #fff;
                             font-weight: 700;
+                            margin-left: 3px;
                             line-height: 24px;
                             font-size: 14px;
                             padding: 2px 15px;
@@ -491,6 +505,12 @@
                 background: rgba(255, 255, 255, 0.7);
                 color: rgba(52, 100, 224, 0.7);
                 margin-left: 20px;
+                &:hover {
+
+    color: rgba(245, 246, 250, 0.85);
+    background-color: #3464E0;
+
+                }
             }
         }
     }
