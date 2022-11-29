@@ -37,7 +37,7 @@ class Main extends React.PureComponent {
                             <Input />
                         </div>
                     </div>
-                    <Info show={this.state.showInfo} releases={releases} />
+                    <Info show={this.state.showInfo} releases={releases} toggleInfo={this.toggleInfo}/>
                     <LicenseModal show={this.state.showModal} toggleModal={this.toggleModal}/>
                     <Result />
                     <Checking />
