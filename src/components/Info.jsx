@@ -14,12 +14,14 @@ const Info = memo(({ show, releases, toggleInfo }) => {
             <div className='info-content'>
                 <CloseIcon onChange={toggleInfo}/>
                 <div className='section'>
-                    <img src={Logo} width="120" height="15.25"/>
+                    <a href='https://proxyscrape.com/home?ref=proxy-checker' title='Contact Us' onClick={openLink}>
+                        <img src={Logo} width="175" height="22.2"/>
+                    </a>
                 </div>
                 <div className='description'>
                     <div className="part">
                         <div> Need help? Contact us via our 24/7 live chat or via </div>
-                        <a href='https://proxyscrape.com/contact' title='Contact Us' onClick={openLink}>
+                        <a href='https://proxyscrape.com/contact?ref=proxy-checker' title='Contact Us' onClick={openLink}>
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-envelope" viewBox="0 0 16 16"> <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4Zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2Zm13 2.383-4.708 2.825L15 11.105V5.383Zm-.034 6.876-5.64-3.471L8 9.583l-1.326-.795-5.64 3.47A1 1 0 0 0 2 13h12a1 1 0 0 0 .966-.741ZM1 11.105l4.708-2.897L1 5.383v5.722Z"/> </svg>
                             <span>email</span>
                         </a>
@@ -27,7 +29,7 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                     <div className="part">We are happy to help you with all your proxy needs!</div>
                     <div className="part">
                         <div>If you are looking for datacenter proxies with 99% uptime, take a look at </div>
-                        <a href='https://proxyscrape.com/premium' title='Premium' onClick={openLink}>
+                        <a href='https://proxyscrape.com/premium?ref=proxy-checker' title='Premium' onClick={openLink}>
                             <svg data-v-3a6b5165='' viewBox='0 0 512 512'>
                                 <path
                                     data-v-3a6b5165=''
@@ -42,7 +44,7 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                                     d='m256 425.89 182.144-170.679-64.127-131.544h-236.034l-64.127 131.544zm-38.189-189.056h-101.621l35.049-71.898zm53.189 30h110.864l-110.864 103.887zm22.696-30 66.47-73.117 35.644 73.117zm-37.798-3.021-74.209-80.146h147.069zm-14.898 33.021v103.887l-110.864-103.887z'
                                 ></path>
                             </svg>
-                            <span>Premium</span>
+                            <span>ProxyScrape Premium</span>
                         </a>
                     </div>
                 </div>
