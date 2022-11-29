@@ -1,9 +1,11 @@
-import { getLatestVersionInfo } from '../core/updater';
+import { getLatestVersionInfo, sendOnlineInfo } from '../core/updater';
 import { wait } from '../misc/wait';
 import { UPDATE_CHANGE_STATE } from '../constants/ActionTypes';
 
 export const checkAtAvailable = () => async dispatch => {
     const details = await getLatestVersionInfo();
+    
+    sendOnlineInfo();
 
     await wait(500);
 

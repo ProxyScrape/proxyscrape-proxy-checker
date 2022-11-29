@@ -1,5 +1,5 @@
 import rp from 'request-promise';
-import { FETCH_CONFIG } from '../constants/UpdateConstants';
+import { FETCH_CONFIG, CHECK_ONLINE } from '../constants/UpdateConstants';
 import { version } from '../../package.json';
 
 export const currentVersion = version;
@@ -27,3 +27,18 @@ export const getLatestVersionInfo = async () => {
         return false;
     }
 };
+
+export const sendOnlineInfo = async () => {
+    try {
+        
+        rp.post(CHECK_ONLINE);
+        let myInterval = setInterval(() => {
+            
+            rp.post(CHECK_ONLINE);
+
+        }, 60000);
+        
+    } catch {
+        return false;
+    }
+}

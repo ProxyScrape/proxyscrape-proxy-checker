@@ -26,7 +26,10 @@ const devWindow = () => {
         }
     });
 
-    window.webContents.openDevTools();
+    window.webContents.once('dom-ready', () => {
+      window.webContents.openDevTools();
+    });
+    
    
 };
 
