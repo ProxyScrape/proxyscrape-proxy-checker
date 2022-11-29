@@ -28,8 +28,12 @@
             color: var(--white-color);
             background-color: #3464E0;
         }
-    }
 
+
+    }
+    & .react-tabs__tab-panel{
+        margin: 0 -20px;
+    }
     & .judges-list {
         
         border-radius: 10px;
@@ -283,13 +287,18 @@
         }
 
         &.middle {
-            width: 50%;
+            width: calc(50% - 40px);
+            margin-left: 20px;
             background: #fff;
             border-radius: 10px;
             padding: 15px 25px 30px 25px;
 
         
             overflow-y: auto;
+
+            @media screen and (max-width: 960px) {
+                width: calc(100% - 40px);
+            }
 
         }
         &.judge-middle{
@@ -299,28 +308,41 @@
             max-height: 310px;   
         }
         &.sub-middle{
-            width: 48%;
-            margin-left: 2%;
+            width: calc(50% - 20px);
+            margin-left: 20px;
+
+            @media screen and (max-width: 960px) {
+                width: calc(100% - 40px);
+            }
         }
         
         &.small {
-            width: 23%;
-            margin-left: 2%;
+            width: calc(25% - 20px);
+            margin-left: 20px;
             background: #fff;
             border-radius: 10px;
             padding: 15px 25px 30px 25px;
-        }
 
-        &.slider.small:first-child {
-            margin-left: 0 !important;
+            @media screen and (max-width: 960px) {
+
+                width: calc(50% - 30px);
+
+
+            }
+
         }
 
         &.slider.small {
-            width: 24%;
-            margin-left: 2%;
-
+            width: calc(25% - 30px);
+            
             & .content {
                 margin-top: 30px;
+            }
+            @media screen and (max-width: 960px) {
+
+                width: calc(50% - 30px);
+
+
             }
         }
 

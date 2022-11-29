@@ -15,8 +15,6 @@ const devWindow = () => {
     window = new BrowserWindow({
         width: 1220,
         height: 905,
-        minWidth: 1000,
-        minHeight: 680,
         show: false,
         frame: false,
         icon: __dirname + '../public/icons/icon.png',
@@ -34,8 +32,6 @@ const devWindow = () => {
 
 const prodWindow = () => {
     window = new BrowserWindow({
-        minWidth: 1000,
-        minHeight: 680,
         width: 1220,
         height: 905,
         icon: __dirname + '../public/icons/icon.png',
@@ -127,7 +123,6 @@ ipcMain.on('getUserData', event => {
 
 app.on('ready', () => {
     createWindow();
-
     if (!isDev && !isPortable) autoUpdater.checkForUpdates();
 });
 
