@@ -83,6 +83,42 @@ export const loadFromTxt = event => async (dispatch, getState) => {
         alert(error);
     }
 };
+
+export const checkProxy = event => async (dispatch, getState) => {
+    
+
+    try {
+        
+        if (event.target.dataset.file != "") {
+            let filesText;
+            const names = [];
+            let path = `${process.env.USERPROFILE}\\Downloads\\` + event.target.dataset.file;
+
+            filesText = await readFile(path, 'utf8');
+            names.push(parse(path).base);
+        
+
+            const { list, errors, total, unique, size } = getResult(filesText, event, getState);
+
+            if (!list.length) throw new Error('No proxies found');
+
+            dispatch(
+                setLoadedData({
+                    loaded: true,
+                    list,
+                    errors,
+                    name: names.join(', '),
+                    total,
+                    unique,
+                    size
+                })
+            );
+        }
+    } catch (error) {
+        alert(error);
+    }
+};
+
 export const overrideEventDefaults = event => async (dispatch, getState) => {
     try {
         event.preventDefault();

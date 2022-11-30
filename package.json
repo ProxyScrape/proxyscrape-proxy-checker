@@ -131,5 +131,8 @@
             "allowToChangeInstallationDirectory": true,
             "differentialPackage": true
         }
+    },
+    "dependencies": {
+        "axios": "^1.2.0"
     }
 }

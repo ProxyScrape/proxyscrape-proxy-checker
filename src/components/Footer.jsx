@@ -6,7 +6,7 @@ import GitIcon from '../components/ui/GitIcon';
 import DocIcon from '../components/ui/DocIcon';
 import LicenseIcon from '../components/ui/LicenseIcon';
 
-import WhiteLogo from "../../public/icons/Logo-ProxyScrape-white.png"
+import WhiteLogo from "../../public/icons/Logo-ProxyScrape-white.png";
 
 import '../../public/styles/Footer.postcss';
 

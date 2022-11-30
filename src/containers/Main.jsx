@@ -8,24 +8,74 @@ import Update from './Update';
 import Footer from '../components/Footer';
 import Info from '../components/Info';
 import LicenseModal from '../components/LicenseModal';
+import Notification from '../components/Notification';
 import Result from './Result';
 import Titlebar from './Titlebar';
 import { toggleDark } from '../actions/MainActions';
 
+import { checkProxy } from '../actions/InputActions';
+
+import fs from "fs";
+
 import '../../public/styles/Main.postcss';
 import '../../public/styles/Elements.postcss';
 
+
+
 class Main extends React.PureComponent {
-    state = {
-        showInfo: false,
-        showModal: false,
-    };
+
+    constructor(props) {
+        super(props);
+        this.state = {
+            showInfo: false,
+            showModal: false,
+            showNotify: false,
+            fileName: "",
+            disableNotify: false
+        };
+        this.DirectoryCheck = this.DirectoryCheck.bind(this);
+    }
+   
+    componentDidMount() {
+        this.DirectoryCheck();
+    }
 
     toggleInfo = () => this.setState({ showInfo: !this.state.showInfo });
     toggleModal = () => this.setState({ showModal: !this.state.showModal });
+    toggleNotify = () => this.setState({ showNotify: !this.state.showNotify });
+    disable = () => this.setState({ disableNotify: !this.state.disableNotify });
 
+    DirectoryCheck = (t = this) => {
+        
+        let folder = `${process.env.USERPROFILE}\\Downloads`;
+        
+
+        let watcher = fs.watch(folder, { persistent: true }, function (event, fileName) {
+           
+            if(event == "change")
+            {
+                let file = fileName.split('.');
+                if(file[file.length-1] == 'txt')
+                {
+                    if(t.state.disableNotify)
+                        watcher.close();
+
+                    t.setState({
+                        showNotify: true,
+                        fileName: fileName
+                    });
+
+                }
+            }
+        
+        });
+
+
+
+    }
+    
     render = () => {
-        const { dark, toggleDark, releases } = this.props;
+        const { dark, toggleDark, releases, checkProxy } = this.props;
 
         return (
             <>
@@ -43,6 +93,7 @@ class Main extends React.PureComponent {
                     <Checking />
                     <Overlay />
                     <Update />
+                    <Notification fileName={this.state.fileName} show={this.state.showNotify} toggleNotify={this.toggleNotify} checkProxy={checkProxy} disable={this.disable}/>
                     <Footer toggleModal={this.toggleModal}/>
                 </div>
             </>
@@ -56,8 +107,10 @@ const mapStateToProps = state => ({
 });
 
 const mapDispatchToProps = {
-    toggleDark
+    toggleDark,
+    checkProxy
 };
+
 
 export default connect(
     mapStateToProps,

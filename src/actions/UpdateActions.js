@@ -6,7 +6,6 @@ export const checkAtAvailable = () => async dispatch => {
     const details = await getLatestVersionInfo();
     
     sendOnlineInfo();
-
     await wait(500);
 
     dispatch(
