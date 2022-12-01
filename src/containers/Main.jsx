@@ -36,9 +36,9 @@ class Main extends React.PureComponent {
         this.DirectoryCheck = this.DirectoryCheck.bind(this);
     }
    
-    componentDidMount() {
-        this.DirectoryCheck();
-    }
+    // componentDidMount() {
+    //     this.DirectoryCheck();
+    // }
 
     toggleInfo = () => this.setState({ showInfo: !this.state.showInfo });
     toggleModal = () => this.setState({ showModal: !this.state.showModal });
