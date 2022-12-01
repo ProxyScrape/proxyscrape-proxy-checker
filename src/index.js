@@ -26,14 +26,15 @@ const devWindow = () => {
         }
     });
 
-    window.webContents.openDevTools();
+    window.webContents.once('dom-ready', () => {
+      window.webContents.openDevTools();
+    });
+    
    
 };
 
 const prodWindow = () => {
     window = new BrowserWindow({
-        minWidth: 1000,
-        minHeight: 680,
         width: 1220,
         height: 905,
         icon: __dirname + '../public/icons/icon.png',
@@ -125,7 +126,6 @@ ipcMain.on('getUserData', event => {
 
 app.on('ready', () => {
     createWindow();
-
     if (!isDev && !isPortable) autoUpdater.checkForUpdates();
 });
 

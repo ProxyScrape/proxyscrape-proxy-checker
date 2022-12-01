@@ -7,13 +7,16 @@
         display: flex;
         justify-content: space-between;
         user-select: none;
-        margin-bottom: 2em;
+        margin-bottom: 20px;
         align-items: center;
         width: 76%;
         background: #fff;
         padding: 15px 25px 30px 25px;
         border-radius: 10px;
         font-size: 14px;
+        @media screen and (max-width: 960px) {
+            width: 100%;
+        }
 
         & .wrap {
             width: calc(50% - 1em);
@@ -127,8 +130,8 @@
         }
 
         & svg.metrics-svg {
-            width: 2em;
-            height: 2em;
+            width: 20px;
+            height: 20px;
             margin: auto;
             fill: #3464E0;
         }

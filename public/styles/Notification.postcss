@@ -1,0 +1,52 @@
+.modal-notification-wrap {
+    position: fixed;
+    width: 350px;
+    height: 150px;
+    bottom: 50px;
+    right: 50px;
+    opacity: 0;
+    visibility: hidden;
+    overflow: auto;
+    z-index: 5;
+    background: #c1c1c1;
+    border-radius: 10px;
+    transition: opacity 0.7s easeOne, visibility 0.7s easeOne;
+    padding: 10px 20px 0 20px;
+
+    &.active {
+        opacity: 1;
+        visibility: visible;
+
+    }
+
+    & .modal-header{
+        padding: 10px;
+    }
+    & .close-svg {
+        width: 20px;
+        with: 20px;
+        position: absolute;
+        top: 10px;
+        right: 20px;
+        fill: #3464E0;
+        cursor: pointer;
+    }
+    & .modal-content {
+        font-size: 14px;
+    }
+
+    & .modal-footer {
+        & button{
+            margin-right: 0;
+        }
+
+        & .disable-check{
+            cursor: pointer;
+            padding: 7px 20px;
+            font-size: 14px;
+            text-align: center;
+        }
+    }
+
+    
+}

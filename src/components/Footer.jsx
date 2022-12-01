@@ -6,7 +6,7 @@ import GitIcon from '../components/ui/GitIcon';
 import DocIcon from '../components/ui/DocIcon';
 import LicenseIcon from '../components/ui/LicenseIcon';
 
-import WhiteLogo from "../../public/icons/Logo-ProxyScrape-white.png"
+import WhiteLogo from "../../public/icons/Logo-ProxyScrape-white.png";
 
 import '../../public/styles/Footer.postcss';
 
@@ -17,7 +17,7 @@ const Footer = ({ toggleModal }) => (
                 <GitIcon />
                 <span>Github</span>
             </a>
-            <a href='https://proxyscrape.com/proxy-checker' title='Official Documentation' className='big' onClick={openLink}>
+            <a href='https://proxyscrape.com/proxy-checker?ref=proxy-checker' title='Official Documentation' className='big' onClick={openLink}>
                 <DocIcon />
                 <span>Documentation</span>
             </a>
@@ -35,7 +35,7 @@ const Footer = ({ toggleModal }) => (
             </p>
         </div>
         <div className='ops' data-version={`v${currentVersion}`}>
-            <a href='https://proxyscrape.com/home' title='Official Website' onClick={openLink}>
+            <a href='https://proxyscrape.com/home?ref=proxy-checker' title='Official Website' onClick={openLink}>
                 <img src={WhiteLogo} width="120" height="15.25"/>
             </a>
         </div>
