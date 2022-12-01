@@ -4,7 +4,7 @@
     flex-flow: column nowrap;
     align-items: center;
     justify-content: center;
-    padding: 2em;
+    padding: 20px;
     width: 100%;
     height: 100%;
     top: 0;
@@ -27,7 +27,6 @@
 
     & .export-content {
         max-width: 960px;
-        display: flex;
         flex-flow: column nowrap;
         align-items: flex-start;
         justify-content: center;
@@ -36,16 +35,16 @@
         opacity: 0;
 
         & svg {
-            width: 1.5em;
-            height: 1.5em;
+            width: 20px;
+            height: 20px;
             cursor: pointer;
-            margin-left: auto;
-            margin-bottom: 2em;
             transition: fill 0.5s easeOne;
-            fill: color(var(--grey-color) alpha(45%));
-
+            fill: #3464E0;
+            position: absolute;
+            top: -20px;
+            right: 0;
             &:hover {
-                fill: #3464E0;
+                fill: #3464E0dd;
             }
         }
 
@@ -68,7 +67,7 @@
 
                 & label {
                     cursor: pointer;
-                    width: calc(50% - 1em);
+                    width: calc(50% - 20px);
                     user-select: none;
 
                     & input {
@@ -97,7 +96,7 @@
                     }
 
                     & .type-card {
-                        padding: 0.75em 1em;
+                        padding: 10px 15px;
                         border-radius: 0.5em;
                         border: 1px solid color(var(--grey-color) alpha(15%));
                         transition: border-color 0.5s easeOne;
@@ -147,9 +146,33 @@
                                 }
                             }
                         }
+
+                        @media screen and (max-width: 960px) {
+
+                            margin-bottom: 20px;
+
+                        }
                     }
                 }
+
+                @media screen and (max-width: 960px) {
+
+                    display: block;
+                    width: 100%;
+                    &:nth-child(odd) {
+                        margin-left: 0;
+                    }
+
+                    &:nth-child(even) {
+                        width: 100%;
+                        margin-left: 0;
+                    }
+
+                }
+
             }
+
+
         }
     }
 }
