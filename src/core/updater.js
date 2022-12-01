@@ -1,4 +1,5 @@
 import rp from 'request-promise';
+
 import { FETCH_CONFIG, CHECK_ONLINE } from '../constants/UpdateConstants';
 import { version } from '../../package.json';
 
