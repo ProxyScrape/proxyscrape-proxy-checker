@@ -13,6 +13,10 @@ import Result from './Result';
 import Titlebar from './Titlebar';
 import { toggleDark } from '../actions/MainActions';
 
+import findMixedProxies from '../misc/FindMixedProxies.js';
+import { readFile } from 'fs/promises';
+import { uniq } from '../misc/array';
+
 import { checkProxy } from '../actions/InputActions';
 
 import fs from "fs";
@@ -36,9 +40,9 @@ class Main extends React.PureComponent {
         this.DirectoryCheck = this.DirectoryCheck.bind(this);
     }
    
-    // componentDidMount() {
-    //     this.DirectoryCheck();
-    // }
+    componentDidMount() {
+        this.DirectoryCheck();
+    }
 
     toggleInfo = () => this.setState({ showInfo: !this.state.showInfo });
     toggleModal = () => this.setState({ showModal: !this.state.showModal });
@@ -60,11 +64,31 @@ class Main extends React.PureComponent {
                     if(t.state.disableNotify)
                         watcher.close();
 
-                    t.setState({
-                        showNotify: true,
-                        fileName: fileName
+                    let path = folder + '/' + fileName;
+
+                    fs.readFile(path, 'utf-8', (err, data) => {
+                        // Change how to handle the file content
+                        
+                        if(data){
+                            const totalLines = data.split(/\r?\n/).filter(item => item.length > 0);
+                            const uniqueLines = uniq(totalLines);
+                            const { successed: list, failed: errors } = findMixedProxies(uniqueLines);
+
+                            if (!list.length) 
+                            {
+                                console.log('No proxies found');
+                            }   
+                            else {
+                                t.setState({
+                                    showNotify: true,
+                                    fileName: fileName
+                                });
+                            }
+                        }
+
                     });
 
+                   
                 }
             }
         
