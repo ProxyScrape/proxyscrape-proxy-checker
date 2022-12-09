@@ -27,7 +27,7 @@ const Input = ({ loaded, total, errors, unique, name, size, loadFromTxt, onFileD
                         Paste From Clipboard
                     </div>
                     <div className='select-event' 
-                        onClick={loadFromTxt} 
+                        onClick={ loadFromTxt } 
                         onDragEnter = {overrideEventDefaults}
                         onDragLeave={overrideEventDefaults}
                         onDragOver={overrideEventDefaults}

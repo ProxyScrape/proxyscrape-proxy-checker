@@ -4,6 +4,7 @@ import { ipcRenderer } from 'electron';
 import { uniq } from '../misc/array';
 import { INPUT_SET_LOADED_FILE_DATA } from '../constants/ActionTypes';
 import { parse } from 'path';
+import { LiveChatWidget } from '@livechat/widget-react';
 
 export const setLoadedData = nextState => ({
     type: INPUT_SET_LOADED_FILE_DATA,

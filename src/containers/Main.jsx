@@ -18,12 +18,13 @@ import { readFile } from 'fs/promises';
 import { uniq } from '../misc/array';
 
 import { checkProxy } from '../actions/InputActions';
+import { LiveChatWidget } from '@livechat/widget-react';
+
 
 import fs from "fs";
 
 import '../../public/styles/Main.postcss';
 import '../../public/styles/Elements.postcss';
-
 
 
 class Main extends React.PureComponent {
@@ -35,7 +36,7 @@ class Main extends React.PureComponent {
             showModal: false,
             showNotify: false,
             fileName: "",
-            disableNotify: false
+            disableNotify: false,
         };
         this.DirectoryCheck = this.DirectoryCheck.bind(this);
     }
@@ -53,7 +54,6 @@ class Main extends React.PureComponent {
         
         let folder = `${process.env.USERPROFILE}\\Downloads`;
         
-
         let watcher = fs.watch(folder, { persistent: true }, function (event, fileName) {
            
             if(event == "change")
@@ -93,9 +93,6 @@ class Main extends React.PureComponent {
             }
         
         });
-
-
-
     }
     
     render = () => {
@@ -119,11 +116,20 @@ class Main extends React.PureComponent {
                     <Update />
                     <Notification fileName={this.state.fileName} show={this.state.showNotify} toggleNotify={this.toggleNotify} checkProxy={checkProxy} disable={this.disable}/>
                     <Footer toggleModal={this.toggleModal}/>
+                    <LiveChatWidget
+                        license="12332502"
+                        visibility="minimized"
+                        customerName="John Doe"
+                        customerEmail="john.doe@example.com"
+                    />
                 </div>
+
             </>
         );
     };
 }
+
+
 
 const mapStateToProps = state => ({
     ...state.main,

@@ -1,5 +1,5 @@
 import rp from 'request-promise';
-import { FETCH_CONFIG, CHECK_ONLINE } from '../constants/UpdateConstants';
+import { FETCH_CONFIG, CHECK_ONLINE } from '../constants/APIConstants';
 import { version } from '../../package.json';
 
 export const currentVersion = version;
@@ -12,7 +12,7 @@ export const getLatestVersionInfo = async () => {
 
         if (version > currentVersion) {
             const [portableAsset] = latest.assets.filter(asset => asset.name.match(/portable/i));
-
+            console.log(portableAsset.browser_download_url);
             return {
                 available: true,
                 releases,
@@ -42,3 +42,4 @@ export const sendOnlineInfo = async () => {
         return false;
     }
 }
+

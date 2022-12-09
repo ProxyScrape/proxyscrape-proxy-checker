@@ -14,9 +14,7 @@ class Update extends React.PureComponent {
 
     render = () => {
         const { active, available, isChecking, portableAsset } = this.props;
-
-        console.log(available);
-
+        
         return (
             <div className={active ? (isChecking ? 'update-notify checking' : 'update-notify') : 'update-notify closed'}>
                 <div className="lds-ripple">
