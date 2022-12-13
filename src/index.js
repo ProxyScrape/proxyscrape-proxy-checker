@@ -5,10 +5,7 @@ import { autoUpdater } from 'electron-updater';
 import { isDev, isPortable } from './constants/AppConstants';
 import installExtension, { REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
 
-import ProgressBar from 'electron-progressbar';
-
 let window;
-let progressBar;
 
 const devWindow = () => {
     installExtension(REACT_DEVELOPER_TOOLS)
@@ -145,34 +142,14 @@ app.on('window-all-closed', async () => {
 });
 
 //updater events
-autoUpdater.on('update-available', () => {
-    if(!progressBar){
-        progressBar = new ProgressBar({
-            indeterminate: false,
-            text: 'Downloading data...',
-            detail: 'Wait...'
-        });
-        progressBar
-        .on('completed', function() {
-        console.info(`completed...`);
-        progressBar.detail = 'Task completed. Exiting...';
-        })
-        .on('aborted', function(value) {
-        console.info(`aborted... ${value}`);
-        })
-        .on('progress', function(value) {
-        progressBar.detail = `${value} %...`;
-        });
-    }
-});
 
 autoUpdater.on('update-downloaded', () => {
     autoUpdater.quitAndInstall(true, true);
 });
 autoUpdater.on('download-progress', (progressObj) => {
     
-    progressBar.value = Math.floor(progressObj.percent);
-    
+    window.webContents.send("progress-bar", Math.floor(progressObj.percent));
+  
 });
 
 // window control events

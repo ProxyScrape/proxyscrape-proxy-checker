@@ -20,7 +20,6 @@ import { uniq } from '../misc/array';
 import { checkProxy } from '../actions/InputActions';
 import { LiveChatWidget } from '@livechat/widget-react';
 
-
 import fs from "fs";
 
 import '../../public/styles/Main.postcss';
@@ -117,7 +116,7 @@ class Main extends React.PureComponent {
                     <Notification fileName={this.state.fileName} show={this.state.showNotify} toggleNotify={this.toggleNotify} checkProxy={checkProxy} disable={this.disable}/>
                     <Footer toggleModal={this.toggleModal}/>
                     <LiveChatWidget
-                        license="12332502"
+                        license="12878919"
                         visibility="minimized"
                         customerName="John Doe"
                         customerEmail="john.doe@example.com"

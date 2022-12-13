@@ -12,7 +12,7 @@ export const getLatestVersionInfo = async () => {
 
         if (version > currentVersion) {
             const [portableAsset] = latest.assets.filter(asset => asset.name.match(/portable/i));
-            console.log(portableAsset.browser_download_url);
+            
             return {
                 available: true,
                 releases,
