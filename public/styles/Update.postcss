@@ -56,13 +56,12 @@
 
         & .update-container {
             width: 300px;
-            display: flex;
             align-items: center;
             justify-content: center;
             transform: translateY(0);
             border-radius: 0.75em;
             background-color: var(--white-color);
-            background: linear-gradient(127deg, color(var(--blue-color) alpha(35%)), color(var(--blue-color) alpha(35%)));
+            background: #E9F6FE;
             opacity: 1;
             transition: transform 0.7s easeOne;
             padding: 2em;
@@ -96,6 +95,43 @@
                 font-weight: 700;
                 background: linear-gradient(107deg, color(var(--white-color) alpha(10%)), transparent);
                 color: var(--white-color);
+            }
+
+             & .update-info{
+                display: block;
+                width: 100%;
+                padding: 10px 0;
+                color: #424a60;
+                font-size: 1rem;
+            }
+
+            & .update-label{
+                font-size: .75rem;
+            }
+
+            & .update-progress{
+                display: block;
+                width: 100%;
+                position: relative;
+
+                & .progress {
+                    display: flex;
+                    overflow: hidden;
+                    font-size: .75rem;
+                    background-color: #e9ecef;
+                    border-radius: 0.25rem;
+
+                    & .progress-bar {
+                        display: flex;
+                        flex-direction: column;
+                        justify-content: center;
+                        color: #ffffff;
+                        text-align: center;
+                        white-space: nowrap;
+                        background-color: #3464E0;
+                        transition: width .6s ease;
+                    }
+                }
             }
         }
     }

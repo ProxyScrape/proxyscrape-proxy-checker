@@ -134,5 +134,11 @@
             "allowToChangeInstallationDirectory": true,
             "differentialPackage": true
         }
+    },
+    "dependencies": {
+        "bootstrap": "4.3.1",
+        "electron-dl": "^3.5.0",
+        "electron-squirrel-startup": "^1.0.0",
+        "react-bootstrap": "^2.7.0"
     }
 }

@@ -147,6 +147,10 @@ autoUpdater.on('update-downloaded', () => {
     autoUpdater.quitAndInstall(true, true);
 });
 
+autoUpdater.on('download-progress', (progressObj) => {
+    window.webContents.send("download-progress", Math.floor(progressObj.percent));
+});
+
 // window control events
 
 ipcMain.on('window-minimize', () => {
