@@ -12,6 +12,7 @@ import store from './store/index';
 import posthog from 'posthog-js';
 import { PostHogProvider } from '@posthog/react';
 import { trackLifecycle, trackScreen } from './misc/analytics';
+import { initIntercom, shutdownIntercom } from './misc/intercom';
 import { ipcRenderer } from 'electron';
 import { version } from '../../package.json';
 
@@ -36,9 +37,11 @@ posthog.register({
 
 trackLifecycle('opened');
 trackScreen('Core');
+initIntercom();
 
 ipcRenderer.on('app-before-quit', () => {
     trackLifecycle('closed');
+    shutdownIntercom();
 });
 
 document.body.classList.add(process.platform === 'darwin' ? 'is-mac' : 'is-win');

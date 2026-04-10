@@ -8,8 +8,10 @@ import { openLink, psUrl } from '../misc/other';
 import GitIcon from '../components/ui/GitIcon';
 import DocIcon from '../components/ui/DocIcon';
 import LicenseIcon from '../components/ui/LicenseIcon';
+import SupportIcon from '../components/ui/SupportIcon';
 import WhiteLogo from "../../../public/icons/Logo-ProxyScrape-white.png";
 import { FOOTER_BACKGROUND } from '../theme/palette';
+import { openIntercom } from '../misc/intercom';
 
 const footerLinkSx = {
     display: 'flex',
@@ -53,6 +55,10 @@ const Footer = ({ toggleModal }) => (
             <Box component="a" href="#" title="License" onClick={toggleModal} sx={footerLinkSx}>
                 <LicenseIcon />
                 <span>License</span>
+            </Box>
+            <Box component="a" href="#" title="Live Support" onClick={(e) => { e.preventDefault(); openIntercom(); }} sx={footerLinkSx}>
+                <SupportIcon />
+                <span>Support</span>
             </Box>
         </Stack>
         <Box sx={{

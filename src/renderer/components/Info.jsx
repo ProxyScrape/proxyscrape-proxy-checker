@@ -8,6 +8,7 @@ import IconButton from '@mui/material/IconButton';
 import Slide from '@mui/material/Slide';
 import Fade from '@mui/material/Fade';
 import { FOOTER_BACKGROUND, navyBlue } from '../theme/palette';
+import { openIntercom } from '../misc/intercom';
 
 const TITLEBAR_HEIGHT = 38;
 
@@ -147,7 +148,11 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                             border: `1px solid ${FOOTER_BACKGROUND}`,
                         }}>
                             <Typography variant="body2" sx={{ color: '#E8EAF0', mb: 1, lineHeight: 1.6 }}>
-                                Need help? Contact us via our 24/7 live chat or via{' '}
+                                Need help? Contact us via our{' '}
+                                <Box component="a" href="#" onClick={(e) => { e.preventDefault(); openIntercom(); }} sx={linkSx}>
+                                    24/7 live chat
+                                </Box>
+                                {' '}or via{' '}
                                 <Box component="a" href={psUrl('/contact', 'support')} onClick={openLink} sx={linkSx}>
                                     email
                                 </Box>

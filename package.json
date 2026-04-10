@@ -140,6 +140,7 @@
         }
     },
     "dependencies": {
+        "@intercom/messenger-js-sdk": "^0.0.19",
         "@posthog/react": "^1.9.0",
         "posthog-js": "^1.367.0"
     }
