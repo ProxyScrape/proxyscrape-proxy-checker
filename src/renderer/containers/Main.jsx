@@ -82,18 +82,12 @@ class Main extends React.PureComponent {
                             height: TITLEBAR_HEIGHT,
                             '& .MuiTabs-indicator': {
                                 bottom: 0,
-                                height: 2,
                             },
                             '& .MuiTab-root': {
                                 minHeight: TITLEBAR_HEIGHT,
                                 height: TITLEBAR_HEIGHT,
                                 py: 0,
                                 px: 2,
-                                fontSize: '0.8rem',
-                                fontWeight: 500,
-                                textTransform: 'none',
-                                color: 'text.secondary',
-                                '&.Mui-selected': { color: 'text.primary' },
                             },
                         }}
                     >
@@ -104,7 +98,7 @@ class Main extends React.PureComponent {
                     </MuiTabs>
                 </Titlebar>
                 <Box sx={{
-                    bgcolor: '#252836',
+                    bgcolor: 'background.paper',
                     minHeight: '100vh',
                 }}>
                     <Box sx={{

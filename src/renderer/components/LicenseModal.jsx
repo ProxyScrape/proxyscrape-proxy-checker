@@ -18,7 +18,7 @@ const LicenseModal = memo(({ show, toggleModal }) => {
         >
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
                 <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1rem' }}>MIT License</Typography>
-                <IconButton onClick={toggleModal} size="small" sx={{ color: 'text.secondary' }}>
+                <IconButton onClick={toggleModal} size="small" sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}>
                     <svg viewBox="0 0 224.512 224.512" style={{ width: 14, height: 14, fill: 'currentColor' }}>
                         <polygon points="224.507,6.997 217.521,0 112.256,105.258 6.998,0 0.005,6.997 105.263,112.254 0.005,217.512 6.998,224.512 112.256,119.24 217.521,224.512 224.507,217.512 119.249,112.254" />
                     </svg>

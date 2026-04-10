@@ -2,6 +2,7 @@ import React from 'react';
 import Tooltip from '@mui/material/Tooltip';
 import Box from '@mui/material/Box';
 import { alpha } from '@mui/material/styles';
+import { FOOTER_BACKGROUND } from '../../theme/palette';
 
 const tooltipSx = {
     tooltip: {
@@ -9,7 +10,7 @@ const tooltipSx = {
         color: '#E0E4EC',
         fontSize: '0.78rem',
         lineHeight: 1.5,
-        border: '1px solid #33374F',
+        border: `1px solid ${FOOTER_BACKGROUND}`,
         borderRadius: '8px',
         px: 1.5,
         py: 1,
@@ -20,7 +21,7 @@ const tooltipSx = {
     arrow: {
         color: '#1A1D2E',
         '&::before': {
-            border: '1px solid #33374F',
+            border: `1px solid ${FOOTER_BACKGROUND}`,
         },
     },
 };
@@ -53,7 +54,7 @@ export const InfoIcon = ({ title, placement = 'top' }) => (
                 cursor: 'help',
                 verticalAlign: 'middle',
                 '&:hover': { color: alpha('#fff', 0.6) },
-                transition: 'color 0.15s',
+                transition: 'color 0.2s',
             }}
         >
             <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">

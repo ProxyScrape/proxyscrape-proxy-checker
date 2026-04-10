@@ -43,6 +43,7 @@ export default class ResultItemsHeader extends React.PureComponent {
             fontSize: '0.7rem',
             textTransform: 'uppercase',
             letterSpacing: '0.05em',
+            transition: 'color 0.2s',
             '&:hover': { color: 'text.primary' },
         };
 

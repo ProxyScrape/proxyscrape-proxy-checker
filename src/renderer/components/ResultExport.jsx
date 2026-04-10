@@ -10,6 +10,7 @@ import Radio from '@mui/material/Radio';
 import RadioGroup from '@mui/material/RadioGroup';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import { alpha } from '@mui/material/styles';
+import { PAGE_BACKGROUND } from '../theme/palette';
 
 const ResultExport = ({ active, copy, items, type, authType, toggleExport, changeExportType, changeExportAuthType, save }) => {
     const hasItemsWithAuth = items.some(item => item.auth !== 'none');
@@ -21,7 +22,7 @@ const ResultExport = ({ active, copy, items, type, authType, toggleExport, chang
             left: 0,
             right: 0,
             bottom: 0,
-            bgcolor: alpha('#262B40', 0.95),
+            bgcolor: alpha(PAGE_BACKGROUND, 0.95),
             backdropFilter: 'blur(8px)',
             zIndex: 1100,
             display: 'flex',
@@ -32,7 +33,7 @@ const ResultExport = ({ active, copy, items, type, authType, toggleExport, chang
             transition: 'opacity 0.3s ease',
         }}>
             <Box sx={{ bgcolor: 'background.paper', borderRadius: 4, p: 3, maxWidth: 600, width: '90%', position: 'relative' }}>
-                <IconButton onClick={toggleExport} size="small" sx={{ position: 'absolute', top: 12, right: 12, color: 'text.secondary' }}>
+                <IconButton onClick={toggleExport} size="small" sx={{ position: 'absolute', top: 12, right: 12, color: 'text.secondary', '&:hover': { color: 'text.primary' } }}>
                     <CloseIcon />
                 </IconButton>
                 <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, fontSize: '1rem' }}>
@@ -66,7 +67,7 @@ const ResultExport = ({ active, copy, items, type, authType, toggleExport, chang
                                     border: `1px solid ${alpha('#fff', 0.08)}`,
                                     borderRadius: 1,
                                     p: 1,
-                                    fontFamily: 'monospace',
+                                    fontFamily: '"Roboto Mono", monospace',
                                     fontSize: '0.75rem',
                                     resize: 'none',
                                     outline: 'none',
@@ -94,7 +95,7 @@ const ResultExport = ({ active, copy, items, type, authType, toggleExport, chang
                                     border: `1px solid ${alpha('#fff', 0.08)}`,
                                     borderRadius: 1,
                                     p: 1,
-                                    fontFamily: 'monospace',
+                                    fontFamily: '"Roboto Mono", monospace',
                                     fontSize: '0.75rem',
                                     resize: 'none',
                                     outline: 'none',

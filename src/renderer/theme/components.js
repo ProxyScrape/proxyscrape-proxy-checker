@@ -52,13 +52,21 @@ export const components = {
       },
     },
   },
+  MuiIconButton: {
+    styleOverrides: {
+      root: {
+        transition: 'color 0.2s, background-color 0.2s',
+      },
+    },
+  },
   MuiTextField: {
     styleOverrides: {
       root: {
         '& .MuiOutlinedInput-root': {
-          borderRadius: 12,
+          borderRadius: 8,
           '& fieldset': {
             borderColor: alpha('#fff', 0.11),
+            transition: 'border-color 0.2s',
           },
           '&:hover fieldset': {
             borderColor: alpha('#fff', 0.2),
@@ -85,6 +93,35 @@ export const components = {
       root: {
         color: blueBrand[500],
       },
+      thumb: {
+        width: 16,
+        height: 16,
+        '&:hover, &.Mui-focusVisible': {
+          boxShadow: `0 0 0 4px ${alpha(blueBrand[500], 0.2)}`,
+        },
+        '&.Mui-active': {
+          boxShadow: `0 0 0 6px ${alpha(blueBrand[500], 0.25)}`,
+        },
+      },
+      track: {
+        border: 'none',
+      },
+      rail: {
+        opacity: 0.25,
+      },
+    },
+  },
+  MuiSwitch: {
+    styleOverrides: {
+      root: {
+        '& .MuiSwitch-switchBase.Mui-checked': {
+          color: blueBrand[500],
+          '& + .MuiSwitch-track': {
+            backgroundColor: blueBrand[500],
+            opacity: 0.5,
+          },
+        },
+      },
     },
   },
   MuiTabs: {
@@ -105,6 +142,7 @@ export const components = {
         fontWeight: 500,
         fontSize: '0.875rem',
         color: alpha('#fff', 0.5),
+        transition: 'color 0.2s',
         '&.Mui-selected': {
           color: '#FFFFFF',
         },

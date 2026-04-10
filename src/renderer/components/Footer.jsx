@@ -9,6 +9,20 @@ import GitIcon from '../components/ui/GitIcon';
 import DocIcon from '../components/ui/DocIcon';
 import LicenseIcon from '../components/ui/LicenseIcon';
 import WhiteLogo from "../../../public/icons/Logo-ProxyScrape-white.png";
+import { FOOTER_BACKGROUND } from '../theme/palette';
+
+const footerLinkSx = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 0.5,
+    color: 'text.secondary',
+    textDecoration: 'none',
+    fontSize: '0.8rem',
+    cursor: 'pointer',
+    transition: 'color 0.2s',
+    '&:hover': { color: 'text.primary' },
+    '& svg': { width: 14, height: 14, fill: 'currentColor' },
+};
 
 const Footer = ({ toggleModal }) => (
     <Box
@@ -18,7 +32,7 @@ const Footer = ({ toggleModal }) => (
             bottom: 0,
             left: 0,
             right: 0,
-            bgcolor: '#33374F',
+            bgcolor: FOOTER_BACKGROUND,
             borderRadius: '24px 24px 0 0',
             zIndex: 100,
         }}
@@ -28,63 +42,15 @@ const Footer = ({ toggleModal }) => (
             spacing={3}
             sx={{ py: 1, alignItems: 'center', justifyContent: 'center' }}
         >
-            <Box
-                component="a"
-                href="https://github.com/ProxyScrape/proxy-checker"
-                title="Github Page"
-                onClick={openLink}
-                sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    color: 'text.secondary',
-                    textDecoration: 'none',
-                    fontSize: '0.8rem',
-                    cursor: 'pointer',
-                    '&:hover': { color: 'text.primary' },
-                    '& svg': { width: 14, height: 14, fill: 'currentColor' },
-                }}
-            >
+            <Box component="a" href="https://github.com/ProxyScrape/proxy-checker" title="Github Page" onClick={openLink} sx={footerLinkSx}>
                 <GitIcon />
                 <span>Github</span>
             </Box>
-            <Box
-                component="a"
-                href={psUrl('/proxy-checker', 'documentation')}
-                title="Official Documentation"
-                onClick={openLink}
-                sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    color: 'text.secondary',
-                    textDecoration: 'none',
-                    fontSize: '0.8rem',
-                    cursor: 'pointer',
-                    '&:hover': { color: 'text.primary' },
-                    '& svg': { width: 14, height: 14, fill: 'currentColor' },
-                }}
-            >
+            <Box component="a" href={psUrl('/proxy-checker', 'documentation')} title="Official Documentation" onClick={openLink} sx={footerLinkSx}>
                 <DocIcon />
                 <span>Documentation</span>
             </Box>
-            <Box
-                component="a"
-                href="#"
-                title="License"
-                onClick={toggleModal}
-                sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    color: 'text.secondary',
-                    textDecoration: 'none',
-                    fontSize: '0.8rem',
-                    cursor: 'pointer',
-                    '&:hover': { color: 'text.primary' },
-                    '& svg': { width: 14, height: 14, fill: 'currentColor' },
-                }}
-            >
+            <Box component="a" href="#" title="License" onClick={toggleModal} sx={footerLinkSx}>
                 <LicenseIcon />
                 <span>License</span>
             </Box>
@@ -107,7 +73,8 @@ const Footer = ({ toggleModal }) => (
                     textDecoration: 'none',
                     fontWeight: 600,
                     fontSize: '0.75rem',
-                    '&:hover': { textDecoration: 'underline' },
+                    transition: 'opacity 0.2s',
+                    '&:hover': { textDecoration: 'underline', opacity: 0.85 },
                 }}
             >
                 Get it all
@@ -135,7 +102,7 @@ const Footer = ({ toggleModal }) => (
                 href={psUrl('/', 'branding')}
                 title="Official Website"
                 onClick={openLink}
-                sx={{ cursor: 'pointer', lineHeight: 0 }}
+                sx={{ cursor: 'pointer', lineHeight: 0, transition: 'opacity 0.2s', '&:hover': { opacity: 0.8 } }}
             >
                 <img src={WhiteLogo} width="120" height="15.25"/>
             </Box>

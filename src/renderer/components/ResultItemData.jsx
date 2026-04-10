@@ -55,7 +55,7 @@ export default class ResultItemData extends React.Component {
                                 border: `1px solid ${alpha('#fff', 0.08)}`,
                                 borderRadius: 2,
                                 p: 1.5,
-                                fontFamily: 'monospace',
+                                fontFamily: '"Roboto Mono", monospace',
                                 fontSize: '0.75rem',
                                 resize: 'vertical',
                                 minHeight: 80,

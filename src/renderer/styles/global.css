@@ -46,7 +46,7 @@
     width: 38px;
     height: 100%;
     cursor: pointer;
-    transition: background-color 0.15s ease;
+    transition: background-color 0.2s ease;
 }
 
 .titlebar .buttons li:hover {

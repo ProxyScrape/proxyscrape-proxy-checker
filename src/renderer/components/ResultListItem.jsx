@@ -36,7 +36,7 @@ export default class ResultListItem extends React.PureComponent {
                         py: 0.75,
                         px: 1,
                         cursor: data ? 'pointer' : 'default',
-                        transition: 'background-color 0.15s',
+                        transition: 'background-color 0.2s',
                         '&:hover': { bgcolor: alpha('#fff', 0.03) },
                     }}
                 >

@@ -2,6 +2,7 @@ import React from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
+import { blueBrand } from '../theme/palette';
 
 export default class ResultCountriesItem extends React.PureComponent {
     toggle = () => {
@@ -28,9 +29,9 @@ export default class ResultCountriesItem extends React.PureComponent {
                     p: 1,
                     borderRadius: 2,
                     cursor: 'pointer',
-                    bgcolor: active ? alpha('#4888C7', 0.1) : 'transparent',
-                    border: `1px solid ${active ? alpha('#4888C7', 0.3) : 'transparent'}`,
-                    transition: 'all 0.15s',
+                    bgcolor: active ? alpha(blueBrand[500], 0.1) : 'transparent',
+                    border: `1px solid ${active ? alpha(blueBrand[500], 0.3) : 'transparent'}`,
+                    transition: 'all 0.2s',
                     '&:hover': { bgcolor: alpha('#fff', 0.05) },
                 }}
             >

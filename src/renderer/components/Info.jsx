@@ -7,6 +7,7 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Slide from '@mui/material/Slide';
 import Fade from '@mui/material/Fade';
+import { FOOTER_BACKGROUND, navyBlue } from '../theme/palette';
 
 const TITLEBAR_HEIGHT = 38;
 
@@ -48,7 +49,7 @@ const socialLinkSx = {
     textDecoration: 'none',
     fontSize: '0.85rem',
     cursor: 'pointer',
-    transition: 'color 0.15s',
+    transition: 'color 0.2s',
     '&:hover': { color: '#fff' },
     '& svg': { flexShrink: 0 },
 };
@@ -57,7 +58,8 @@ const linkSx = {
     color: 'primary.main',
     textDecoration: 'none',
     fontSize: '0.85rem',
-    '&:hover': { textDecoration: 'underline' },
+    transition: 'opacity 0.2s',
+    '&:hover': { textDecoration: 'underline', opacity: 0.85 },
 };
 
 const sectionLabelSx = {
@@ -89,7 +91,7 @@ const Info = memo(({ show, releases, toggleInfo }) => {
 
     return (
         <>
-            <Fade in={!!show} timeout={200}>
+            <Fade in={!!show} timeout={300}>
                 <Box
                     onClick={toggleInfo}
                     sx={{
@@ -112,7 +114,7 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                     width: 440,
                     maxWidth: { xs: '100vw', sm: '85vw' },
                     bgcolor: '#1E2132',
-                    borderLeft: '1px solid #33374F',
+                    borderLeft: `1px solid ${FOOTER_BACKGROUND}`,
                     display: 'flex',
                     flexDirection: 'column',
                     zIndex: 1200,
@@ -120,7 +122,7 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                 }}>
                     <Box sx={{
                         p: 2.5,
-                        borderBottom: '1px solid #33374F',
+                        borderBottom: `1px solid ${FOOTER_BACKGROUND}`,
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
@@ -129,7 +131,7 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                         <Box component="a" href={psUrl('/', 'branding')} onClick={openLink} sx={{ lineHeight: 0 }}>
                             <img src={WhiteLogo} width="150" height="19"/>
                         </Box>
-                        <IconButton onClick={toggleInfo} size="small" sx={{ color: '#B0B8C8', '&:hover': { color: '#fff' } }}>
+                        <IconButton onClick={toggleInfo} size="small" sx={{ color: '#B0B8C8', '&:hover': { color: 'text.primary' } }}>
                             <svg viewBox="0 0 224.512 224.512" style={{ width: 14, height: 14, fill: 'currentColor' }}>
                                 <polygon points="224.507,6.997 217.521,0 112.256,105.258 6.998,0 0.005,6.997 105.263,112.254 0.005,217.512 6.998,224.512 112.256,119.24 217.521,224.512 224.507,217.512 119.249,112.254" />
                             </svg>
@@ -142,7 +144,7 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                             borderRadius: 2,
                             p: 2,
                             mb: 2.5,
-                            border: '1px solid #33374F',
+                            border: `1px solid ${FOOTER_BACKGROUND}`,
                         }}>
                             <Typography variant="body2" sx={{ color: '#E8EAF0', mb: 1, lineHeight: 1.6 }}>
                                 Need help? Contact us via our 24/7 live chat or via{' '}
@@ -198,7 +200,7 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                                 <Box key={release.tag_name} sx={{
                                     mb: 2,
                                     pb: 2,
-                                    borderBottom: '1px solid #2D3148',
+                                    borderBottom: `1px solid ${FOOTER_BACKGROUND}`,
                                     '&:last-child': { borderBottom: 'none', mb: 0, pb: 0 },
                                 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5 }}>
@@ -216,12 +218,12 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                                         '& h1, & h2, & h3': { fontSize: '0.85rem', fontWeight: 600, color: '#E8EAF0', mt: 1, mb: 0.5 },
                                         '& a': { color: 'primary.main', textDecoration: 'none' },
                                         '& code': {
-                                            bgcolor: '#2D3148',
+                                            bgcolor: FOOTER_BACKGROUND,
                                             px: 0.5,
                                             py: 0.25,
                                             borderRadius: 0.5,
                                             fontSize: '0.75rem',
-                                            fontFamily: 'monospace',
+                                            fontFamily: '"Roboto Mono", monospace',
                                             color: '#E8EAF0',
                                         },
                                     }}>

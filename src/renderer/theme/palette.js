@@ -81,4 +81,9 @@ export const palette = {
   success: {
     main: '#00B70B',
   },
+  black,
+  gray,
+  blueBrand,
+  navyBlue,
+  green,
 };

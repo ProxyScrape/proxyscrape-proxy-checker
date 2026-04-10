@@ -4,7 +4,7 @@ import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import { alpha } from '@mui/material/styles';
-import { PAGE_BACKGROUND } from '../theme/palette';
+import { PAGE_BACKGROUND, palette } from '../theme/palette';
 import SearchBarIcon from './ui/SearchBarIcon';
 
 const OverlayJudges = ({ isActive, items }) => {
@@ -50,7 +50,7 @@ const OverlayJudges = ({ isActive, items }) => {
                                     '&:last-child': { borderBottom: 'none' },
                                 }}
                             >
-                                <Box sx={{ flexShrink: 0, width: 16, height: 16, '& svg': { width: 16, height: 16, fill: isSuccess ? '#00B70B' : isError ? '#e74856' : alpha('#fff', 0.3) } }}>
+                                <Box sx={{ flexShrink: 0, width: 16, height: 16, '& svg': { width: 16, height: 16, fill: isSuccess ? palette.success.main : isError ? palette.error.main : alpha('#fff', 0.3) } }}>
                                     <SearchBarIcon />
                                 </Box>
                                 <Typography variant="body2" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.8rem' }} title={item.url}>
@@ -66,8 +66,8 @@ const OverlayJudges = ({ isActive, items }) => {
                                             sx={{
                                                 height: 20,
                                                 fontSize: '0.65rem',
-                                                bgcolor: isSuccess ? alpha('#00B70B', 0.15) : alpha('#e74856', 0.15),
-                                                color: isSuccess ? '#00B70B' : '#e74856',
+                                                bgcolor: isSuccess ? alpha(palette.success.main, 0.15) : alpha(palette.error.main, 0.15),
+                                                color: isSuccess ? 'success.main' : 'error.main',
                                             }}
                                         />
                                     )}

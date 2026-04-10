@@ -15,6 +15,7 @@ import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import { alpha } from '@mui/material/styles';
+import { blueBrand } from '../theme/palette';
 
 const Input = ({ loaded, total, errors, unique, name, size, loadFromTxt, onFileDrop, overrideEventDefaults, pasteFromClipboard, start, shuffle, toggleOption }) => {
     const copyErrors = () => {
@@ -57,7 +58,7 @@ const Input = ({ loaded, total, errors, unique, name, size, loadFromTxt, onFileD
                         transition: 'border-color 0.2s, background-color 0.2s',
                         '&:hover': {
                             borderColor: 'primary.main',
-                            bgcolor: alpha('#4888C7', 0.05),
+                            bgcolor: alpha(blueBrand[500], 0.05),
                         },
                     }}
                 >

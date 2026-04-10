@@ -77,7 +77,7 @@ export default class BlacklistItem extends React.PureComponent {
                             placeholder="URL or Select path"
                         />
                     </HelpTip>
-                    <IconButton onClick={this.selectPath} sx={{ color: 'text.secondary' }}>
+                    <IconButton onClick={this.selectPath} sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}>
                         <DropDocIcon scale="20"/>
                     </IconButton>
                 </Box>
