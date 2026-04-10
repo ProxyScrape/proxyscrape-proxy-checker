@@ -4,6 +4,7 @@ settings.proxyscrape.checker.json
 /public/*.js
 /.vscode
 dist
+out
 package-lock.json
 tests
 yarn.lock

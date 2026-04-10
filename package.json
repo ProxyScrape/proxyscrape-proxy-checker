@@ -1,7 +1,7 @@
 {
     "name": "proxyscrape-proxy-checker",
     "version": "1.1.0",
-    "main": "public/main.js",
+    "main": "./out/main/index.js",
     "license": "MIT",
     "author": {
         "name": "ProxyScrape",
@@ -22,92 +22,96 @@
     },
     "homepage": "https://proxyscrape.com/proxy-checker",
     "scripts": {
-        "build": "run-p build:*",
-        "build:main": "cross-env NODE_ENV=production webpack -p --config webpack.config.main.babel.js",
-        "build:renderer": "cross-env NODE_ENV=production webpack -p --config webpack.config.renderer.babel.js",
-        "start": "run-p start:*",
-        "start:main": "electron --require @babel/register src/index",
-        "start:renderer": "cross-env NODE_ENV=development webpack-dev-server -d --config webpack.config.renderer.babel.js",
+        "dev": "electron-vite dev",
+        "build": "electron-vite build",
+        "start": "electron-vite preview",
         "package": "npm run build && electron-builder --win",
+        "package-mac": "npm run build && electron-builder --mac",
         "package-linux": "npm run build && electron-builder --linux",
+        "package-all": "npm run build && electron-builder --mac --win --linux",
         "publish": "npm run build && electron-builder --win --publish always",
-        "publish-linux": "npm run build && electron-builder --linux --publish always"
+        "publish-mac": "npm run build && electron-builder --mac --publish always",
+        "publish-linux": "npm run build && electron-builder --linux --publish always",
+        "publish-all": "npm run build && electron-builder --mac --win --linux --publish always",
+        "postinstall": "electron-builder install-app-deps"
     },
     "devDependencies": {
-        "@babel/cli": "^7.18.10",
-        "@babel/core": "^7.19.1",
-        "@babel/plugin-proposal-class-properties": "^7.18.6",
-        "@babel/plugin-proposal-object-rest-spread": "^7.18.9",
-        "@babel/plugin-transform-runtime": "^7.19.1",
-        "@babel/preset-env": "^7.19.1",
-        "@babel/preset-react": "^7.18.6",
-        "@babel/register": "^7.18.9",
-        "@babel/runtime": "^7.19.0",
-        "babel-loader": "^8.2.5",
-        "cross-env": "^7.0.3",
-        "css-loader": "^3.2.0",
-        "electron": "^20.1.4",
-        "electron-builder": "^23.3.3",
-        "electron-devtools-installer": "^3.2.0",
-        "electron-react-devtools": "^0.5.3",
-        "electron-updater": "^5.2.1",
-        "fast-sort": "^3.2.0",
-        "file-loader": "^4.2.0",
-        "ip": "^1.1.5",
-        "js-flock": "^3.14.0",
-        "maxmind": "^3.1.2",
-        "npm-run-all": "^4.1.5",
-        "postcss-color-function": "^4.1.0",
-        "postcss-css-variables": "^0.13.0",
-        "postcss-easings": "^2.0.0",
-        "postcss-loader": "^3.0.0",
-        "postcss-preset-env": "^6.7.0",
+        "@emotion/react": "^11.14.0",
+        "@emotion/styled": "^11.14.1",
+        "@fontsource/montserrat": "^5.2.8",
+        "@mui/material": "^9.0.0",
+        "@vitejs/plugin-react": "^4.3.0",
+        "axios": "^1.2.0",
+        "electron": "^41.1.0",
+        "electron-builder": "^26.8.2",
+        "electron-updater": "^6.3.0",
+        "electron-vite": "^3.1.0",
+        "fast-sort": "^3.4.0",
+        "ip": "^2.0.1",
+        "maxmind": "^4.3.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
-        "react-hot-loader": "^4.13.1",
-        "react-markdown": "^4.2.2",
+        "react-markdown": "^9.0.0",
         "react-redux": "^8.0.2",
-        "react-tabs": "^3.0.0",
         "redux": "^4.2.0",
         "redux-thunk": "^2.4.1",
-        "request": "^2.88.2",
-        "request-promise": "^4.2.6",
         "reselect": "^4.1.6",
-        "socks-proxy-agent": "^4.0.2",
-        "style-loader": "^1.0.0",
-        "url-loader": "^2.1.0",
-        "webpack": "^4.25.1",
-        "webpack-cli": "^3.1.2",
-        "webpack-dev-server": "^3.1.10",
-        "axios": "^1.2.0",
-        "electron-packager": "^17.1.1",
-        "uuid": "^9.0.0"
+        "socks-proxy-agent": "^8.0.5",
+        "uuid": "^9.0.0",
+        "vite-plugin-electron-renderer": "^0.14.6"
     },
     "build": {
+        "mac": {
+            "icon": "./public/icons/icon.icns",
+            "target": [
+                {
+                    "target": "dmg",
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
+                },
+                {
+                    "target": "zip",
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
+                }
+            ],
+            "category": "public.app-category.utilities",
+            "artifactName": "${name}-v${version}-${arch}-${os}.${ext}"
+        },
         "win": {
+            "icon": "./public/icons/icon.ico",
             "target": [
                 {
                     "target": "nsis",
                     "arch": [
                         "x64",
-                        "ia32"
+                        "arm64"
                     ]
                 },
                 {
                     "target": "portable",
                     "arch": [
                         "x64",
-                        "ia32"
+                        "arm64"
                     ]
                 }
             ],
-            "icon": "/public/icons/icon.ico",
             "artifactName": "${name}-v${version}-${arch}-${os}-installer.${ext}"
         },
         "linux": {
             "icon": "./public/icons/icon.png",
             "target": [
-                "AppImage"
+                {
+                    "target": "AppImage",
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
+                }
             ],
             "category": "Network",
             "artifactName": "${name}-v${version}-${arch}-${os}.${ext}"
@@ -136,9 +140,7 @@
         }
     },
     "dependencies": {
-        "bootstrap": "4.3.1",
-        "electron-dl": "^3.5.0",
-        "electron-squirrel-startup": "^1.0.0",
-        "react-bootstrap": "^2.7.0"
+        "@posthog/react": "^1.9.0",
+        "posthog-js": "^1.367.0"
     }
 }
