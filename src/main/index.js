@@ -2,6 +2,7 @@ import path from 'path';
 import { BrowserWindow, app, ipcMain, dialog } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { isDev, isPortable } from '../shared/AppConstants';
+import { initDatabase, saveCheck, getChecksList, getCheckResults, deleteCheck, closeDatabase } from './database';
 const iconPath = path.join(__dirname, '../../public/icons/icon.png');
 
 let window;
@@ -104,7 +105,49 @@ ipcMain.on('getUserData', event => {
     event.returnValue = app.getPath('userData');
 });
 
+ipcMain.on('getDownloadsPath', event => {
+    event.returnValue = app.getPath('downloads');
+});
+
+ipcMain.handle('db-save-check', (event, checkData) => {
+    try {
+        return saveCheck(checkData);
+    } catch (error) {
+        console.error('Failed to save check:', error);
+        return null;
+    }
+});
+
+ipcMain.handle('db-get-checks', () => {
+    try {
+        return getChecksList();
+    } catch (error) {
+        console.error('Failed to get checks:', error);
+        return [];
+    }
+});
+
+ipcMain.handle('db-get-check-results', (event, checkId) => {
+    try {
+        return getCheckResults(checkId);
+    } catch (error) {
+        console.error('Failed to get check results:', error);
+        return null;
+    }
+});
+
+ipcMain.handle('db-delete-check', (event, checkId) => {
+    try {
+        deleteCheck(checkId);
+        return true;
+    } catch (error) {
+        console.error('Failed to delete check:', error);
+        return false;
+    }
+});
+
 app.on('ready', () => {
+    initDatabase();
     createWindow();
     if (!isDev && !isPortable) autoUpdater.checkForUpdates();
 });
@@ -119,6 +162,7 @@ app.on('before-quit', () => {
     if (window && !window.isDestroyed()) {
         window.webContents.send('app-before-quit');
     }
+    closeDatabase();
 });
 
 app.on('window-all-closed', async () => {

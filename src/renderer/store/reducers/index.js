@@ -9,6 +9,7 @@ import judges from './judges';
 import ip from './ip';
 import blacklist from './blacklist';
 import main from './main';
+import history from './history';
 
 const mainReducer = combineReducers({
     checking,
@@ -20,7 +21,8 @@ const mainReducer = combineReducers({
     judges,
     ip,
     blacklist,
-    main
+    main,
+    history
 });
 
 export default mainReducer;

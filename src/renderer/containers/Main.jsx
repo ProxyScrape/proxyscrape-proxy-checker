@@ -104,6 +104,7 @@ class Main extends React.PureComponent {
                         <MuiTab label="Judges" />
                         <MuiTab label="Ip" />
                         <MuiTab label="Blacklist" />
+                        <MuiTab label="History" />
                     </MuiTabs>
                 </Titlebar>
                 <Box sx={{
@@ -119,13 +120,14 @@ class Main extends React.PureComponent {
                         px: 5,
                     }}>
                         <Box sx={{ pt: 3 }}>
-                            <Settings tabIndex={this.state.tabIndex} />
+                            {this.state.tabIndex <= 3 && <Settings tabIndex={this.state.tabIndex} />}
                             {this.state.tabIndex === 0 && <Input />}
+                            <History visible={this.state.tabIndex === 4} />
                         </Box>
                     </Box>
                     <Info show={this.state.showInfo} releases={releases} toggleInfo={this.toggleInfo}/>
                     <LicenseModal show={this.state.showModal} toggleModal={this.toggleModal}/>
-                    <Result />
+                    <Result closeInfo={this.closeInfo} />
                     <Checking />
                     <Overlay />
                     <Update />
