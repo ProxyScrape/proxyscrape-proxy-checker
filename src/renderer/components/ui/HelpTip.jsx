@@ -2,12 +2,12 @@ import React from 'react';
 import Tooltip from '@mui/material/Tooltip';
 import Box from '@mui/material/Box';
 import { alpha } from '@mui/material/styles';
-import { FOOTER_BACKGROUND } from '../../theme/palette';
+import { FOOTER_BACKGROUND, TOOLTIP_BACKGROUND } from '../../theme/palette';
 
 const tooltipSx = {
     tooltip: {
-        bgcolor: '#1A1D2E',
-        color: '#E0E4EC',
+        bgcolor: TOOLTIP_BACKGROUND,
+        color: 'text.primary',
         fontSize: '0.78rem',
         lineHeight: 1.5,
         border: `1px solid ${FOOTER_BACKGROUND}`,
@@ -19,7 +19,7 @@ const tooltipSx = {
         whiteSpace: 'pre-line',
     },
     arrow: {
-        color: '#1A1D2E',
+        color: TOOLTIP_BACKGROUND,
         '&::before': {
             border: `1px solid ${FOOTER_BACKGROUND}`,
         },

@@ -1,5 +1,8 @@
 export const PAGE_BACKGROUND = '#262B40';
 export const FOOTER_BACKGROUND = '#33374F';
+export const DRAWER_BACKGROUND = '#1E2132';
+export const CARD_BACKGROUND = '#282C3E';
+export const TOOLTIP_BACKGROUND = '#1A1D2E';
 export const LIGHT_BACKGROUND_GRADIENT = 'linear-gradient(180deg, #33374F 0%, #4A5D88 100%)';
 
 export const black = {
