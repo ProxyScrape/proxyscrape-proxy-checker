@@ -3,6 +3,12 @@ import { isDev } from '../../shared/AppConstants';
 import { Reader } from 'maxmind';
 import { readFileSync } from 'fs';
 
+/**
+ * ISO 3166-1 alpha-2 country code mapping.
+ * Maps each code to a flag identifier (used for flag image filenames) and
+ * a human-readable country name.
+ * @type {Object<string, { flag: string, name: string }>}
+ */
 const codes = {
     AF: { flag: 'afghanistan', name: 'Afghanistan' },
     AL: { flag: 'albania', name: 'Albania' },
@@ -264,9 +270,15 @@ const codes = {
     ZZ: { flag: 'unknown', name: 'Unknown' }
 };
 
+/** Path to the MaxMind GeoLite2-City database, resolved for dev and packaged builds */
 const mmdbPath = path.resolve(isDev ? './files/GeoLite2-City.mmdb' : process.resourcesPath + '/files/GeoLite2-City.mmdb');
 const reader = new Reader(readFileSync(mmdbPath));
 
+/**
+ * Safely extracts the English city name from a MaxMind city record.
+ * @param {{ names?: { en?: string } }} city
+ * @returns {string} City name, or empty string if unavailable
+ */
 const extractCity = city => {
     try {
         return city.names.en;
@@ -275,6 +287,13 @@ const extractCity = city => {
     }
 };
 
+/**
+ * Looks up geo-location data for an IP address using the MaxMind database.
+ * Returns city name, country name, and flag identifier. Falls back to
+ * 'Unknown' (code ZZ) if the IP cannot be resolved.
+ * @param {string} ip - IPv4 address to look up
+ * @returns {{ city: string, flag: string, name: string }}
+ */
 export const lookup = ip => {
     try {
         const { city: city = '', country } = reader.get(ip);

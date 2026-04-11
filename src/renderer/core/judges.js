@@ -4,7 +4,40 @@ import { changeState, changeJudgePingState, startPing } from '../actions/Overlay
 import { wait } from '../misc/wait';
 import { arrayToChunks } from './misc.js';
 
+/**
+ * @typedef {Object} JudgeConfig
+ * @property {JudgeItem[]} items - List of judge URLs to ping
+ * @property {boolean} swap - Whether to round-robin across multiple judges of the same type
+ */
+
+/**
+ * @typedef {Object} JudgeItem
+ * @property {string} url - The judge endpoint URL
+ * @property {string} validate - Regex string to validate the response body (empty = accept all)
+ */
+
+/**
+ * Manages judge server availability for proxy checking.
+ *
+ * Judges are HTTP endpoints that echo back request metadata (IP, headers).
+ * The Checker class uses them to determine proxy anonymity and protocol support.
+ *
+ * On construction, all configured judges are pinged in parallel (chunked in groups
+ * of 5). Working judges are categorised into SSL (HTTPS) and usual (HTTP) lists.
+ * The constructor returns a Promise that resolves with the Judges instance once
+ * all pings complete and at least the required judge types are available.
+ *
+ * During checking, {@link getSSL}, {@link getUsual}, and {@link getAny} return
+ * judge URLs. When `swap` is enabled they round-robin across available judges
+ * to distribute load.
+ */
 export default class Judges {
+    /**
+     * Pings all judge URLs and resolves when ready.
+     * @param {JudgeConfig} config
+     * @param {string[]} targetProtocols - Protocols the checker will test (determines which judge types are required)
+     * @returns {Promise<Judges>} Resolves with this instance once all judges are pinged
+     */
     constructor(config, targetProtocols) {
         this.usingStatus = {
             ssl: {
@@ -45,6 +78,11 @@ export default class Judges {
         }).catch(error => alert(error));
     }
 
+    /**
+     * Builds the {@link getSSL} function. Returns a static or round-robin getter
+     * depending on how many SSL judges are available and whether `swap` is enabled.
+     * @returns {function(): string}
+     */
     buildGetSSL() {
         if (this.list.ssl.length == 1 || !this.swap) {
             return () => this.list.ssl[0];
@@ -58,6 +96,11 @@ export default class Judges {
         };
     }
 
+    /**
+     * Builds the {@link getAny} function (round-robin across all working judges).
+     * Used for SOCKS protocol checks where either HTTP or HTTPS judges work.
+     * @returns {function(): string}
+     */
     buildGetAny() {
         if (this.list.any.length == 1 || !this.swap) {
             return () => this.list.any[0];
@@ -71,6 +114,10 @@ export default class Judges {
         };
     }
 
+    /**
+     * Builds the {@link getUsual} function (round-robin across HTTP-only judges).
+     * @returns {function(): string}
+     */
     buildGetUsual() {
         if (this.list.usual.length == 1 || !this.swap) {
             return () => this.list.usual[0];
@@ -84,6 +131,13 @@ export default class Judges {
         };
     }
 
+    /**
+     * Validates a judge response body against the judge's configured regex.
+     * If no validate pattern is set, all responses are accepted.
+     * @param {string} body - Response body from the judge
+     * @param {string} judge - Judge URL (used to look up the validation regex)
+     * @returns {boolean}
+     */
     validate(body, judge) {
         if (this.data[judge].validate.length > 0) {
             return body.match(new RegExp(this.data[judge].validate));
@@ -92,6 +146,11 @@ export default class Judges {
         return true;
     }
 
+    /**
+     * Pings all judges in parallel (chunked into groups of 5 to limit concurrency).
+     * Updates the overlay UI with ping results as they complete.
+     * @param {JudgeItem[]} list
+     */
     async launch(list) {
         store.dispatch(startPing());
         await wait(1500);
@@ -112,6 +171,12 @@ export default class Judges {
         }
     }
 
+    /**
+     * Records a successful judge ping. Categorises the judge as SSL or usual
+     * based on its URL scheme, stores its response data, and updates the overlay.
+     * @param {JudgeItem} judge
+     * @param {Object} response - Axios response augmented with `elapsedTime`
+     */
     onSuccess(judge, response) {
         const typeLink = judge.url.match(/https:\/\//) ? this.list.ssl : this.list.usual;
         typeLink.push(judge.url);
@@ -134,6 +199,10 @@ export default class Judges {
         this.isDone();
     }
 
+    /**
+     * Records a failed judge ping and updates the overlay.
+     * @param {JudgeItem} judge
+     */
     onError(judge) {
         store.dispatch(
             changeJudgePingState(judge.url, {
@@ -147,6 +216,11 @@ export default class Judges {
         this.isDone();
     }
 
+    /**
+     * Checks whether all judges have been pinged. When complete, merges the
+     * SSL and usual lists into `any`, builds the round-robin getters, validates
+     * that required judge types are present, and resolves the constructor promise.
+     */
     async isDone() {
         this.counter.done++;
 
@@ -170,6 +244,10 @@ export default class Judges {
         }
     }
 
+    /**
+     * Rejects the constructor promise if required judge types have no working entries.
+     * Called once all pings are complete.
+     */
     checkAtAliveJudges() {
         if (this.isRequiredSSLButNotContains()) {
             this.reject('You have no working SSL judges.');
@@ -180,10 +258,12 @@ export default class Judges {
         }
     }
 
+    /** @returns {boolean} True if HTTPS protocol is targeted but no SSL judges responded */
     isRequiredSSLButNotContains() {
         return this.targetProtocols.includes('https') && this.list.ssl.length == 0;
     }
 
+    /** @returns {boolean} True if HTTP protocol is targeted but no usual judges responded */
     isRequiredUsualButNotContains() {
         return this.targetProtocols.some(protocol => ['http'].includes(protocol)) && this.list.usual.length == 0;
     }

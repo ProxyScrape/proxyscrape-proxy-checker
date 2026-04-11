@@ -6,7 +6,47 @@ import { openChecking, upCounterStatus } from '../actions/CheckingActions';
 import { showResult } from '../actions/ResultActions';
 import { isIP } from '../misc/regexes.js';
 
+/**
+ * @typedef {Object} ProxyObject
+ * @property {string} type - Proxy type identifier (e.g. 'http', 'socks5')
+ * @property {string} auth - Auth string as 'user:pass', or 'none' if unauthenticated
+ * @property {string} host - Proxy IP address or hostname
+ * @property {string} port - Proxy port number
+ */
+
+/**
+ * @typedef {Object} CheckerOptions
+ * @property {number} timeout - Request timeout in milliseconds
+ * @property {number} threads - Max concurrent proxy checks
+ * @property {number} retries - Number of retries on network errors (not HTTP errors)
+ * @property {boolean} keepAlive - Whether to detect keep-alive support
+ * @property {boolean} captureServer - Whether to detect proxy server software
+ * @property {boolean} captureFullData - Whether to store full response data per protocol
+ */
+
+/**
+ * Concurrent proxy checker engine.
+ *
+ * Checks a queue of proxies against judge servers to determine which protocols
+ * each proxy supports, its anonymity level, geo-location, and optional metadata
+ * (server software, keep-alive, full response data).
+ *
+ * Concurrency is controlled by `options.threads` — that many proxies are checked
+ * simultaneously. Each proxy is tested against every protocol in `targetProtocols`.
+ * Once all protocols finish for a proxy, the next proxy in the queue is started.
+ *
+ * Results are dispatched to Redux via {@link showResult} when all proxies complete
+ * or {@link stop} is called.
+ */
 export default class Checker {
+    /**
+     * @param {ProxyObject[]} proxies - Parsed proxy list to check
+     * @param {CheckerOptions} options - Checker configuration
+     * @param {string} ip - The user's real IP (used for anonymity detection)
+     * @param {import('./judges').default} judges - Initialized Judges instance
+     * @param {string[]} targetProtocols - Protocols to test (e.g. ['http','https','socks4','socks5'])
+     * @param {import('./blacklist').default|null} blacklist - Initialized Blacklist instance, or null
+     */
     constructor(proxies, options, ip, judges, targetProtocols, blacklist) {
         this.ip = ip;
         this.doneLevel = targetProtocols.length;
@@ -39,6 +79,11 @@ export default class Checker {
         }, 250);
     }
 
+    /**
+     * Creates a fresh state entry for a proxy before checking begins.
+     * Initialises the `permanent` object that accumulates results across protocols.
+     * @param {ProxyObject} proxy
+     */
     initializeProxyState({ type, auth, host, port }) {
         this.states[this.getProxyObjectLink({ type, auth, host, port })] = {
             doneLevel: 0,
@@ -60,10 +105,22 @@ export default class Checker {
         };
     }
 
+    /**
+     * Builds a unique key for a proxy to index into `this.states`.
+     * @param {ProxyObject} proxy
+     * @returns {string}
+     */
     getProxyObjectLink({ type, auth, host, port }) {
         return `${type}${auth}${host}${port}`;
     }
 
+    /**
+     * Sends a request through the proxy to a judge server for a single protocol.
+     * On success calls {@link onResponse}; on failure calls {@link onError}.
+     * @param {ProxyObject} proxyObject
+     * @param {string} protocol - 'http' | 'https' | 'socks4' | 'socks5'
+     * @param {number} [retries=0] - Current retry count
+     */
     async checkProtocol(proxyObject, protocol, retries = 0) {
         try {
             const judge = protocol === 'http' ? this.judges.getUsual() : protocol === 'https' ? this.judges.getSSL() : this.judges.getAny();
@@ -84,6 +141,12 @@ export default class Checker {
         }
     }
 
+    /**
+     * Extracts the remote IP address from a judge response body.
+     * Handles both plain-IP responses and PHP-style REMOTE_ADDR output.
+     * @param {string} body - Judge response body
+     * @returns {string|null} The extracted IP, or null if not found
+     */
     getIp(body) {
         const trimmed = body.trim();
 
@@ -100,6 +163,13 @@ export default class Checker {
         return null;
     }
 
+    /**
+     * Builds the axios proxy/agent config for a given protocol.
+     * SOCKS proxies use `SocksProxyAgent`; HTTP(S) proxies use axios' built-in proxy option.
+     * @param {ProxyObject} proxyObject
+     * @param {string} protocol
+     * @returns {Object} Axios request config fragment (proxy or httpAgent/httpsAgent)
+     */
     getAgent({ auth, host, port }, protocol) {
         if (auth !== 'none') {
             if (protocol === 'socks4' || protocol === 'socks5') {
@@ -119,6 +189,11 @@ export default class Checker {
         return { proxy: { host, port: Number(port), protocol: 'http' } };
     }
 
+    /**
+     * Detects proxy server software by matching known signatures in the response body.
+     * @param {string} body - Judge response body
+     * @returns {string|null} Server name (e.g. 'squid', 'mikrotik') or null
+     */
     getServer(body) {
         if (body.match(/squid/i)) {
             return 'squid';
@@ -147,6 +222,12 @@ export default class Checker {
         return null;
     }
 
+    /**
+     * Determines anonymity level by inspecting the judge response for IP leakage
+     * and proxy-revealing headers.
+     * @param {string} body - Judge response body
+     * @returns {'transparent'|'anonymous'|'elite'}
+     */
     getAnon(body) {
         if (body.match(new RegExp(this.ip))) {
             return 'transparent';
@@ -159,12 +240,26 @@ export default class Checker {
         return 'elite';
     }
 
+    /**
+     * Updates the keep-alive flag for a proxy if the response indicates support.
+     * @param {string} proxyLink - State key from {@link getProxyObjectLink}
+     * @param {Object} headers - Response headers
+     */
     setKeepAlive(proxyLink, headers) {
         if (!this.states[proxyLink].permanent.keepAlive && (headers['keep-alive'] || headers['connection'] === 'keep-alive')) {
             this.states[proxyLink].permanent.keepAlive = true;
         }
     }
 
+    /**
+     * Handles a successful judge response. Validates the body, then records
+     * protocol support, anonymity, timeout, and optional metadata (server, keep-alive,
+     * full data). Increments the protocol counter and checks completion.
+     * @param {Object} response - Axios response augmented with `elapsedTime`
+     * @param {ProxyObject} proxyObject
+     * @param {string} protocol
+     * @param {string} judge - The judge URL used for this check
+     */
     onResponse(response, proxyObject, protocol, judge) {
         if (this.stopped) {
             return;
@@ -212,6 +307,14 @@ export default class Checker {
         this.isDone(proxyLink);
     }
 
+    /**
+     * Handles a failed protocol check. Retries on network errors (no HTTP status code)
+     * up to `options.retries` times; otherwise marks the protocol as done.
+     * @param {ProxyObject} proxyObject
+     * @param {string} protocol
+     * @param {number} retries - How many retries have been attempted so far
+     * @param {number|undefined} statusCode - HTTP status if available
+     */
     onError(proxyObject, protocol, retries, statusCode) {
         if (this.stopped) {
             return;
@@ -227,6 +330,12 @@ export default class Checker {
         }
     }
 
+    /**
+     * Returns a check function optimized for the number of target protocols.
+     * Single-protocol and all-four-protocol cases avoid forEach overhead.
+     * @param {string[]} protocols
+     * @returns {function(ProxyObject): void}
+     */
     buildCheck(protocols) {
         if (protocols.length === 1) {
             return proxyObject => {
@@ -250,6 +359,12 @@ export default class Checker {
         };
     }
 
+    /**
+     * Collects final results from all proxy states. Only proxies with at least
+     * one working protocol are included. Each result is enriched with geo-location
+     * and optional blacklist data.
+     * @returns {{ items: Object[], inBlacklists: Object[]|false }}
+     */
     getResult() {
         const result = [];
 
@@ -277,6 +392,11 @@ export default class Checker {
         };
     }
 
+    /**
+     * Called when all protocols for a proxy have finished. Increments the done
+     * counter and either dispatches the final result or starts the next proxy.
+     * @param {string} proxyLink - State key from {@link getProxyObjectLink}
+     */
     isDone(proxyLink) {
         if (this.states[proxyLink].doneLevel === this.doneLevel) {
             this.counter.done++;
@@ -289,6 +409,10 @@ export default class Checker {
         }
     }
 
+    /**
+     * Dequeues the next proxy, initializes its state, and starts checking it.
+     * No-ops if the entire queue has been consumed.
+     */
     run() {
         if (this.currentProxy === this.counter.all) {
             return;
@@ -300,16 +424,22 @@ export default class Checker {
         this.check(proxy);
     }
 
+    /** Clears the counter interval and dispatches final results to Redux. */
     dispatchResult() {
         clearInterval(this.upCounterStatus);
         store.dispatch(showResult(this.getResult()));
     }
 
+    /** Stops checking immediately and dispatches whatever results exist so far. */
     stop() {
         this.stopped = true;
         this.dispatchResult();
     }
 
+    /**
+     * Opens the checking overlay and starts `threads` concurrent workers
+     * after a short delay (allows the UI to render the overlay first).
+     */
     start() {
         store.dispatch(openChecking(this.counter));
         const startThreadsCount = this.queue.length > this.options.threads ? this.options.threads : this.queue.length;
