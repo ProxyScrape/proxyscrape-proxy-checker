@@ -4,15 +4,31 @@ import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 import { blueBrand } from '../theme/palette';
 
+const CheckboxIcon = ({ checked }) => (
+    <Box sx={{
+        width: 18,
+        height: 18,
+        borderRadius: '4px',
+        border: `2px solid ${checked ? blueBrand[500] : alpha('#fff', 0.3)}`,
+        bgcolor: checked ? blueBrand[500] : 'transparent',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        transition: 'all 0.15s',
+    }}>
+        {checked && (
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+        )}
+    </Box>
+);
+
 export default class ResultCountriesItem extends React.PureComponent {
     toggle = () => {
         const { toggle, name, active } = this.props;
         toggle(name, false, !active);
-    };
-
-    toggleAll = () => {
-        const { toggle, name, active } = this.props;
-        toggle(name, true, !active);
     };
 
     render = () => {
@@ -21,27 +37,33 @@ export default class ResultCountriesItem extends React.PureComponent {
         return (
             <Box
                 onClick={this.toggle}
-                onDoubleClick={this.toggleAll}
                 sx={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 1,
-                    p: 1,
-                    borderRadius: 2,
+                    gap: 1.25,
+                    py: 0.75,
+                    px: 2,
                     cursor: 'pointer',
-                    bgcolor: active ? alpha(blueBrand[500], 0.1) : 'transparent',
-                    border: `1px solid ${active ? alpha(blueBrand[500], 0.3) : 'transparent'}`,
-                    transition: 'all 0.2s',
-                    '&:hover': { bgcolor: alpha('#fff', 0.05) },
+                    transition: 'background-color 0.15s',
+                    '&:hover': { bgcolor: alpha('#fff', 0.04) },
                 }}
             >
-                <Box sx={{ width: 24, height: 16, flexShrink: 0 }}>
+                <CheckboxIcon checked={active} />
+                <Box sx={{ width: 22, height: 14, flexShrink: 0 }}>
                     <div className={`ico ${flag} png`} style={{ width: '100%', height: '100%' }} />
                 </Box>
-                <Box sx={{ overflow: 'hidden' }}>
-                    <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: active ? 600 : 400 }}>{name}</Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', fontWeight: 400 }}>Proxies: {count}</Typography>
-                </Box>
+                <Typography variant="body2" sx={{
+                    fontSize: '0.8rem',
+                    fontWeight: 400,
+                    flex: 1,
+                    color: active ? 'text.primary' : 'text.secondary',
+                    transition: 'color 0.15s',
+                }}>
+                    {name}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.7rem', fontWeight: 400, flexShrink: 0 }}>
+                    {count}
+                </Typography>
             </Box>
         );
     };

@@ -13,14 +13,16 @@ import Info from '../components/Info';
 import LicenseModal from '../components/LicenseModal';
 import Notification from '../components/Notification';
 import Result from './Result';
+import History from '../components/History';
 import Titlebar from './Titlebar';
 import { checkProxy } from '../actions/InputActions';
-import { close as closeResult } from '../actions/ResultActions';
+import { close as closeResult, closeCountries } from '../actions/ResultActions';
 import { trackScreen } from '../misc/analytics';
+import { ipcRenderer } from 'electron';
 import fs from "fs";
 
 const TITLEBAR_HEIGHT = 38;
-const TAB_SCREENS = ['Core', 'Judges', 'Ip', 'Blacklist'];
+const TAB_SCREENS = ['Core', 'Judges', 'Ip', 'Blacklist', 'History'];
 
 class Main extends React.PureComponent {
 
@@ -37,7 +39,14 @@ class Main extends React.PureComponent {
         this.DirectoryCheck = this.DirectoryCheck.bind(this);
     }
 
-    toggleInfo = () => this.setState({ showInfo: !this.state.showInfo });
+    toggleInfo = () => {
+        const willOpen = !this.state.showInfo;
+        if (willOpen && this.props.countriesActive) {
+            this.props.closeCountries();
+        }
+        this.setState({ showInfo: willOpen });
+    };
+    closeInfo = () => this.setState({ showInfo: false });
     toggleModal = () => this.setState({ showModal: !this.state.showModal });
     toggleNotify = () => this.setState({ showNotify: !this.state.showNotify });
     disable = () => this.setState({ disableNotify: !this.state.disableNotify });
@@ -130,12 +139,14 @@ class Main extends React.PureComponent {
 
 const mapStateToProps = state => ({
     releases: state.update.releases,
-    resultIsOpened: state.result.isOpened
+    resultIsOpened: state.result.isOpened,
+    countriesActive: state.result.countries.active
 });
 
 const mapDispatchToProps = {
     checkProxy,
-    closeResult
+    closeResult,
+    closeCountries
 };
 
 export default connect(

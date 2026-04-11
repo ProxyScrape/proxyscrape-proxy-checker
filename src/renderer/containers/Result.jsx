@@ -65,6 +65,7 @@ class Result extends React.PureComponent {
             filteredItems,
             toggleBlacklist,
             toggleCountries,
+            closeInfo,
             maxTimeoutRange,
             setMaxTimeout,
             changePortsInput,
@@ -76,8 +77,22 @@ class Result extends React.PureComponent {
             changeExportAuthType
         } = this.props;
 
+        const handleToggleCountries = () => {
+            if (!countries.active && closeInfo) closeInfo();
+            toggleCountries();
+        };
+
         const activeCountries = countries.items.filter(item => item.active);
-        const displayActiveCountries = activeCountries.length == 0 ? 'Select countries' : countries.items.length == activeCountries.length ? 'All' : activeCountries.map(item => item.name).join(', ');
+        let displayActiveCountries;
+        if (activeCountries.length === 0) {
+            displayActiveCountries = 'Select countries';
+        } else if (activeCountries.length === countries.items.length) {
+            displayActiveCountries = `All countries (${countries.items.length})`;
+        } else if (activeCountries.length <= 3) {
+            displayActiveCountries = activeCountries.map(item => item.name).join(', ');
+        } else {
+            displayActiveCountries = activeCountries.slice(0, 3).map(item => item.name).join(', ') + ` +${activeCountries.length - 3} more`;
+        }
 
         const handleTimeoutSlider = (e, value) => {
             setMaxTimeout({ target: { value } });
@@ -235,11 +250,11 @@ class Result extends React.PureComponent {
                             <Button
                                 variant="outlined"
                                 size="small"
-                                onClick={toggleCountries}
+                                onClick={handleToggleCountries}
                                 sx={{
                                     borderRadius: 9999,
                                     textTransform: 'none',
-                                    maxWidth: 300,
+                                    maxWidth: 420,
                                     overflow: 'hidden',
                                     textOverflow: 'ellipsis',
                                     whiteSpace: 'nowrap',
@@ -300,7 +315,7 @@ class Result extends React.PureComponent {
                     </Button>
                 </Box>
 
-                <ResultCountries {...countries} toggleCountries={toggleCountries} activeCount={activeCountries.length} toggle={toggleCountry} />
+                <ResultCountries {...countries} toggleCountries={handleToggleCountries} activeCount={activeCountries.length} toggle={toggleCountry} />
                 <ResultExport
                     {...exporting}
                     items={filteredItems.slice(0, 3)}

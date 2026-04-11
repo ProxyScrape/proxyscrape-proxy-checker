@@ -10,6 +10,7 @@ import {
     RESULT_CLOSE,
     RESULT_TOGGLE_BLACKLIST,
     RESULT_TOGGLE_COUNTRIES,
+    RESULT_CLOSE_COUNTRIES,
     RESULT_SET_MAX_TIMEOUT,
     RESULT_CHANGE_PORTS_INPUT,
     RESULT_SET_PORTS_ALLOW,
@@ -159,6 +160,14 @@ const result = (state = initialState, action) => {
                 countries: {
                     ...state.countries,
                     active: !state.countries.active
+                }
+            };
+        case RESULT_CLOSE_COUNTRIES:
+            return {
+                ...state,
+                countries: {
+                    ...state.countries,
+                    active: false
                 }
             };
         case RESULT_SET_MAX_TIMEOUT:
