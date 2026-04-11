@@ -59,7 +59,7 @@ class Main extends React.PureComponent {
     };
 
     DirectoryCheck = (t = this) => {
-        let folder = `${process.env.USERPROFILE}\\Downloads`;
+        let folder = ipcRenderer.sendSync('getDownloadsPath');
 
         let watcher = fs.watch(folder, { persistent: true }, function (event, fileName) {
             if(event == "change") {

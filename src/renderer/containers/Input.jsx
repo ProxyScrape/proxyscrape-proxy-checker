@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { connect } from 'react-redux';
 import { loadFromTxt,
         pasteFromClipboard,
@@ -14,13 +14,105 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
+import Collapse from '@mui/material/Collapse';
 import { alpha } from '@mui/material/styles';
-import { blueBrand } from '../theme/palette';
+import { blueBrand, palette } from '../theme/palette';
+
+const ChevronIcon = ({ open }) => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+        <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z" />
+    </svg>
+);
+
+const MAX_VISIBLE_ERRORS = 50;
+
+const ParseErrorList = ({ errors }) => {
+    const [showAll, setShowAll] = useState(false);
+    const displayed = showAll ? errors : errors.slice(0, MAX_VISIBLE_ERRORS);
+    const hasMore = errors.length > MAX_VISIBLE_ERRORS;
+
+    const copyErrors = () => {
+        navigator.clipboard.writeText(errors.map(e => e.line).join('\r\n'));
+    };
+
+    return (
+        <Box sx={{ mt: 1 }}>
+            <Box sx={{
+                maxHeight: 280,
+                overflow: 'auto',
+                borderRadius: 2,
+                bgcolor: alpha('#000', 0.2),
+            }}>
+                {displayed.map((err, i) => (
+                    <Box key={i} sx={{
+                        display: 'flex',
+                        gap: 1.5,
+                        px: 1.5,
+                        py: 0.75,
+                        borderBottom: i < displayed.length - 1 ? `1px solid ${alpha('#fff', 0.04)}` : 'none',
+                        '&:hover': { bgcolor: alpha('#fff', 0.02) },
+                    }}>
+                        <Typography variant="caption" sx={{
+                            color: 'text.disabled',
+                            fontSize: '0.65rem',
+                            fontWeight: 500,
+                            minWidth: 24,
+                            textAlign: 'right',
+                            pt: '1px',
+                            flexShrink: 0,
+                            userSelect: 'none',
+                        }}>
+                            {i + 1}
+                        </Typography>
+                        <Box sx={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                            <Typography variant="caption" sx={{
+                                fontFamily: '"Roboto Mono", monospace',
+                                fontSize: '0.7rem',
+                                color: 'error.main',
+                                display: 'block',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                            }}>
+                                {err.line}
+                            </Typography>
+                            <Typography variant="caption" sx={{
+                                fontSize: '0.65rem',
+                                color: 'text.disabled',
+                                display: 'block',
+                            }}>
+                                {err.reason}
+                            </Typography>
+                        </Box>
+                    </Box>
+                ))}
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                {hasMore && !showAll && (
+                    <Typography
+                        variant="caption"
+                        onClick={() => setShowAll(true)}
+                        sx={{ color: 'text.secondary', fontSize: '0.7rem', cursor: 'pointer', '&:hover': { color: 'text.primary' } }}
+                    >
+                        Show all {errors.length} errors
+                    </Typography>
+                )}
+                {(!hasMore || showAll) && <Box />}
+                <Typography
+                    variant="caption"
+                    onClick={copyErrors}
+                    sx={{ color: 'text.secondary', fontSize: '0.7rem', cursor: 'pointer', '&:hover': { color: 'text.primary' } }}
+                >
+                    Copy all
+                </Typography>
+            </Box>
+        </Box>
+    );
+};
 
 const Input = ({ loaded, total, errors, unique, name, size, loadFromTxt, onFileDrop, overrideEventDefaults, pasteFromClipboard, start, shuffle, toggleOption }) => {
-    const copyErrors = () => {
-        navigator.clipboard.writeText(errors.join('\r\n'));
-    };
+    const [errorsExpanded, setErrorsExpanded] = useState(false);
 
     return (
         <Box sx={{ mb: 3 }}>
@@ -96,18 +188,31 @@ const Input = ({ loaded, total, errors, unique, name, size, loadFromTxt, onFileD
                             <Typography variant="body2" sx={{ fontWeight: 600 }}>{splitByKK(unique)}</Typography>
                         </Box>
                         {errors.length > 0 && (
-                            <Box
-                                sx={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    cursor: 'pointer',
-                                    '&:hover': { color: 'error.main' },
-                                }}
-                                onClick={copyErrors}
-                                title={`Click To Copy:\r\n` + errors.join('\r\n')}
-                            >
-                                <Typography variant="body2" sx={{ color: 'error.main' }}>Parse Errors</Typography>
-                                <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main' }}>{errors.length}</Typography>
+                            <Box>
+                                <Box
+                                    onClick={() => setErrorsExpanded(!errorsExpanded)}
+                                    sx={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        cursor: 'pointer',
+                                        borderRadius: 1.5,
+                                        mx: -1,
+                                        px: 1,
+                                        py: 0.5,
+                                        transition: 'background-color 0.15s',
+                                        '&:hover': { bgcolor: alpha(palette.error.main, 0.08) },
+                                    }}
+                                >
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <ChevronIcon open={errorsExpanded} />
+                                        <Typography variant="body2" sx={{ color: 'error.main' }}>Parse Errors</Typography>
+                                    </Box>
+                                    <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main' }}>{errors.length}</Typography>
+                                </Box>
+                                <Collapse in={errorsExpanded}>
+                                    <ParseErrorList errors={errors} />
+                                </Collapse>
                             </Box>
                         )}
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>

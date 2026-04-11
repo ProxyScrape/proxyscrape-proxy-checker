@@ -4,7 +4,14 @@ import { ipcRenderer } from 'electron';
 import { uniq } from '../misc/array';
 import { trackAction } from '../misc/analytics';
 import { INPUT_SET_LOADED_FILE_DATA } from '../constants/ActionTypes';
-import { parse } from 'path';
+import { parse, join } from 'path';
+
+const getDownloadsPath = () => ipcRenderer.sendSync('getDownloadsPath');
+
+const getFilePath = (file) => {
+    const electron = globalThis['requi' + 're']('electron');
+    return electron.webUtils.getPathForFile(file);
+};
 
 export const setLoadedData = nextState => ({
     type: INPUT_SET_LOADED_FILE_DATA,
@@ -56,7 +63,7 @@ export const loadFromTxt = event => async (dispatch, getState) => {
         const paths = await ipcRenderer.invoke('choose-multi');
 
         if (paths) {
-            let filesText;
+            let filesText = '';
             const names = [];
 
             for await (const path of paths) {
@@ -93,9 +100,9 @@ export const checkProxy = event => async (dispatch, getState) => {
     try {
         
         if (event.target.dataset.file != "") {
-            let filesText;
+            let filesText = '';
             const names = [];
-            let path = `${process.env.USERPROFILE}\\Downloads\\` + event.target.dataset.file;
+            let path = join(getDownloadsPath(), event.target.dataset.file);
 
             filesText = await readFile(path, 'utf8');
             names.push(parse(path).base);
@@ -140,12 +147,13 @@ export const onFileDrop = event => async (dispatch, getState) => {
    
             if (event.dataTransfer.files.length) {
                 
-                let filesText;
+                let filesText = '';
                 const names = [];
 
                 for await (const file of event.dataTransfer.files) {
-                    filesText += await readFile(file.path, 'utf8');
-                    names.push(parse(file.path).base);
+                    const filePath = getFilePath(file);
+                    filesText += await readFile(filePath, 'utf8');
+                    names.push(parse(filePath).base);
                 }
 
                 const { list, errors, total, unique, size } = getResult(filesText, event, getState);

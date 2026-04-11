@@ -72,7 +72,7 @@ ipcMain.handle('choose-path', async (event, action = 'save') => {
                     extensions: ['txt']
                 }
             ],
-            properties: ['multiSelections']
+            properties: ['openFile', 'multiSelections']
         });
 
         if (filePaths) return filePaths[0];
@@ -91,7 +91,7 @@ ipcMain.handle('choose-multi', async () => {
                     extensions: ['txt']
                 }
             ],
-            properties: ['multiSelections']
+            properties: ['openFile', 'multiSelections']
         });
 
         if (filePaths.length) return filePaths;
