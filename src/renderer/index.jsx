@@ -22,18 +22,22 @@ import '@fontsource/montserrat/600.css';
 import '@fontsource/montserrat/700.css';
 import './styles/global.css';
 
-posthog.init('phc_Fjiyo0DXsnUcEkvTOTpAgfH0omTfdXjxkiThwLRhzmP', {
-    api_host: 'https://n.proxyscrape.com',
-    ui_host: 'https://eu.posthog.com',
-    defaults: '2026-01-30',
-    person_profiles: 'always',
-    persistence: 'localStorage',
-});
+/* global __POSTHOG_KEY__ __POSTHOG_API_HOST__ __POSTHOG_UI_HOST__ */
 
-posthog.register({
-    app_version: version,
-    os: process.platform,
-});
+if (__POSTHOG_KEY__) {
+    posthog.init(__POSTHOG_KEY__, {
+        api_host: __POSTHOG_API_HOST__,
+        ui_host: __POSTHOG_UI_HOST__,
+        defaults: '2026-01-30',
+        person_profiles: 'always',
+        persistence: 'localStorage',
+    });
+
+    posthog.register({
+        app_version: version,
+        os: process.platform,
+    });
+}
 
 trackLifecycle('opened');
 trackScreen('Core');
