@@ -9,3 +9,7 @@ package-lock.json
 tests
 yarn.lock
 yarn-error.log
+.env
+.env.local
+.env.*.local
+electron.vite.config.[0-9]*.mjs
