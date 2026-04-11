@@ -4,13 +4,9 @@ import { openLink, psUrl } from '../misc/other';
 import WhiteLogo from '../../../public/icons/Logo-ProxyScrape-white.png';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import IconButton from '@mui/material/IconButton';
-import Slide from '@mui/material/Slide';
-import Fade from '@mui/material/Fade';
-import { FOOTER_BACKGROUND, navyBlue } from '../theme/palette';
+import { FOOTER_BACKGROUND, CARD_BACKGROUND } from '../theme/palette';
 import { openIntercom } from '../misc/intercom';
-
-const TITLEBAR_HEIGHT = 38;
+import SideDrawer from './ui/SideDrawer';
 
 const FacebookIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -46,12 +42,12 @@ const socialLinkSx = {
     display: 'flex',
     alignItems: 'center',
     gap: 0.75,
-    color: '#B0B8C8',
+    color: 'text.secondary',
     textDecoration: 'none',
     fontSize: '0.85rem',
     cursor: 'pointer',
     transition: 'color 0.2s',
-    '&:hover': { color: '#fff' },
+    '&:hover': { color: 'text.primary' },
     '& svg': { flexShrink: 0 },
 };
 
@@ -65,7 +61,7 @@ const linkSx = {
 
 const sectionLabelSx = {
     fontWeight: 600,
-    color: '#8890A4',
+    color: 'text.secondary',
     textTransform: 'uppercase',
     letterSpacing: 1,
     display: 'block',
@@ -91,156 +87,118 @@ const Info = memo(({ show, releases, toggleInfo }) => {
     ];
 
     return (
-        <>
-            <Fade in={!!show} timeout={300}>
-                <Box
-                    onClick={toggleInfo}
-                    sx={{
-                        position: 'fixed',
-                        top: TITLEBAR_HEIGHT,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        bgcolor: 'rgba(0,0,0,0.4)',
-                        zIndex: 1199,
-                    }}
-                />
-            </Fade>
-            <Slide direction="left" in={!!show} mountOnEnter unmountOnExit>
+        <SideDrawer
+            open={show}
+            onClose={toggleInfo}
+            width={440}
+            zIndex={1200}
+            panelSx={{ maxWidth: { xs: '100vw', sm: '85vw' } }}
+            headerLeft={
+                <Box component="a" href={psUrl('/', 'branding')} onClick={openLink} sx={{ lineHeight: 0 }}>
+                    <img src={WhiteLogo} width="150" height="19"/>
+                </Box>
+            }
+        >
+            <Box sx={{ flex: 1, overflow: 'auto', p: 2.5 }}>
                 <Box sx={{
-                    position: 'fixed',
-                    top: TITLEBAR_HEIGHT,
-                    right: 0,
-                    bottom: 0,
-                    width: 440,
-                    maxWidth: { xs: '100vw', sm: '85vw' },
-                    bgcolor: '#1E2132',
-                    borderLeft: `1px solid ${FOOTER_BACKGROUND}`,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    zIndex: 1200,
-                    boxShadow: '-4px 0 24px rgba(0,0,0,0.4)',
+                    bgcolor: CARD_BACKGROUND,
+                    borderRadius: 2,
+                    p: 2,
+                    mb: 2.5,
+                    border: `1px solid ${FOOTER_BACKGROUND}`,
                 }}>
-                    <Box sx={{
-                        p: 2.5,
-                        borderBottom: `1px solid ${FOOTER_BACKGROUND}`,
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexShrink: 0,
-                    }}>
-                        <Box component="a" href={psUrl('/', 'branding')} onClick={openLink} sx={{ lineHeight: 0 }}>
-                            <img src={WhiteLogo} width="150" height="19"/>
+                    <Typography variant="body2" sx={{ color: 'text.primary', mb: 1, lineHeight: 1.6 }}>
+                        Need help? Contact us via our{' '}
+                        <Box component="a" href="#" onClick={(e) => { e.preventDefault(); openIntercom(); }} sx={linkSx}>
+                            24/7 live chat
                         </Box>
-                        <IconButton onClick={toggleInfo} size="small" sx={{ color: '#B0B8C8', '&:hover': { color: 'text.primary' } }}>
-                            <svg viewBox="0 0 224.512 224.512" style={{ width: 14, height: 14, fill: 'currentColor' }}>
-                                <polygon points="224.507,6.997 217.521,0 112.256,105.258 6.998,0 0.005,6.997 105.263,112.254 0.005,217.512 6.998,224.512 112.256,119.24 217.521,224.512 224.507,217.512 119.249,112.254" />
-                            </svg>
-                        </IconButton>
-                    </Box>
-
-                    <Box sx={{ flex: 1, overflow: 'auto', p: 2.5 }}>
-                        <Box sx={{
-                            bgcolor: '#282C3E',
-                            borderRadius: 2,
-                            p: 2,
-                            mb: 2.5,
-                            border: `1px solid ${FOOTER_BACKGROUND}`,
-                        }}>
-                            <Typography variant="body2" sx={{ color: '#E8EAF0', mb: 1, lineHeight: 1.6 }}>
-                                Need help? Contact us via our{' '}
-                                <Box component="a" href="#" onClick={(e) => { e.preventDefault(); openIntercom(); }} sx={linkSx}>
-                                    24/7 live chat
-                                </Box>
-                                {' '}or via{' '}
-                                <Box component="a" href={psUrl('/contact', 'support')} onClick={openLink} sx={linkSx}>
-                                    email
-                                </Box>
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: '#E8EAF0', mb: 1, lineHeight: 1.6 }}>
-                                We are happy to help you with all your proxy needs!
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: '#E8EAF0', lineHeight: 1.6 }}>
-                                Looking for datacenter proxies with 99% uptime?{' '}
-                                <Box component="a" href={psUrl('/premium', 'premium-upsell')} onClick={openLink}
-                                    sx={{ ...linkSx, fontWeight: 600 }}>
-                                    Try ProxyScrape Premium
-                                </Box>
-                            </Typography>
+                        {' '}or via{' '}
+                        <Box component="a" href={psUrl('/contact', 'support')} onClick={openLink} sx={linkSx}>
+                            email
                         </Box>
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'text.primary', mb: 1, lineHeight: 1.6 }}>
+                        We are happy to help you with all your proxy needs!
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'text.primary', lineHeight: 1.6 }}>
+                        Looking for datacenter proxies with 99% uptime?{' '}
+                        <Box component="a" href={psUrl('/premium', 'premium-upsell')} onClick={openLink}
+                            sx={{ ...linkSx, fontWeight: 600 }}>
+                            Try ProxyScrape Premium
+                        </Box>
+                    </Typography>
+                </Box>
 
-                        <Box sx={{ mb: 2.5 }}>
-                            <Typography variant="caption" sx={sectionLabelSx}>
-                                Follow Us
-                            </Typography>
-                            <Box sx={{ display: 'flex', gap: 2.5, flexWrap: 'wrap' }}>
-                                {followLinks.map(link => (
-                                    <Box key={link.label} component="a" href={link.href} onClick={openLink} sx={socialLinkSx}>
-                                        {link.icon}
-                                        <span>{link.label}</span>
-                                    </Box>
-                                ))}
+                <Box sx={{ mb: 2.5 }}>
+                    <Typography variant="caption" sx={sectionLabelSx}>
+                        Follow Us
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 2.5, flexWrap: 'wrap' }}>
+                        {followLinks.map(link => (
+                            <Box key={link.label} component="a" href={link.href} onClick={openLink} sx={socialLinkSx}>
+                                {link.icon}
+                                <span>{link.label}</span>
                             </Box>
-                        </Box>
-
-                        <Box sx={{ mb: 2.5 }}>
-                            <Typography variant="caption" sx={sectionLabelSx}>
-                                Share the Checker
-                            </Typography>
-                            <Box sx={{ display: 'flex', gap: 2.5, flexWrap: 'wrap' }}>
-                                {shareLinks.map(link => (
-                                    <Box key={link.label} component="a" href={link.href} onClick={openLink} sx={socialLinkSx}>
-                                        {link.icon}
-                                        <span>{link.label}</span>
-                                    </Box>
-                                ))}
-                            </Box>
-                        </Box>
-
-                        <Typography variant="caption" sx={{ ...sectionLabelSx, mb: 1.5, mt: 1 }}>
-                            Releases
-                        </Typography>
-                        <Box>
-                            {releases.map(release => (
-                                <Box key={release.tag_name} sx={{
-                                    mb: 2,
-                                    pb: 2,
-                                    borderBottom: `1px solid ${FOOTER_BACKGROUND}`,
-                                    '&:last-child': { borderBottom: 'none', mb: 0, pb: 0 },
-                                }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5 }}>
-                                        <Typography variant="body2" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                                            {release.tag_name}
-                                        </Typography>
-                                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
-                                            {new Date(release.published_at).toLocaleDateString()}
-                                        </Typography>
-                                    </Box>
-                                    <Box sx={{
-                                        '& p': { m: 0, mb: 0.5, fontSize: '0.8rem', color: '#C5CBD6', lineHeight: 1.6 },
-                                        '& ul': { pl: 2.5, m: 0, mb: 0.5 },
-                                        '& li': { fontSize: '0.8rem', color: '#C5CBD6', lineHeight: 1.7 },
-                                        '& h1, & h2, & h3': { fontSize: '0.85rem', fontWeight: 600, color: '#E8EAF0', mt: 1, mb: 0.5 },
-                                        '& a': { color: 'primary.main', textDecoration: 'none' },
-                                        '& code': {
-                                            bgcolor: FOOTER_BACKGROUND,
-                                            px: 0.5,
-                                            py: 0.25,
-                                            borderRadius: 0.5,
-                                            fontSize: '0.75rem',
-                                            fontFamily: '"Roboto Mono", monospace',
-                                            color: '#E8EAF0',
-                                        },
-                                    }}>
-                                        <ReactMarkdown>{release.body}</ReactMarkdown>
-                                    </Box>
-                                </Box>
-                            ))}
-                        </Box>
+                        ))}
                     </Box>
                 </Box>
-            </Slide>
-        </>
+
+                <Box sx={{ mb: 2.5 }}>
+                    <Typography variant="caption" sx={sectionLabelSx}>
+                        Share the Checker
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 2.5, flexWrap: 'wrap' }}>
+                        {shareLinks.map(link => (
+                            <Box key={link.label} component="a" href={link.href} onClick={openLink} sx={socialLinkSx}>
+                                {link.icon}
+                                <span>{link.label}</span>
+                            </Box>
+                        ))}
+                    </Box>
+                </Box>
+
+                <Typography variant="caption" sx={{ ...sectionLabelSx, mb: 1.5, mt: 1 }}>
+                    Releases
+                </Typography>
+                <Box>
+                    {releases.map(release => (
+                        <Box key={release.tag_name} sx={{
+                            mb: 2,
+                            pb: 2,
+                            borderBottom: `1px solid ${FOOTER_BACKGROUND}`,
+                            '&:last-child': { borderBottom: 'none', mb: 0, pb: 0 },
+                        }}>
+                            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                                    {release.tag_name}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+                                    {new Date(release.published_at).toLocaleDateString()}
+                                </Typography>
+                            </Box>
+                            <Box sx={{
+                                '& p': { m: 0, mb: 0.5, fontSize: '0.8rem', color: 'text.secondary', lineHeight: 1.6 },
+                                '& ul': { pl: 2.5, m: 0, mb: 0.5 },
+                                '& li': { fontSize: '0.8rem', color: 'text.secondary', lineHeight: 1.7 },
+                                '& h1, & h2, & h3': { fontSize: '0.85rem', fontWeight: 600, color: 'text.primary', mt: 1, mb: 0.5 },
+                                '& a': { color: 'primary.main', textDecoration: 'none' },
+                                '& code': {
+                                    bgcolor: FOOTER_BACKGROUND,
+                                    px: 0.5,
+                                    py: 0.25,
+                                    borderRadius: 0.5,
+                                    fontSize: '0.75rem',
+                                    fontFamily: '"Roboto Mono", monospace',
+                                    color: 'text.primary',
+                                },
+                            }}>
+                                <ReactMarkdown>{release.body}</ReactMarkdown>
+                            </Box>
+                        </Box>
+                    ))}
+                </Box>
+            </Box>
+        </SideDrawer>
     );
 });
 
