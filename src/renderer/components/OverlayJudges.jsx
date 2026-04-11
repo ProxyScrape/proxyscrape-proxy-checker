@@ -4,30 +4,16 @@ import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import { alpha } from '@mui/material/styles';
-import { PAGE_BACKGROUND, palette } from '../theme/palette';
+import { palette } from '../theme/palette';
 import SearchBarIcon from './ui/SearchBarIcon';
+import FullScreenOverlay from './ui/FullScreenOverlay';
 
 const OverlayJudges = ({ isActive, items }) => {
     const all = items.length;
     const done = items.filter(item => !item.state.checking).length;
 
     return (
-        <Box sx={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            bgcolor: alpha(PAGE_BACKGROUND, 0.95),
-            backdropFilter: 'blur(8px)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: isActive ? 1 : 0,
-            pointerEvents: isActive ? 'auto' : 'none',
-            transition: 'opacity 0.3s ease',
-        }}>
+        <FullScreenOverlay isActive={isActive}>
             <Box sx={{ width: '80%', maxWidth: 500 }}>
                 <Typography variant="body1" sx={{ textAlign: 'center', mb: 2, fontWeight: 500 }}>
                     Total Checked: <Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>{done} of {all}</Box>
@@ -77,7 +63,7 @@ const OverlayJudges = ({ isActive, items }) => {
                     })}
                 </Box>
             </Box>
-        </Box>
+        </FullScreenOverlay>
     );
 };
 
