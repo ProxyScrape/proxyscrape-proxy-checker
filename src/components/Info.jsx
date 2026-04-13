@@ -1,12 +1,45 @@
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { shell } from 'electron';
 import { openLink } from '../misc/other';
 import Logo from '../../public/icons/Logo-ProxyScrape-colored.png';
 import CloseIcon from './ui/CloseIcon';
 
 import '../../public/styles/Info.postcss';
 
+const CANARY_RELEASES_API = 'https://api.github.com/repos/ProxyScrape/proxyscrape-proxy-checker/releases';
+
 const Info = memo(({ show, releases, toggleInfo }) => {
+    const [canaryConfirm, setCanaryConfirm] = useState(false);
+    const [canaryLoading, setCanaryLoading] = useState(false);
+    const [canaryError, setCanaryError] = useState(null);
+
+    const handleSwitchToCanary = () => setCanaryConfirm(true);
+    const handleCancelCanary = () => { setCanaryConfirm(false); setCanaryError(null); };
+
+    const handleConfirmCanary = async () => {
+        setCanaryLoading(true);
+        setCanaryError(null);
+        try {
+            const res = await fetch(CANARY_RELEASES_API, {
+                headers: { 'User-Agent': 'ProxyScrape Proxy Checker' }
+            });
+            const all = await res.json();
+            const canaryRelease = all.find(r => r.prerelease);
+            if (!canaryRelease) {
+                setCanaryError('No canary release found yet. Check back soon.');
+                setCanaryLoading(false);
+                return;
+            }
+            // Open the canary release page so the user can download the right asset
+            shell.openExternal(canaryRelease.html_url);
+            setCanaryConfirm(false);
+        } catch {
+            setCanaryError('Failed to fetch canary releases. Check your connection.');
+        }
+        setCanaryLoading(false);
+    };
+
     if (releases === undefined) return null;
 
     return (
@@ -120,6 +153,41 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                         <span>Telegram</span>
                     </a>
                 </div>
+                <div className='section canary-section'>
+                    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+                        <polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/>
+                    </svg>
+                    <span>Try Canary</span>
+                </div>
+                <div className='canary-description'>
+                    <p>Get early access to upcoming features before they reach the stable release. Canary builds may be unstable.</p>
+                    <button className='canary-btn' onClick={handleSwitchToCanary}>
+                        Switch to Canary Version
+                    </button>
+                </div>
+
+                {canaryConfirm && (
+                    <div className='canary-overlay'>
+                        <div className='canary-dialog'>
+                            <h3>Switch to Canary?</h3>
+                            <p>
+                                Canary is an early-access version that may contain bugs or breaking changes.
+                                If something goes wrong, you may need to <strong>remove all app data and reinstall</strong> the stable version from our website.
+                            </p>
+                            <p>Are you sure you want to continue?</p>
+                            {canaryError && <p className='canary-error'>{canaryError}</p>}
+                            <div className='canary-dialog-actions'>
+                                <button className='canary-dialog-cancel' onClick={handleCancelCanary} disabled={canaryLoading}>
+                                    Cancel
+                                </button>
+                                <button className='canary-dialog-confirm' onClick={handleConfirmCanary} disabled={canaryLoading}>
+                                    {canaryLoading ? 'Loading…' : 'Yes, take me to Canary'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className='section rel'>
                     <svg viewBox='0 0 522.468 522.469'>
                         <path d='M325.762,70.513l-17.706-4.854c-2.279-0.76-4.524-0.521-6.707,0.715c-2.19,1.237-3.669,3.094-4.429,5.568L190.426,440.53    c-0.76,2.475-0.522,4.809,0.715,6.995c1.237,2.19,3.09,3.665,5.568,4.425l17.701,4.856c2.284,0.766,4.521,0.526,6.71-0.712    c2.19-1.243,3.666-3.094,4.425-5.564L332.042,81.936c0.759-2.474,0.523-4.808-0.716-6.999    C330.088,72.747,328.237,71.272,325.762,70.513z' />

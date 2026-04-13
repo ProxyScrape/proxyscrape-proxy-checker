@@ -8,3 +8,9 @@ package-lock.json
 tests
 yarn.lock
 yarn-error.log
+# Build outputs and canary artifacts not part of master
+out/
+bin/
+backend/
+.env
+*.mmdb

@@ -252,3 +252,110 @@
         }
     }
 }
+
+/* ── Canary section ─────────────────────────────────────────── */
+.info-content {
+    & .canary-section svg {
+        stroke: #3464E0;
+        fill: none;
+    }
+
+    & .canary-description {
+        width: 100%;
+        margin: 0 auto;
+        padding: 0 20px 20px;
+        text-align: center;
+
+        & p {
+            color: #555;
+            font-size: 0.85em;
+            margin-bottom: 12px;
+        }
+    }
+
+    & .canary-btn {
+        display: inline-block;
+        padding: 8px 20px;
+        border-radius: 6px;
+        border: 2px solid #3464E0;
+        background: transparent;
+        color: #3464E0;
+        font-weight: 600;
+        font-size: 0.85em;
+        cursor: pointer;
+        transition: background 0.2s, color 0.2s;
+
+        &:hover {
+            background: #3464E0;
+            color: #fff;
+        }
+    }
+
+    & .canary-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    & .canary-dialog {
+        background: #fff;
+        border-radius: 10px;
+        padding: 30px 28px;
+        max-width: 420px;
+        width: 90%;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+
+        & h3 {
+            margin: 0 0 14px;
+            color: #c47600;
+            font-size: 1.1em;
+        }
+
+        & p {
+            color: #444;
+            font-size: 0.88em;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        & .canary-error {
+            color: #c0392b;
+            font-size: 0.82em;
+        }
+    }
+
+    & .canary-dialog-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 20px;
+
+        & button {
+            padding: 8px 18px;
+            border-radius: 6px;
+            border: none;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+
+            &:disabled { opacity: 0.5; cursor: default; }
+        }
+
+        & .canary-dialog-cancel {
+            background: #eee;
+            color: #444;
+            &:hover:not(:disabled) { background: #ddd; }
+        }
+
+        & .canary-dialog-confirm {
+            background: #e67e00;
+            color: #fff;
+            &:hover:not(:disabled) { background: #c47600; }
+        }
+    }
+}
