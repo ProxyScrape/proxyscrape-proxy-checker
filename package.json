@@ -144,6 +144,9 @@
                 "private": false
             }
         ],
+        "directories": {
+            "output": "release"
+        },
         "productName": "ProxyScrape Proxy Checker",
         "copyright": "ProxyScrape",
         "portable": {

@@ -5,6 +5,7 @@ settings.proxyscrape.checker.json
 /.vscode
 dist
 out
+release
 tests
 yarn.lock
 yarn-error.log
