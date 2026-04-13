@@ -114,8 +114,8 @@ function startGoBackend() {
         const dataDir = getDataDir();
 
         let cmd, args, opts;
-        if (isDev) {
-            // In dev, compile and run from source — no pre-build step required.
+        if (!app.isPackaged) {
+            // In dev (unpackaged), compile and run from source — no pre-build step required.
             const backendDir = path.join(__dirname, '../../backend');
 
             // Resolve the `go` binary via the user's login shell PATH (one-time,
@@ -166,8 +166,8 @@ function startGoBackend() {
         let settled = false;
         let killedAfterTimeout = false;
 
-        // go run compiles before starting, so allow extra time in dev
-        const startupTimeoutMs = isDev ? 90000 : 30000;
+        // go run compiles before starting, so allow extra time in dev (unpackaged)
+        const startupTimeoutMs = app.isPackaged ? 30000 : 90000;
         const timeout = setTimeout(() => {
             if (!settled) {
                 dialog.showErrorBox(
@@ -442,7 +442,7 @@ app.whenReady().then(async () => {
     }
 
     createWindow();
-    if (!IS_CANARY && !isDev && !isPortable) {
+    if (!IS_CANARY && app.isPackaged && !isPortable) {
         autoUpdater.checkForUpdates();
     }
 });

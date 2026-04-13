@@ -1,0 +1,69 @@
+---
+description: Release versioning rules for proxyscrape-proxy-checker — tag discipline, version bumping, and channel conventions
+alwaysApply: true
+---
+
+# Release Versioning
+
+## Version format
+
+| Channel | Branch | Format | Example |
+|---------|--------|--------|---------|
+| Stable | `master` | `MAJOR.MINOR.PATCH` | `2.0.0` |
+| Canary | `canary` | `MAJOR.MINOR.PATCH-canary` | `2.0.0-canary` |
+
+## Tags are immutable — never delete and recreate
+
+Once a tag is pushed to the remote, it **must not** be deleted or recreated. If a fix is needed after tagging:
+
+```
+# ✅ CORRECT — bump the version and create a new tag
+# Edit package.json: "version": "2.0.1-canary"
+# Edit backend/internal/api/server.go: var appVersion = "dev"  (auto-injected, no edit needed)
+git add package.json
+git commit -m "chore: bump version to 2.0.1-canary"
+git push origin canary
+git tag v2.0.1-canary
+git push origin v2.0.1-canary
+
+# ❌ WRONG — deleting and recreating the same tag
+git tag -d v2.0.0-canary
+git push origin :refs/tags/v2.0.0-canary
+git tag v2.0.0-canary   # same version, new commit — breaks users' update checks
+git push origin v2.0.0-canary
+```
+
+## Sources of truth that must stay in sync
+
+Only **one file** needs to be updated manually — `package.json`. Everything else is automatic:
+
+| Source | How it's set |
+|--------|-------------|
+| `package.json` `version` | **Manual** — only thing to change |
+| Go `appVersion` | Auto-injected via `-ldflags` at build time |
+| `IS_CANARY` flag | Auto-derived from version containing `-canary` |
+| `appId` / `productName` | Auto-derived in `electron-builder.config.js` |
+| `EP_PRE_RELEASE` in CI | Auto-derived from tag name in workflow |
+
+The pre-push hook and CI `check-versions` job enforce that the tag matches `package.json`.
+
+## Incrementing the canary version
+
+The `-canary` suffix never gets an iteration number. When a fix is needed after pushing a tag, increment the **patch** number:
+
+```
+v2.0.0-canary  →  v2.0.1-canary  →  v2.0.2-canary
+```
+
+When a new feature set lands:
+```
+v2.0.x-canary  →  v2.1.0-canary
+```
+
+## Graduation (canary → stable)
+
+Change only `package.json` version — drop the `-canary` suffix:
+```
+"2.0.0-canary"  →  "2.0.0"
+```
+Then tag and push. All canary behaviour (banner, pre-release flag, canary appId) flips automatically.
