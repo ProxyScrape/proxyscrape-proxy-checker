@@ -16,7 +16,7 @@ import (
 	"github.com/proxyscrape/checker-backend/internal/store"
 )
 
-const appVersion = "0.0.1"
+const appVersion = "2.0.0-canary"
 
 // server holds shared dependencies available to all route handlers.
 type server struct {
