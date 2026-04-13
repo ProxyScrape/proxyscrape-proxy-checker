@@ -21,6 +21,16 @@ module.exports = {
   productName: isCanary ? 'ProxyScrape Proxy Checker Canary' : 'ProxyScrape Proxy Checker',
   copyright: 'ProxyScrape',
 
+  // electron-builder respects .gitignore by default, which would exclude the
+  // `dist/` build output. An explicit files list overrides that behaviour so
+  // the renderer, main, and preload bundles are always included in the ASAR.
+  // The Go binaries are handled separately via extraResources and are never
+  // inside the ASAR, so they don't appear here.
+  files: [
+    'dist/**',
+    'package.json',
+  ],
+
   directories: {
     output: 'release',
   },
