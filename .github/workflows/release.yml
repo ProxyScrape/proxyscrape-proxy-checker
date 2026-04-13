@@ -71,7 +71,7 @@ jobs:
           name: go-win-bins
           path: bin/
 
-  # ── Go binaries: Linux (x64 native, arm64 via zig cc cross-compile) ──────────
+  # ── Go binaries: Linux (x64 native, arm64 via GCC cross-compiler) ───────────
   build-go-linux:
     runs-on: ubuntu-latest
     steps:
@@ -82,9 +82,7 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
-      - uses: mlugg/setup-zig@v2
-
-      - name: Install libpcap headers (x64 + arm64)
+      - name: Install libpcap headers + arm64 cross-compiler
         run: |
           sudo dpkg --add-architecture arm64
 
@@ -117,7 +115,9 @@ jobs:
           EOF
 
           sudo apt-get update -qq
-          sudo apt-get install -y libpcap-dev libpcap-dev:arm64
+          # gcc-aarch64-linux-gnu: GCC cross-compiler with its own sysroot/headers,
+          # avoids the glibc version mismatch that occurs with zig cc + system headers.
+          sudo apt-get install -y libpcap-dev libpcap-dev:arm64 gcc-aarch64-linux-gnu
 
       - name: Build linux-x64
         run: |
@@ -125,11 +125,10 @@ jobs:
             go build -C backend -buildvcs=false -ldflags="-s -w" \
             -o ../bin/checker-linux-x64 ./cmd/checker
 
-      - name: Build linux-arm64 (zig cc cross-compile, no Docker/QEMU)
+      - name: Build linux-arm64 (aarch64-linux-gnu-gcc cross-compile)
         run: |
           CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \
-            CC="zig cc -target aarch64-linux-gnu" \
-            CGO_CFLAGS="-I/usr/include" \
+            CC=aarch64-linux-gnu-gcc \
             CGO_LDFLAGS="-L/usr/lib/aarch64-linux-gnu" \
             go build -C backend -buildvcs=false -ldflags="-s -w" \
             -o ../bin/checker-linux-arm64 ./cmd/checker
