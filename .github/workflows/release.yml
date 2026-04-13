@@ -218,7 +218,7 @@ jobs:
         run: npm ci
 
       - name: Package & publish Windows (pre-release)
-        run: npx electron-builder --win --publish always
+        run: npx electron-builder --config electron-builder.config.js --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_PRE_RELEASE: true
@@ -262,7 +262,7 @@ jobs:
         run: npm ci
 
       - name: Package & publish Linux (pre-release)
-        run: npx electron-builder --linux --publish always
+        run: npx electron-builder --config electron-builder.config.js --linux --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_PRE_RELEASE: true
@@ -306,7 +306,7 @@ jobs:
         run: npm ci
 
       - name: Package & publish macOS (pre-release, unsigned)
-        run: npx electron-builder --mac --publish always
+        run: npx electron-builder --config electron-builder.config.js --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_PRE_RELEASE: true

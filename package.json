@@ -30,17 +30,17 @@
         "build:webserver": "bash scripts/build-webserver.sh",
         "build:renderer": "electron-vite build --outDir dist",
         "start": "electron-vite preview --outDir dist",
-        "dist": "npm run build && electron-builder",
-        "package": "npm run build && electron-builder --win",
-        "package-mac": "npm run build && electron-builder --mac",
-        "package-linux": "npm run build && electron-builder --linux",
-        "package-all": "npm run build && electron-builder --mac --win --linux",
-        "publish": "npm run build && electron-builder --win --publish always",
-    "publish:ci": "electron-vite build --outDir dist && electron-builder --win --publish always",
-        "publish-mac": "npm run build && electron-builder --mac --publish always",
-        "publish-linux": "npm run build && electron-builder --linux --publish always",
-        "publish-all": "npm run build && electron-builder --mac --win --linux --publish always",
-        "postinstall": "electron-builder install-app-deps",
+        "dist": "npm run build && electron-builder --config electron-builder.config.js",
+        "package": "npm run build && electron-builder --config electron-builder.config.js --win",
+        "package-mac": "npm run build && electron-builder --config electron-builder.config.js --mac",
+        "package-linux": "npm run build && electron-builder --config electron-builder.config.js --linux",
+        "package-all": "npm run build && electron-builder --config electron-builder.config.js --mac --win --linux",
+        "publish": "npm run build && electron-builder --config electron-builder.config.js --win --publish always",
+        "publish:ci": "electron-vite build --outDir dist && electron-builder --config electron-builder.config.js --win --publish always",
+        "publish-mac": "npm run build && electron-builder --config electron-builder.config.js --mac --publish always",
+        "publish-linux": "npm run build && electron-builder --config electron-builder.config.js --linux --publish always",
+        "publish-all": "npm run build && electron-builder --config electron-builder.config.js --mac --win --linux --publish always",
+        "postinstall": "electron-builder --config electron-builder.config.js install-app-deps",
         "prepare": "[ -d .git ] && git config core.hooksPath .githooks || true"
     },
     "devDependencies": {
@@ -64,101 +64,6 @@
         "redux-thunk": "^2.4.1",
         "reselect": "^4.1.6",
         "vite-plugin-electron-renderer": "^0.14.6"
-    },
-    "build": {
-        "mac": {
-            "icon": "./public/icons/icon.icns",
-            "binaries": [
-                "bin/checker-darwin-arm64",
-                "bin/checker-darwin-x64"
-            ],
-            "extraResources": [
-                { "from": "bin/checker-darwin-arm64", "to": "bin/checker-darwin-arm64" },
-                { "from": "bin/checker-darwin-x64", "to": "bin/checker-darwin-x64" }
-            ],
-            "target": [
-                {
-                    "target": "dmg",
-                    "arch": [
-                        "x64",
-                        "arm64"
-                    ]
-                },
-                {
-                    "target": "zip",
-                    "arch": [
-                        "x64",
-                        "arm64"
-                    ]
-                }
-            ],
-            "category": "public.app-category.utilities",
-            "artifactName": "${name}-v${version}-${arch}-${os}.${ext}"
-        },
-        "win": {
-            "icon": "./public/icons/icon.ico",
-            "extraResources": [
-                { "from": "bin/checker-win-x64.exe", "to": "bin/checker-win-x64.exe" },
-                { "from": "bin/checker-win-arm64.exe", "to": "bin/checker-win-arm64.exe" }
-            ],
-            "target": [
-                {
-                    "target": "nsis",
-                    "arch": [
-                        "x64",
-                        "arm64"
-                    ]
-                },
-                {
-                    "target": "portable",
-                    "arch": [
-                        "x64",
-                        "arm64"
-                    ]
-                }
-            ],
-            "artifactName": "${name}-v${version}-${arch}-${os}-installer.${ext}"
-        },
-        "linux": {
-            "icon": "./public/icons/icon.png",
-            "extraResources": [
-                { "from": "bin/checker-linux-x64", "to": "bin/checker-linux-x64" },
-                { "from": "bin/checker-linux-arm64", "to": "bin/checker-linux-arm64" }
-            ],
-            "target": [
-                {
-                    "target": "AppImage",
-                    "arch": [
-                        "x64",
-                        "arm64"
-                    ]
-                }
-            ],
-            "category": "Network",
-            "artifactName": "${name}-v${version}-${arch}-${os}.${ext}"
-        },
-        "publish": [
-            {
-                "provider": "github",
-                "owner": "ProxyScrape",
-                "repo": "proxyscrape-proxy-checker",
-                "private": false
-            }
-        ],
-        "directories": {
-            "output": "release"
-        },
-        "productName": "ProxyScrape Proxy Checker",
-        "copyright": "ProxyScrape",
-        "portable": {
-            "artifactName": "${name}-v${version}-${arch}-${os}-portable.${ext}"
-        },
-        "nsis": {
-            "oneClick": false,
-            "perMachine": true,
-            "allowToChangeInstallationDirectory": true,
-            "differentialPackage": true
-        }
     },
     "dependencies": {
         "@intercom/messenger-js-sdk": "^0.0.19",
