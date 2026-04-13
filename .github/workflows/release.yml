@@ -50,7 +50,12 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
-      - uses: mlugg/setup-zig@v2
+      - name: Install Zig
+        run: |
+          ZIG_VERSION="0.15.2"
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
+            | tar -xJ -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/zig-x86_64-linux-${ZIG_VERSION}" >> "$GITHUB_PATH"
 
       - name: Build win-x64
         run: |
