@@ -87,9 +87,21 @@ jobs:
       - name: Install libpcap headers (x64 + arm64)
         run: |
           sudo dpkg --add-architecture arm64
-          sudo sed -i 's/^deb /deb [arch=amd64,i386] /g' /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main universe" \
-            | sudo tee -a /etc/apt/sources.list
+
+          # Restrict all existing sources to amd64 — security.ubuntu.com
+          # and azure mirrors do not carry arm64 packages.
+          sudo sed -i 's/^deb http/deb [arch=amd64] http/g' /etc/apt/sources.list
+          sudo find /etc/apt/sources.list.d/ -name '*.list' \
+            -exec sudo sed -i 's/^deb http/deb [arch=amd64] http/g' {} \;
+
+          # Add arm64 via Ubuntu ports (the canonical arm64 mirror).
+          CODENAME=$(lsb_release -cs)
+          sudo tee /etc/apt/sources.list.d/arm64-ports.list > /dev/null << EOF
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${CODENAME} main universe
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${CODENAME}-updates main universe
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${CODENAME}-security main universe
+          EOF
+
           sudo apt-get update -qq
           sudo apt-get install -y libpcap-dev libpcap-dev:arm64
 
