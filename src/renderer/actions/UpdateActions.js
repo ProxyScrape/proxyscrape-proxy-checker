@@ -1,9 +1,8 @@
 import { apiFetch } from '../api/client';
 import { wait } from '../misc/wait';
 import { UPDATE_CHANGE_STATE } from '../constants/ActionTypes';
-import { isDev } from '../../shared/AppConstants';
+import { isDev, IS_CANARY } from '../../shared/AppConstants';
 
-const RELEASES_URL = 'https://api.github.com/repos/ProxyScrape/proxy-checker/releases';
 const ONLINE_URL = 'https://api.proxyscrape.com/v2/analytics/proxy-checker.php';
 
 const sendOnlineInfo = () => {
@@ -19,27 +18,35 @@ const sendOnlineInfo = () => {
 };
 
 export const checkAtAvailable = () => async dispatch => {
-    let details = { available: false, releases: [] };
-
     try {
+        // Go backend handles the GitHub API call and version comparison.
         const versionData = await apiFetch('/api/version');
-        const releasesRes = await fetch(RELEASES_URL, { headers: { Accept: 'application/vnd.github.v3+json' } });
-        const releases = releasesRes.ok ? await releasesRes.json() : [];
-        details = { available: !!versionData?.hasUpdate, releases };
+
+        if (!isDev) sendOnlineInfo();
+        await wait(500);
+
+        if (IS_CANARY) {
+            // On canary, never show the full-screen update overlay.
+            // The CanaryBanner reads hasUpdate and canaryReleases directly from state.
+            dispatch(changeUpdateState({
+                active: false,
+                isChecking: false,
+                available: false,
+                hasUpdate: !!versionData?.hasUpdate,
+                latestCanary: versionData?.latest || null,
+                canaryReleases: versionData?.canaryReleases || [],
+            }));
+        } else {
+            dispatch(changeUpdateState({
+                active: !!versionData?.hasUpdate && !isDev,
+                isChecking: false,
+                available: !!versionData?.hasUpdate && !isDev,
+            }));
+        }
     } catch {
-        // version check failed — show no update
+        await wait(500);
+        dispatch(changeUpdateState({ active: false, isChecking: false, available: false }));
     }
-
-    if (!isDev) sendOnlineInfo();
-    await wait(500);
-
-    dispatch(
-        changeUpdateState({
-            ...(details.available && !isDev ? { ...details } : { available: false, active: false }),
-            isChecking: false,
-            releases: details.releases
-        })
-    );
 };
 
 const changeUpdateState = nextState => ({

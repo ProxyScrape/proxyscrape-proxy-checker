@@ -442,9 +442,9 @@ app.whenReady().then(async () => {
     }
 
     createWindow();
-    if (!isDev && !isPortable) {
-        autoUpdater.checkForUpdates();
-    }
+    // Canary builds manage their own update flow via the in-app CanaryBanner
+    // (which calls the Go backend and opens GitHub releases in the browser).
+    // electron-updater auto-install is intentionally disabled on this branch.
 });
 
 app.on('activate', () => {
@@ -470,15 +470,8 @@ app.on('window-all-closed', async () => {
     }
 });
 
-autoUpdater.on('update-downloaded', () => {
-    autoUpdater.quitAndInstall(true, true);
-});
-
-autoUpdater.on('download-progress', (progressObj) => {
-    if (window && !window.isDestroyed()) {
-        window.webContents.send('download-progress', Math.floor(progressObj.percent));
-    }
-});
+// electron-updater events are not wired on the canary branch.
+// Updates are handled by the CanaryBanner component via the Go backend + GitHub API.
 
 ipcMain.on('window-minimize', () => {
     if (window && !window.isDestroyed()) {

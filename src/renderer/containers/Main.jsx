@@ -21,7 +21,9 @@ import { close as closeResult } from '../actions/ResultActions';
 import { openDrawer, closeDrawer } from '../actions/UIActions';
 import { trackScreen } from '../misc/analytics';
 import { ipcRenderer } from 'electron';
-import { TITLEBAR_HEIGHT } from '../constants/Layout';
+import { TITLEBAR_HEIGHT, FOOTER_HEIGHT, CANARY_BANNER_HEIGHT } from '../constants/Layout';
+import { IS_CANARY } from '../../shared/AppConstants';
+import CanaryBanner from '../components/CanaryBanner';
 const TAB_SCREENS = ['Core', 'Judges', 'Ip', 'Blacklist', 'History'];
 
 class Main extends React.PureComponent {
@@ -112,7 +114,7 @@ class Main extends React.PureComponent {
                         overflowY: 'auto',
                         height: `calc(100vh - ${TITLEBAR_HEIGHT}px)`,
                         pt: `${TITLEBAR_HEIGHT}px`,
-                        pb: '115px',
+                        pb: `${FOOTER_HEIGHT + (IS_CANARY ? CANARY_BANNER_HEIGHT : 0)}px`,
                         px: 5,
                     }}>
                         <Box sx={{ pt: 3 }}>
@@ -127,6 +129,7 @@ class Main extends React.PureComponent {
                     <Checking />
                     <Overlay />
                     <Update />
+                    {IS_CANARY && <CanaryBanner />}
                     <Notification fileName={this.state.fileName} show={this.state.showNotify} toggleNotify={this.toggleNotify} checkProxy={checkProxy} disable={this.disable}/>
                     <ProtocolWarningDialog />
                     <Footer toggleModal={this.toggleModal} closeDrawer={this.props.closeDrawer}/>

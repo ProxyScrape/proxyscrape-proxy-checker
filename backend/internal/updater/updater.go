@@ -9,26 +9,39 @@ import (
 	"time"
 )
 
-const githubReleasesURL = "https://api.github.com/repos/ProxyScrape/proxy-checker/releases"
+const githubReleasesURL = "https://api.github.com/repos/ProxyScrape/proxyscrape-proxy-checker/releases"
 
-// VersionInfo holds version comparison results.
+// Release holds the fields we expose from a GitHub pre-release.
+type Release struct {
+	TagName     string `json:"tagName"`
+	PublishedAt string `json:"publishedAt"`
+	HtmlURL     string `json:"htmlUrl"`
+}
+
+// VersionInfo holds version comparison results returned to the frontend.
 type VersionInfo struct {
-	Current   string `json:"current"`
-	Latest    string `json:"latest"`
-	HasUpdate bool   `json:"hasUpdate"`
+	Current        string    `json:"current"`
+	Latest         string    `json:"latest"`
+	HasUpdate      bool      `json:"hasUpdate"`
+	CanaryReleases []Release `json:"canaryReleases"`
 }
 
 type githubRelease struct {
-	TagName string `json:"tag_name"`
+	TagName     string `json:"tag_name"`
+	Prerelease  bool   `json:"prerelease"`
+	PublishedAt string `json:"published_at"`
+	HtmlURL     string `json:"html_url"`
 }
 
-// Check fetches the latest release from GitHub and compares it with currentVersion.
+// Check fetches GitHub releases, considers only pre-releases for the canary channel,
+// and compares the latest pre-release tag against currentVersion.
 // On network error, returns VersionInfo with HasUpdate=false.
 func Check(ctx context.Context, currentVersion string) VersionInfo {
 	info := VersionInfo{
-		Current:   currentVersion,
-		Latest:    currentVersion,
-		HasUpdate: false,
+		Current:        currentVersion,
+		Latest:         currentVersion,
+		HasUpdate:      false,
+		CanaryReleases: []Release{},
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -38,6 +51,7 @@ func Check(ctx context.Context, currentVersion string) VersionInfo {
 		return info
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "ProxyScrape-Proxy-Checker")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -49,16 +63,27 @@ func Check(ctx context.Context, currentVersion string) VersionInfo {
 		return info
 	}
 
-	var releases []githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+	var all []githubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&all); err != nil {
 		return info
 	}
 
-	if len(releases) == 0 {
+	// Collect only pre-releases for the canary channel.
+	for _, r := range all {
+		if r.Prerelease {
+			info.CanaryReleases = append(info.CanaryReleases, Release{
+				TagName:     r.TagName,
+				PublishedAt: r.PublishedAt,
+				HtmlURL:     r.HtmlURL,
+			})
+		}
+	}
+
+	if len(info.CanaryReleases) == 0 {
 		return info
 	}
 
-	latest := strings.TrimPrefix(releases[0].TagName, "v")
+	latest := strings.TrimPrefix(info.CanaryReleases[0].TagName, "v")
 	current := strings.TrimPrefix(currentVersion, "v")
 
 	info.Latest = latest
@@ -70,7 +95,7 @@ func Check(ctx context.Context, currentVersion string) VersionInfo {
 // String returns a human-readable description of the version check result.
 func (v VersionInfo) String() string {
 	if v.HasUpdate {
-		return fmt.Sprintf("Update available: %s → %s", v.Current, v.Latest)
+		return fmt.Sprintf("Canary update available: %s → %s", v.Current, v.Latest)
 	}
 	return fmt.Sprintf("Up to date: %s", v.Current)
 }

@@ -2,7 +2,7 @@ import React from 'react';
 import { connect } from 'react-redux';
 import { checkAtAvailable } from '../actions/UpdateActions';
 import { openLink } from '../misc/other';
-import { isPortable } from '../../shared/AppConstants';
+import { isPortable, IS_CANARY } from '../../shared/AppConstants';
 import { ipcRenderer } from 'electron';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -30,6 +30,9 @@ class Update extends React.PureComponent {
     };
 
     render = () => {
+        // On canary the CanaryBanner handles update UX; suppress this overlay.
+        if (IS_CANARY) return null;
+
         const { active, available, isChecking, portableAsset } = this.props;
 
         return (
