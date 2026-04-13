@@ -9,15 +9,128 @@ permissions:
   contents: write
 
 jobs:
+  # ── Go binaries: Windows (cross-compiled from Linux with zig cc) ─────────────
+  build-go-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - uses: mlugg/setup-zig@v2
+
+      # gopacket/pcap uses pure Go syscall on Windows (no Npcap SDK at compile
+      # time). Only go-sqlite3 needs CGO, which zig cc handles without any
+      # extra Windows SDK or Npcap SDK.
+      - name: Build win-x64
+        run: |
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=1 \
+            CC="zig cc -target x86_64-windows-gnu" \
+            go build -C backend -ldflags="-s -w" \
+            -o ../bin/checker-win-x64.exe ./cmd/checker
+
+      - name: Build win-arm64
+        run: |
+          GOOS=windows GOARCH=arm64 CGO_ENABLED=1 \
+            CC="zig cc -target aarch64-windows-gnu" \
+            go build -C backend -ldflags="-s -w" \
+            -o ../bin/checker-win-arm64.exe ./cmd/checker
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go-win-bins
+          path: bin/
+
+  # ── Go binaries: Linux ───────────────────────────────────────────────────────
+  build-go-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Install libpcap-dev (x64)
+        run: sudo apt-get install -y libpcap-dev
+
+      - name: Build linux-x64
+        run: |
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
+            go build -C backend -ldflags="-s -w" \
+            -o ../bin/checker-linux-x64 ./cmd/checker
+
+      - name: Set up QEMU for arm64 emulation
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build linux-arm64 (Docker arm64)
+        run: |
+          docker run --rm \
+            --platform linux/arm64 \
+            -v "$(pwd):/workspace" \
+            -w /workspace/backend \
+            -e GOCACHE=/tmp/gocache \
+            golang:bookworm \
+            bash -c "
+              apt-get update -qq && apt-get install -y -qq libpcap-dev > /dev/null 2>&1
+              CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build \
+                -ldflags='-s -w' -o /workspace/bin/checker-linux-arm64 ./cmd/checker
+            "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go-linux-bins
+          path: bin/
+
+  # ── Go binaries: macOS ───────────────────────────────────────────────────────
+  build-go-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      # libpcap headers ship with Xcode CLT; no extra install needed.
+      - name: Build darwin-arm64
+        run: |
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
+            go build -C backend -ldflags="-s -w" \
+            -o bin/checker-darwin-arm64 ./cmd/checker
+
+      - name: Build darwin-x64
+        run: |
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
+            go build -C backend -ldflags="-s -w" \
+            -o bin/checker-darwin-x64 ./cmd/checker
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go-macos-bins
+          path: bin/
+
+  # ── Electron: Windows installer + portable ──────────────────────────────────
   release-windows:
     runs-on: windows-latest
+    needs: build-go-windows
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: npm
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-win-bins
+          path: bin
 
       - name: Install dependencies
         run: npm ci
@@ -27,3 +140,64 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_PRE_RELEASE: true
+
+  # ── Electron: Linux AppImage ─────────────────────────────────────────────────
+  release-linux:
+    runs-on: ubuntu-latest
+    needs: build-go-linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-linux-bins
+          path: bin
+
+      - name: Make Linux binaries executable
+        run: chmod +x bin/checker-linux-*
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build & publish Linux (pre-release)
+        run: npx electron-vite build --outDir dist && npx electron-builder --linux --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_PRE_RELEASE: true
+
+  # ── Electron: macOS DMG + zip ────────────────────────────────────────────────
+  release-macos:
+    runs-on: macos-latest
+    needs: build-go-macos
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-macos-bins
+          path: bin
+
+      - name: Make macOS binaries executable
+        run: chmod +x bin/checker-darwin-*
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build & publish macOS (pre-release, unsigned)
+        run: npx electron-vite build --outDir dist && npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_PRE_RELEASE: true
+          # No code signing for canary builds — users bypass Gatekeeper
+          # by right-clicking the app and choosing Open on first launch.
+          CSC_IDENTITY_AUTO_DISCOVERY: false

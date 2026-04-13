@@ -6,18 +6,20 @@
 #   Linux (Docker):  runs a golang:bookworm container with libpcap-dev
 #                    linux/arm64 uses --platform linux/arm64 (QEMU on Intel hosts,
 #                    native on Apple Silicon). Requires Docker Buildx / Docker Desktop.
-#   Windows x64/ARM64: requires Npcap SDK extracted to backend/cgo-vendor/npcap-sdk/
-#                    (download from https://npcap.com/dist/npcap-sdk-1.13.zip)
-#                    SDK >= 1.13 includes Lib/ARM64/ for the arm64 build.
+#   Windows x64/ARM64: NO Npcap SDK needed at compile time.
+#                    gopacket/pcap on Windows is pure Go (syscall-based runtime DLL
+#                    loading). Only go-sqlite3 needs CGO, which zig cc handles alone.
+#                    zig (brew install zig) is required for Windows cross-compilation.
 #
-# zig (brew install zig) is required ONLY for Windows cross-compilation from macOS.
+# NOTE: CI handles all of this automatically via .github/workflows/release.yml.
+#       Run this script locally only if you need to test binary builds without
+#       pushing a tag.
 set -e
 
 cd "$(dirname "$0")/.."
 mkdir -p bin
 
 BACKEND="$(pwd)/backend"
-CGO_VENDOR="${BACKEND}/cgo-vendor"
 
 echo "==> darwin-arm64"
 GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
@@ -63,37 +65,23 @@ else
     echo "    OK"
 fi
 
-NPCAP_SDK="${CGO_VENDOR}/npcap-sdk"
-
-echo "==> win-x64 (zig cross-compile, requires Npcap SDK)"
-if [ ! -d "${NPCAP_SDK}/Include" ]; then
-    echo "    SKIP: Npcap SDK not found at backend/cgo-vendor/npcap-sdk/"
-    echo "    Download from https://npcap.com/dist/npcap-sdk-1.13.zip and extract there"
-elif ! command -v zig &> /dev/null; then
+echo "==> win-x64 (zig cross-compile)"
+if ! command -v zig &> /dev/null; then
     echo "    SKIP: zig not found (brew install zig)"
 else
     GOOS=windows GOARCH=amd64 CGO_ENABLED=1 \
         CC="zig cc -target x86_64-windows-gnu" \
-        CGO_CFLAGS="-I${NPCAP_SDK}/Include" \
-        CGO_LDFLAGS="-L${NPCAP_SDK}/Lib/x64 -lwpcap -lPacket" \
         go build -C "${BACKEND}" -ldflags="-s -w" \
         -o "$(pwd)/bin/checker-win-x64.exe" ./cmd/checker
     echo "    OK"
 fi
 
-echo "==> win-arm64 (zig cross-compile, requires Npcap SDK with Lib/ARM64)"
-if [ ! -d "${NPCAP_SDK}/Include" ]; then
-    echo "    SKIP: Npcap SDK not found at backend/cgo-vendor/npcap-sdk/"
-elif [ ! -d "${NPCAP_SDK}/Lib/ARM64" ]; then
-    echo "    SKIP: Npcap SDK ARM64 libs not found at backend/cgo-vendor/npcap-sdk/Lib/ARM64/"
-    echo "    Download Npcap SDK >= 1.13 which includes Lib/ARM64/"
-elif ! command -v zig &> /dev/null; then
+echo "==> win-arm64 (zig cross-compile)"
+if ! command -v zig &> /dev/null; then
     echo "    SKIP: zig not found (brew install zig)"
 else
     GOOS=windows GOARCH=arm64 CGO_ENABLED=1 \
         CC="zig cc -target aarch64-windows-gnu" \
-        CGO_CFLAGS="-I${NPCAP_SDK}/Include" \
-        CGO_LDFLAGS="-L${NPCAP_SDK}/Lib/ARM64 -lwpcap -lPacket" \
         go build -C "${BACKEND}" -ldflags="-s -w" \
         -o "$(pwd)/bin/checker-win-arm64.exe" ./cmd/checker
     echo "    OK"
