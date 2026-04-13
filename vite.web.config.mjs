@@ -10,6 +10,11 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { createRequire } from 'module'
+
+const _require = createRequire(import.meta.url)
+const pkg = _require('./package.json')
+const isCanary = pkg.version.includes('-canary')
 
 const REQUIRED_ENV = [
     'POSTHOG_KEY',
@@ -23,7 +28,9 @@ REQUIRED_ENV.forEach(key => {
     if (!process.env[key] && env[key]) process.env[key] = env[key]
 })
 
-const rendererDefine = {}
+const rendererDefine = {
+    '__IS_CANARY__': JSON.stringify(isCanary),
+}
 REQUIRED_ENV.forEach(key => {
     rendererDefine[`__${key}__`] = JSON.stringify(process.env[key] || '')
 })

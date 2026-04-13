@@ -16,7 +16,9 @@ import (
 	"github.com/proxyscrape/checker-backend/internal/store"
 )
 
-const appVersion = "2.0.0-canary"
+// appVersion is injected at build time via -ldflags from package.json.
+// Default "dev" is used for local `go run` without the build script.
+var appVersion = "dev"
 
 // server holds shared dependencies available to all route handlers.
 type server struct {

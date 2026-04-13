@@ -9,12 +9,15 @@ import DialogContent from '@mui/material/DialogContent';
 import { alpha } from '@mui/material/styles';
 import { shell } from 'electron';
 import { FOOTER_HEIGHT } from '../constants/Layout';
+import { IS_CANARY } from '@shared/AppConstants';
 
 const CANARY_ORANGE = '#e67e00';
 const CANARY_BG = 'rgba(230, 126, 0, 0.12)';
 const CANARY_BORDER = 'rgba(230, 126, 0, 0.3)';
 
 const CanaryBanner = memo(({ hasUpdate, latestCanary, canaryReleases }) => {
+    if (!IS_CANARY) return null;
+
     const [pickerOpen, setPickerOpen] = useState(false);
 
     const openRelease = (htmlUrl) => {
