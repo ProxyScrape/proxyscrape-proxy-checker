@@ -1,8 +1,22 @@
 import path from 'path';
 import url from 'url';
+import http from 'http';
 import { BrowserWindow, app, ipcMain, dialog } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { isDev, isPortable } from './constants/AppConstants';
+
+const DEV_SERVER_URL = 'http://localhost:32321';
+
+// Poll the webpack-dev-server until it responds, then resolve.
+const waitForDevServer = () => new Promise(resolve => {
+    const check = () => {
+        http.get(DEV_SERVER_URL, res => {
+            res.destroy();
+            resolve();
+        }).on('error', () => setTimeout(check, 300));
+    };
+    check();
+});
 import installExtension, { REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
 
 let window;
@@ -124,7 +138,8 @@ ipcMain.on('getUserData', event => {
     event.returnValue = app.getPath('userData');
 });
 
-app.on('ready', () => {
+app.on('ready', async () => {
+    if (isDev) await waitForDevServer();
     createWindow();
     if (!isDev && !isPortable) autoUpdater.checkForUpdates();
 });
