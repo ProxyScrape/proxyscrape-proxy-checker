@@ -12,6 +12,33 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # ── JS bundle: built once, shared across all platform release jobs ────────────
+  build-renderer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer bundle
+        run: npx electron-vite build --outDir dist
+        env:
+          POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
+          POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}
+          POSTHOG_UI_HOST: ${{ secrets.POSTHOG_UI_HOST }}
+          INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: renderer-dist
+          path: dist/
+
   # ── Go binaries: Windows (cross-compiled from Linux with zig cc) ─────────────
   build-go-windows:
     runs-on: ubuntu-latest
@@ -25,9 +52,6 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
 
-      # gopacket/pcap uses pure Go syscall on Windows (no Npcap SDK at compile
-      # time). Only go-sqlite3 needs CGO, which zig cc handles without any
-      # extra Windows SDK or Npcap SDK.
       - name: Build win-x64
         run: |
           GOOS=windows GOARCH=amd64 CGO_ENABLED=1 \
@@ -47,7 +71,7 @@ jobs:
           name: go-win-bins
           path: bin/
 
-  # ── Go binaries: Linux ───────────────────────────────────────────────────────
+  # ── Go binaries: Linux (x64 native, arm64 via zig cc cross-compile) ──────────
   build-go-linux:
     runs-on: ubuntu-latest
     steps:
@@ -58,8 +82,16 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
-      - name: Install libpcap-dev (x64)
-        run: sudo apt-get install -y libpcap-dev
+      - uses: mlugg/setup-zig@v2
+
+      - name: Install libpcap headers (x64 + arm64)
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo sed -i 's/^deb /deb [arch=amd64,i386] /g' /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main universe" \
+            | sudo tee -a /etc/apt/sources.list
+          sudo apt-get update -qq
+          sudo apt-get install -y libpcap-dev libpcap-dev:arm64
 
       - name: Build linux-x64
         run: |
@@ -67,23 +99,14 @@ jobs:
             go build -C backend -buildvcs=false -ldflags="-s -w" \
             -o ../bin/checker-linux-x64 ./cmd/checker
 
-      - name: Set up QEMU for arm64 emulation
-        uses: docker/setup-qemu-action@v3
-
-      - name: Build linux-arm64 (Docker arm64)
+      - name: Build linux-arm64 (zig cc cross-compile, no Docker/QEMU)
         run: |
-          docker run --rm \
-            --platform linux/arm64 \
-            -v "$(pwd):/workspace" \
-            -w /workspace/backend \
-            -e GOCACHE=/tmp/gocache \
-            golang:bookworm \
-            bash -c "
-              apt-get update -qq && apt-get install -y -qq libpcap-dev > /dev/null 2>&1
-              git config --global --add safe.directory /workspace
-              CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build \
-                -buildvcs=false -ldflags='-s -w' -o /workspace/bin/checker-linux-arm64 ./cmd/checker
-            "
+          CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \
+            CC="zig cc -target aarch64-linux-gnu" \
+            CGO_CFLAGS="-I/usr/include" \
+            CGO_LDFLAGS="-L/usr/lib/aarch64-linux-gnu" \
+            go build -C backend -buildvcs=false -ldflags="-s -w" \
+            -o ../bin/checker-linux-arm64 ./cmd/checker
 
       - uses: actions/upload-artifact@v4
         with:
@@ -101,7 +124,6 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
-      # libpcap headers ship with Xcode CLT; no extra install needed.
       - name: Build darwin-arm64
         run: |
           CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
@@ -122,7 +144,7 @@ jobs:
   # ── Electron: Windows installer + portable ──────────────────────────────────
   release-windows:
     runs-on: windows-latest
-    needs: build-go-windows
+    needs: [build-renderer, build-go-windows]
     steps:
       - uses: actions/checkout@v4
 
@@ -130,6 +152,17 @@ jobs:
         with:
           node-version: 20
           cache: npm
+
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.LOCALAPPDATA }}\electron\Cache
+          key: electron-win-${{ hashFiles('package.json') }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: renderer-dist
+          path: dist
 
       - uses: actions/download-artifact@v4
         with:
@@ -139,8 +172,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build & publish Windows (pre-release)
-        run: npm run publish:ci
+      - name: Package & publish Windows (pre-release)
+        run: npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_PRE_RELEASE: true
@@ -152,7 +185,7 @@ jobs:
   # ── Electron: Linux AppImage ─────────────────────────────────────────────────
   release-linux:
     runs-on: ubuntu-latest
-    needs: build-go-linux
+    needs: [build-renderer, build-go-linux]
     steps:
       - uses: actions/checkout@v4
 
@@ -160,6 +193,17 @@ jobs:
         with:
           node-version: 20
           cache: npm
+
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron
+          key: electron-linux-${{ hashFiles('package.json') }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: renderer-dist
+          path: dist
 
       - uses: actions/download-artifact@v4
         with:
@@ -172,8 +216,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build & publish Linux (pre-release)
-        run: npx electron-vite build --outDir dist && npx electron-builder --linux --publish always
+      - name: Package & publish Linux (pre-release)
+        run: npx electron-builder --linux --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_PRE_RELEASE: true
@@ -185,7 +229,7 @@ jobs:
   # ── Electron: macOS DMG + zip ────────────────────────────────────────────────
   release-macos:
     runs-on: macos-latest
-    needs: build-go-macos
+    needs: [build-renderer, build-go-macos]
     steps:
       - uses: actions/checkout@v4
 
@@ -193,6 +237,17 @@ jobs:
         with:
           node-version: 20
           cache: npm
+
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/electron
+          key: electron-macos-${{ hashFiles('package.json') }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: renderer-dist
+          path: dist
 
       - uses: actions/download-artifact@v4
         with:
@@ -205,8 +260,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build & publish macOS (pre-release, unsigned)
-        run: npx electron-vite build --outDir dist && npx electron-builder --mac --publish always
+      - name: Package & publish macOS (pre-release, unsigned)
+        run: npx electron-builder --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_PRE_RELEASE: true
@@ -214,6 +269,4 @@ jobs:
           POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}
           POSTHOG_UI_HOST: ${{ secrets.POSTHOG_UI_HOST }}
           INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
-          # No code signing for canary builds — users bypass Gatekeeper
-          # by right-clicking the app and choosing Open on first launch.
           CSC_IDENTITY_AUTO_DISCOVERY: false
