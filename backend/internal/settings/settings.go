@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 )
 
@@ -202,6 +203,9 @@ func (m *Manager) writeFile() error {
 
 // migrate applies version-based migrations to raw JSON bytes.
 // Currently: version < 1.5.3 renames core.retry → core.retries = 0.
+// Also sanitises any string-typed numeric fields produced by the v1.x React
+// frontend (where form inputs always yield strings) so json.Unmarshal into
+// typed Go structs does not fail.
 func migrate(raw []byte) ([]byte, error) {
 	var doc map[string]interface{}
 	if err := json.Unmarshal(raw, &doc); err != nil {
@@ -218,7 +222,35 @@ func migrate(raw []byte) ([]byte, error) {
 		}
 	}
 
+	// Sanitise string-typed numeric fields. The v1.x React app stored settings
+	// via HTML form inputs which always produce strings, so a migrated
+	// settings.json may contain e.g. "threads":"350" instead of "threads":350.
+	// json.Unmarshal is strict and refuses to put a string into an int field,
+	// so we normalise here before the final unmarshal.
+	sanitiseIntFields(doc, "core", "timeout", "threads", "retries")
+	sanitiseIntFields(doc, "exporting", "type", "authType")
+
 	return json.Marshal(doc)
+}
+
+// sanitiseIntFields converts any string values for the named fields inside
+// section to their numeric equivalents. Other value types are left untouched.
+func sanitiseIntFields(doc map[string]interface{}, section string, fields ...string) {
+	sec, ok := doc[section].(map[string]interface{})
+	if !ok {
+		return
+	}
+	for _, field := range fields {
+		v, exists := sec[field]
+		if !exists {
+			continue
+		}
+		if s, ok := v.(string); ok {
+			if n, err := strconv.ParseFloat(s, 64); err == nil {
+				sec[field] = n
+			}
+		}
+	}
 }
 
 // versionLessThan compares two simple "major.minor.patch" version strings.

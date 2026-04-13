@@ -6,6 +6,15 @@ import { BrowserWindow, app, ipcMain, dialog, session } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { isDev, isPortable, IS_CANARY } from '../shared/AppConstants';
 
+// Separate userData for canary vs stable so they never share settings, DB, or
+// the migration trigger file. Must be called before app.whenReady().
+// productName controls the installer name but NOT app.getPath('userData') at
+// runtime — that comes from app.getName() which reads package.json `name`.
+// Appending " Canary" here mirrors what productName does for the install entry.
+if (IS_CANARY) {
+    app.setPath('userData', app.getPath('userData') + ' Canary');
+}
+
 const iconPath = path.join(__dirname, '../../public/icons/icon.png');
 
 let window;
