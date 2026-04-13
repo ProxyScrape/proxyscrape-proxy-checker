@@ -29,14 +29,14 @@ jobs:
         run: |
           GOOS=windows GOARCH=amd64 CGO_ENABLED=1 \
             CC="zig cc -target x86_64-windows-gnu" \
-            go build -C backend -ldflags="-s -w" \
+            go build -C backend -buildvcs=false -ldflags="-s -w" \
             -o ../bin/checker-win-x64.exe ./cmd/checker
 
       - name: Build win-arm64
         run: |
           GOOS=windows GOARCH=arm64 CGO_ENABLED=1 \
             CC="zig cc -target aarch64-windows-gnu" \
-            go build -C backend -ldflags="-s -w" \
+            go build -C backend -buildvcs=false -ldflags="-s -w" \
             -o ../bin/checker-win-arm64.exe ./cmd/checker
 
       - uses: actions/upload-artifact@v4
@@ -61,7 +61,7 @@ jobs:
       - name: Build linux-x64
         run: |
           CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
-            go build -C backend -ldflags="-s -w" \
+            go build -C backend -buildvcs=false -ldflags="-s -w" \
             -o ../bin/checker-linux-x64 ./cmd/checker
 
       - name: Set up QEMU for arm64 emulation
@@ -77,8 +77,9 @@ jobs:
             golang:bookworm \
             bash -c "
               apt-get update -qq && apt-get install -y -qq libpcap-dev > /dev/null 2>&1
+              git config --global --add safe.directory /workspace
               CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build \
-                -ldflags='-s -w' -o /workspace/bin/checker-linux-arm64 ./cmd/checker
+                -buildvcs=false -ldflags='-s -w' -o /workspace/bin/checker-linux-arm64 ./cmd/checker
             "
 
       - uses: actions/upload-artifact@v4
@@ -101,13 +102,13 @@ jobs:
       - name: Build darwin-arm64
         run: |
           CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
-            go build -C backend -ldflags="-s -w" \
+            go build -C backend -buildvcs=false -ldflags="-s -w" \
             -o ../bin/checker-darwin-arm64 ./cmd/checker
 
       - name: Build darwin-x64
         run: |
           CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
-            go build -C backend -ldflags="-s -w" \
+            go build -C backend -buildvcs=false -ldflags="-s -w" \
             -o ../bin/checker-darwin-x64 ./cmd/checker
 
       - uses: actions/upload-artifact@v4
