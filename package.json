@@ -40,7 +40,8 @@
         "publish-mac": "npm run build && electron-builder --mac --publish always",
         "publish-linux": "npm run build && electron-builder --linux --publish always",
         "publish-all": "npm run build && electron-builder --mac --win --linux --publish always",
-        "postinstall": "electron-builder install-app-deps"
+        "postinstall": "electron-builder install-app-deps",
+        "prepare": "[ -d .git ] && git config core.hooksPath .githooks || true"
     },
     "devDependencies": {
         "@emotion/react": "^11.14.0",

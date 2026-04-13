@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Checks version consistency before any push.
+# If pushing a tag, verifies it matches package.json and Go appVersion.
+# Activated automatically via: git config core.hooksPath .githooks
+# (set by `npm install` via the prepare script in package.json)
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+TAG=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+    if [[ "$local_ref" == refs/tags/* ]]; then
+        TAG="${local_ref#refs/tags/}"
+    fi
+done
+
+exec bash "$ROOT/scripts/check-versions.sh" "$TAG"

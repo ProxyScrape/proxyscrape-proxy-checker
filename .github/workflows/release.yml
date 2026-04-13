@@ -12,8 +12,20 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # ── Version consistency gate ──────────────────────────────────────────────────
+  # Fails fast if package.json, Go appVersion, or the git tag disagree.
+  # All build jobs depend on this so nothing is built from a mismatched state.
+  check-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check version consistency
+        run: bash scripts/check-versions.sh "${{ github.ref_name }}"
+
   # ── JS bundle: built once, shared across all platform release jobs ────────────
   build-renderer:
+    needs: [check-versions]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -41,6 +53,7 @@ jobs:
 
   # ── Go binaries: Windows (cross-compiled from Linux with zig cc) ─────────────
   build-go-windows:
+    needs: [check-versions]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -78,6 +91,7 @@ jobs:
 
   # ── Go binaries: Linux (x64 native, arm64 via GCC cross-compiler) ───────────
   build-go-linux:
+    needs: [check-versions]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -145,6 +159,7 @@ jobs:
 
   # ── Go binaries: macOS ───────────────────────────────────────────────────────
   build-go-macos:
+    needs: [check-versions]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5

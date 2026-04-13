@@ -2,6 +2,11 @@ import { defineConfig, loadEnv } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import electronRendererPlugin from 'vite-plugin-electron-renderer'
 import path from 'path'
+import { createRequire } from 'module'
+
+const _require = createRequire(import.meta.url)
+const pkg = _require('./package.json')
+const IS_CANARY = pkg.version.includes('-canary')
 
 const REQUIRED_ENV = [
   'POSTHOG_KEY',
@@ -33,6 +38,7 @@ const rendererDefine = {
   // the Node.js `process` global, which is not defined in a browser context.
   'process.env.NODE_ENV': JSON.stringify(isBuild ? 'production' : 'development'),
   'process.env.PORTABLE_EXECUTABLE_DIR': 'undefined',
+  '__IS_CANARY__': JSON.stringify(IS_CANARY),
 }
 REQUIRED_ENV.forEach(key => {
   rendererDefine[`__${key}__`] = JSON.stringify(process.env[key] || '')
@@ -44,6 +50,9 @@ export default defineConfig({
       rollupOptions: {
         input: path.resolve(__dirname, 'src/main/index.js')
       }
+    },
+    define: {
+      '__IS_CANARY__': JSON.stringify(IS_CANARY),
     },
     resolve: {
       alias: {
