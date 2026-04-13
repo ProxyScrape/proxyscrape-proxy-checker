@@ -4,14 +4,8 @@ import IconButton from '@mui/material/IconButton';
 import Slide from '@mui/material/Slide';
 import Fade from '@mui/material/Fade';
 import { FOOTER_BACKGROUND, DRAWER_BACKGROUND } from '../../theme/palette';
-
-const TITLEBAR_HEIGHT = 38;
-
-const CloseIcon = () => (
-    <svg viewBox="0 0 224.512 224.512" style={{ width: 14, height: 14, fill: 'currentColor' }}>
-        <polygon points="224.507,6.997 217.521,0 112.256,105.258 6.998,0 0.005,6.997 105.263,112.254 0.005,217.512 6.998,224.512 112.256,119.24 217.521,224.512 224.507,217.512 119.249,112.254" />
-    </svg>
-);
+import { TITLEBAR_HEIGHT } from '../../constants/Layout';
+import CloseIcon from './CloseIcon';
 
 const DrawerPanel = forwardRef(({ width, headerLeft, onClose, children, sx }, ref) => (
     <Box ref={ref} sx={{

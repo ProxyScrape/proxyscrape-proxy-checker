@@ -9,6 +9,8 @@ const getMaxTimeout = state => (state.result.timeout == state.core.timeout ? fal
 
 const getCurrentSorting = state => state.result.sorting;
 
+const getHiddenStatuses = state => state.result.hiddenStatuses || [];
+
 const getProtocols = state => {
     const protocols = state.result.protocols;
     const result = Object.keys(protocols).filter(item => protocols[item]);
@@ -76,8 +78,12 @@ const arrayContainsArray = (superset, subset) => {
     return subset.some(value => superset.indexOf(value) !== -1);
 };
 
-const filter = (items, protocols, anons, countries, search, isKeepAlive, inBlacklists, maxTimeout, ports, sorting) => {
-    let next = maxTimeout ? items.filter(item => item.timeout <= maxTimeout) : items;
+const filter = (items, protocols, anons, countries, search, isKeepAlive, inBlacklists, maxTimeout, ports, sorting, hiddenStatuses) => {
+    let next = items;
+    if (hiddenStatuses.length > 0) {
+        next = next.filter(item => !hiddenStatuses.includes(item.status));
+    }
+    next = maxTimeout ? next.filter(item => item.timeout <= maxTimeout) : next;
 
     if (search) {
         next = next.filter(
@@ -91,7 +97,9 @@ const filter = (items, protocols, anons, countries, search, isKeepAlive, inBlack
     }
 
     if (protocols) next = next.filter(item => protocols.some(value => item.protocols.includes(value)));
-    if (anons) next = next.filter(item => anons.includes(item.anon));
+    if (anons) {
+        next = next.filter(item => item.status !== 'working' || anons.includes(item.anon));
+    }
     if (countries) next = next.filter(item => countries.includes(item.country.name));
     if (isKeepAlive) next = next.filter(item => item.keepAlive);
     if (ports) next = ports.allow ? next.filter(item => filterPorts(item.port, ports.ports)) : next.filter(item => !filterPorts(item.port, ports.ports));
@@ -112,7 +120,9 @@ const sortFilter = (items, sorting) => {
         case 'timeout':
             return sorting.reverse ? sort(items).desc(item => item.timeout) : sort(items).asc(item => item.timeout);
         case 'blacklist':
-            return sorting.reverse ? sort(items).desc(item => item.blacklist.length) : sort(items).asc(item => (item.blacklist == false ? -1 : 1));
+            return sorting.reverse
+                ? sort(items).desc(item => (item.blacklist && item.blacklist.length) || 0)
+                : sort(items).asc(item => (item.blacklist && item.blacklist.length ? 1 : -1));
         case 'server':
             return sorting.reverse ? sort(items).desc(item => item.server) : sort(items).asc(item => item.server);
         case 'keep-alive':
@@ -134,4 +144,4 @@ const sortFilter = (items, sorting) => {
     }
 };
 
-export const getFilteredProxies = createSelector(getItems, getProtocols, getAnons, getCountries, getSearch, isOnlyKeepAlive, getInBlacklists, getMaxTimeout, getPorts, getCurrentSorting, filter);
+export const getFilteredProxies = createSelector(getItems, getProtocols, getAnons, getCountries, getSearch, isOnlyKeepAlive, getInBlacklists, getMaxTimeout, getPorts, getCurrentSorting, getHiddenStatuses, filter);

@@ -19,7 +19,6 @@ import {
     onSearchInput,
     loadMore,
     toggleBlacklist,
-    toggleCountries,
     setMaxTimeout,
     changePortsInput,
     allowPorts,
@@ -27,8 +26,10 @@ import {
     sortResults,
     toggleExport,
     changeExportType,
-    changeExportAuthType
+    changeExportAuthType,
+    toggleHideStatus
 } from '../actions/ResultActions';
+import { openDrawer, closeDrawer, openDetails, closeDetails } from '../actions/UIActions';
 import { loadFromTxt } from '../actions/InputActions';
 import { getFilteredProxies } from '../store/selectors/getFilteredProxies';
 import { splitByKK } from '../misc/text';
@@ -38,18 +39,51 @@ import TextField from '@mui/material/TextField';
 import InputAdornment from '@mui/material/InputAdornment';
 import Button from '@mui/material/Button';
 import Slider from '@mui/material/Slider';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Switch from '@mui/material/Switch';
 import { alpha } from '@mui/material/styles';
 import { PAGE_BACKGROUND } from '../theme/palette';
 
 import '../styles/icons.css';
 
 class Result extends React.PureComponent {
+    constructor(props) {
+        super(props);
+        this.tableRef = React.createRef();
+        this.loadMoreWrapperRef = React.createRef();
+        this.loadMoreInnerRef = React.createRef();
+    }
+
     isMoreAvailable = () => this.props.state.countOfResults < this.props.filteredItems.length;
+
+    updateLoadMore = () => {
+        const el = this.tableRef.current;
+        const wrapper = this.loadMoreWrapperRef.current;
+        const inner = this.loadMoreInnerRef.current;
+        if (!el || !wrapper || !inner) return;
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        const progress = Math.max(0, Math.min(1, 1 - distanceFromBottom / 80));
+        const innerHeight = inner.offsetHeight || 52;
+        wrapper.style.height = `${progress * innerHeight}px`;
+        wrapper.style.pointerEvents = progress > 0.1 ? 'auto' : 'none';
+    };
+
+    componentDidMount() {
+        this.updateLoadMore();
+    }
+
+    componentDidUpdate(prevProps) {
+        if (
+            prevProps.state.countOfResults !== this.props.state.countOfResults ||
+            prevProps.filteredItems.length !== this.props.filteredItems.length
+        ) {
+            this.updateLoadMore();
+        }
+    }
 
     render = () => {
         const {
-            state: { isOpened, anons, protocols, misc, search, countries, items, countOfResults, inBlacklists, timeout, ports, sorting, exporting },
-            stats,
+            state: { isOpened, anons, protocols, misc, search, countries, items, countOfResults, inBlacklists, timeout, ports, sorting, exporting, hiddenStatuses = ['cancelled'] },
             captureServer,
             keepAlive,
             close,
@@ -64,8 +98,6 @@ class Result extends React.PureComponent {
             loadMore,
             filteredItems,
             toggleBlacklist,
-            toggleCountries,
-            closeInfo,
             maxTimeoutRange,
             setMaxTimeout,
             changePortsInput,
@@ -74,12 +106,19 @@ class Result extends React.PureComponent {
             sortResults,
             toggleExport,
             changeExportType,
-            changeExportAuthType
+            changeExportAuthType,
+            toggleHideStatus,
+            countriesDrawerOpen,
+            activeDetails,
+            openDrawer,
+            closeDrawer,
+            openDetails,
+            closeDetails,
         } = this.props;
 
         const handleToggleCountries = () => {
-            if (!countries.active && closeInfo) closeInfo();
-            toggleCountries();
+            if (countriesDrawerOpen) closeDrawer();
+            else openDrawer('countries');
         };
 
         const activeCountries = countries.items.filter(item => item.active);
@@ -113,8 +152,8 @@ class Result extends React.PureComponent {
                 display: 'flex',
                 flexDirection: 'column',
             }}>
-                <Box sx={{ flex: 1, overflow: 'auto', p: 3, pt: '3.5em' }}>
-                    <Box sx={{ maxWidth: '100%' }}>
+                {/* Controls — fixed height, no scrolling */}
+                <Box sx={{ flexShrink: 0, overflow: 'hidden', p: 3, pt: '3.5em' }}>
                         <TextField
                             fullWidth
                             size="small"
@@ -172,6 +211,42 @@ class Result extends React.PureComponent {
                                     </Box>
                                 </Box>
                             )}
+                            <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2, flex: '1 1 auto', minWidth: 200 }}>
+                                <Box sx={{ display: 'flex', gap: 2 }}>
+                                    <FormControlLabel
+                                        control={(
+                                            <Switch
+                                                size="small"
+                                                checked={!hiddenStatuses.includes('failed')}
+                                                onChange={() => toggleHideStatus('failed')}
+                                            />
+                                        )}
+                                        label={(
+                                            <Typography variant="body2" component="span" sx={{ fontWeight: 600, color: 'text.secondary', fontSize: '0.75rem' }}>
+                                                Show failed
+                                                <InfoIcon title="Proxies that were checked but did not respond correctly." />
+                                            </Typography>
+                                        )}
+                                        sx={{ m: 0, alignItems: 'flex-start' }}
+                                    />
+                                    <FormControlLabel
+                                        control={(
+                                            <Switch
+                                                size="small"
+                                                checked={!hiddenStatuses.includes('cancelled')}
+                                                onChange={() => toggleHideStatus('cancelled')}
+                                            />
+                                        )}
+                                        label={(
+                                            <Typography variant="body2" component="span" sx={{ fontWeight: 600, color: 'text.secondary', fontSize: '0.75rem' }}>
+                                                Show cancelled
+                                                <InfoIcon title="Entries from a stopped check that were not fully tested." />
+                                            </Typography>
+                                        )}
+                                        sx={{ m: 0, alignItems: 'flex-start' }}
+                                    />
+                                </Box>
+                            </Box>
                         </Box>
 
                         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
@@ -272,30 +347,71 @@ class Result extends React.PureComponent {
                             </Box>
                         </Box>
 
+                </Box>
+
+                {/* Table — fills remaining height, only this section scrolls */}
+                <Box
+                    ref={this.tableRef}
+                    onScroll={this.updateLoadMore}
+                    sx={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflowX: 'auto',
+                        overflowY: 'auto',
+                        px: 3,
+                        pb: 2,
+                        '&::-webkit-scrollbar': { height: 6, width: 6 },
+                        '&::-webkit-scrollbar-track': { bgcolor: 'transparent' },
+                        '&::-webkit-scrollbar-thumb': {
+                            bgcolor: alpha('#fff', 0.15),
+                            borderRadius: 3,
+                            '&:hover': { bgcolor: alpha('#fff', 0.3) },
+                        },
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: `${alpha('#fff', 0.15)} transparent`,
+                    }}
+                >
+                    <Box sx={{ minWidth: 640 }}>
                         <ResultItemsHeader sortResults={sortResults} keepAlive={keepAlive} captureServer={captureServer} inBlacklists={inBlacklists} sorting={sorting} />
 
                         <Box>
                             {filteredItems.slice(0, countOfResults).map(item => (
-                                <ResultListItem key={`${item.auth}@${item.host}:${item.port}`} {...item} />
+                                <ResultListItem
+                                    key={`${item.auth}@${item.host}:${item.port}`}
+                                    {...item}
+                                    isDetailsOpen={activeDetails !== null && activeDetails.host === item.host && activeDetails.port === item.port}
+                                    onOpenDetails={openDetails}
+                                    onCloseDetails={closeDetails}
+                                />
                             ))}
                         </Box>
+                    </Box>
+                </Box>
 
-                        {this.isMoreAvailable() && (
+                {/* Load more — height collapses to 0 when not at bottom, slides up from below */}
+                {this.isMoreAvailable() && (
+                    <Box
+                        ref={this.loadMoreWrapperRef}
+                        sx={{ flexShrink: 0, overflow: 'hidden', height: 0, position: 'relative', pointerEvents: 'none', mt: 0.5 }}
+                    >
+                        <Box
+                            ref={this.loadMoreInnerRef}
+                            sx={{ position: 'absolute', top: 0, left: 0, right: 0, px: 3, pb: 1 }}
+                        >
                             <Button
                                 variant="outlined"
                                 fullWidth
                                 onClick={loadMore}
-                                sx={{ mt: 1, borderRadius: 3 }}
+                                sx={{ borderRadius: 3 }}
                             >
                                 Load more
                             </Button>
-                        )}
+                        </Box>
                     </Box>
-                </Box>
+                )}
 
                 <Box sx={{
-                    position: 'sticky',
-                    bottom: 0,
+                    flexShrink: 0,
                     bgcolor: alpha(PAGE_BACKGROUND, 0.95),
                     backdropFilter: 'blur(8px)',
                     borderTop: `1px solid ${alpha('#fff', 0.08)}`,
@@ -315,7 +431,7 @@ class Result extends React.PureComponent {
                     </Button>
                 </Box>
 
-                <ResultCountries {...countries} toggleCountries={handleToggleCountries} activeCount={activeCountries.length} toggle={toggleCountry} />
+                <ResultCountries active={countriesDrawerOpen} items={countries.items} toggleCountries={handleToggleCountries} activeCount={activeCountries.length} toggle={toggleCountry} />
                 <ResultExport
                     {...exporting}
                     items={filteredItems.slice(0, 3)}
@@ -333,10 +449,11 @@ class Result extends React.PureComponent {
 const mapStateToProps = state => ({
     filteredItems: getFilteredProxies(state),
     state: state.result,
-    stats: state.main.stats,
     captureServer: state.core.captureServer,
     keepAlive: state.core.keepAlive,
-    maxTimeoutRange: state.core.timeout
+    maxTimeoutRange: state.core.timeout,
+    countriesDrawerOpen: state.ui.activeDrawer === 'countries',
+    activeDetails: state.ui.activeDetails,
 });
 
 const mapDispatchToProps = {
@@ -351,7 +468,6 @@ const mapDispatchToProps = {
     toggleCountry,
     loadMore,
     toggleBlacklist,
-    toggleCountries,
     setMaxTimeout,
     changePortsInput,
     allowPorts,
@@ -359,7 +475,12 @@ const mapDispatchToProps = {
     sortResults,
     toggleExport,
     changeExportType,
-    changeExportAuthType
+    changeExportAuthType,
+    toggleHideStatus,
+    openDrawer,
+    closeDrawer,
+    openDetails,
+    closeDetails,
 };
 
 export default connect(mapStateToProps, mapDispatchToProps)(Result);

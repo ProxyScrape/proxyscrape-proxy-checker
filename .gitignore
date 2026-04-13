@@ -13,3 +13,6 @@ yarn-error.log
 .env.local
 .env.*.local
 electron.vite.config.[0-9]*.mjs
+bin/
+# Air (Go hot-reload) build output
+backend/.air_tmp/

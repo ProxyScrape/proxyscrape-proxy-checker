@@ -14,7 +14,7 @@ const LicenseModal = memo(({ show, toggleModal }) => {
             onClose={toggleModal}
             maxWidth="sm"
             fullWidth
-            PaperProps={{ sx: { borderRadius: 4 } }}
+            slotProps={{ paper: { sx: { borderRadius: 4 } } }}
         >
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
                 <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1rem' }}>MIT License</Typography>

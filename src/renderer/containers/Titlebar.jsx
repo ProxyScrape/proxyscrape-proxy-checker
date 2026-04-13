@@ -1,7 +1,9 @@
 import React from 'react';
 import { ipcRenderer } from 'electron';
 
-const isMac = process.platform === 'darwin';
+// Read platform from the preload bridge — process.platform is not reliably
+// available in the renderer under contextIsolation.
+const isMac = typeof window !== 'undefined' && window.__ELECTRON__?.platform === 'darwin';
 
 export default class Titlebar extends React.PureComponent {
     state = {

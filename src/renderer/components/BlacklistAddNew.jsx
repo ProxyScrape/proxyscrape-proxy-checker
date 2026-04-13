@@ -1,5 +1,5 @@
 import React from 'react';
-import { ipcRenderer } from 'electron';
+import { choosePath } from '../misc/filePicker';
 import DropDocIcon from './ui/DropDocIcon';
 import Box from '@mui/material/Box';
 import TextField from '@mui/material/TextField';
@@ -17,7 +17,7 @@ export default class BlacklistAddNew extends React.PureComponent {
     changePath = e => this.setState({ path: e.target.value });
 
     selectPath = async () => {
-        const path = await ipcRenderer.invoke('choose-path', 'open');
+        const path = await choosePath('open');
 
         if (path) {
             this.setState({ path });

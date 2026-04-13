@@ -1,4 +1,4 @@
-import { ipcRenderer } from 'electron';
+import { choosePath } from '../misc/filePicker';
 import { BLACKLIST_CHANGE_ITEM_PATH, BLACKLIST_ADD_ITEM, BLACKLIST_REMOVE_ITEM, BLACKLIST_TOGGLE_OPTION, BLACKLIST_SET_ACTIVE_ITEM } from '../constants/ActionTypes';
 
 export const changePath = (title, path) => ({
@@ -8,7 +8,7 @@ export const changePath = (title, path) => ({
 });
 
 export const selectPath = title => async dispatch => {
-    const path = await ipcRenderer.invoke('choose-path', 'open');
+    const path = await choosePath('open');
 
     if (path) {
         dispatch(changePath(title, path));

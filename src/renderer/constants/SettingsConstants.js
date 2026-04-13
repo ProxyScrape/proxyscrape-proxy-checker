@@ -1,15 +1,5 @@
-import path from 'path';
-import { ipcRenderer } from 'electron';
-import { isDev, isPortable } from '../../shared/AppConstants';
-
-const userData = ipcRenderer.sendSync('getUserData');
-
-export const SETTINGS_FILE_NAME = 'settings.proxyscrape.checker.json';
-export const SETTINGS_FILE_PATH = isPortable
-    ? path.resolve(process.env.PORTABLE_EXECUTABLE_DIR, SETTINGS_FILE_NAME)
-    : isDev
-    ? path.resolve(SETTINGS_FILE_NAME)
-    : path.resolve(userData, SETTINGS_FILE_NAME);
+// Settings persistence is now handled by the Go backend via GET/PUT /api/settings.
+// These constants define default Redux state used before the first loadSettings() completes.
 
 export const DEFAULT_CORE_SETTINGS = {
     threads: 350,
@@ -19,11 +9,19 @@ export const DEFAULT_CORE_SETTINGS = {
     shuffle: false,
     captureFullData: false,
     captureServer: false,
+    captureTrace: false,
+    localDns: false,
+    overrideProtocols: false,
     protocols: {
         http: true,
         https: true,
         socks4: true,
         socks5: true
+    },
+    protocolWarning: {
+        open: false,
+        listProtocols: [],
+        selectedProtocols: []
     }
 };
 

@@ -10,6 +10,7 @@ import ip from './ip';
 import blacklist from './blacklist';
 import main from './main';
 import history from './history';
+import ui from './ui';
 
 const mainReducer = combineReducers({
     checking,
@@ -22,7 +23,8 @@ const mainReducer = combineReducers({
     ip,
     blacklist,
     main,
-    history
+    history,
+    ui,
 });
 
 export default mainReducer;

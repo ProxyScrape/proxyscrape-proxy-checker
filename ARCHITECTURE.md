@@ -112,27 +112,28 @@ SQLite uses WAL mode and a single-writer connection pool to avoid contention.
 
 ## Electron Shell
 
-The Electron main process (`src/main/index.js`) is intentionally thin after the migration.
+The Electron main process (`src/main/index.js`) is intentionally thin.
 
 **What it does:**
-- Spawns the Go binary on `app.ready`
+- Spawns the Go binary on `app.ready` (via `go run` in dev, pre-built binary in prod)
 - Reads `CHECKER_PORT` and `CHECKER_TOKEN` from Go's stdout
 - Creates the `BrowserWindow` after the Go backend is ready
 - Handles native file dialogs (`dialog.showOpenDialog`, `dialog.showSaveDialog`)
+- Manages `better-sqlite3` for check history (temporary — will migrate to Go API in Track A4)
 - Handles window control IPC events (minimize, maximize, close)
 - Kills the Go process on `app.before-quit`
 - Manages `electron-updater` auto-update
 
 **What it does not do:**
-- Business logic (this is all in Go)
-- Database access
-- Settings access
+- Business logic (all in Go)
+- Settings persistence (owned by Go)
 
 The preload script (`src/preload/index.js`) exposes a minimal surface via `contextBridge`:
 - `window.__ELECTRON__.apiBase` — `http://127.0.0.1:{port}`
 - `window.__ELECTRON__.token` — the bearer token
-- `window.__ELECTRON__.choosePath(action)` — file dialog wrapper
-- `window.__ELECTRON__.window{Minimize,Maximize,Close}()` — window controls
+- `window.__ELECTRON__.choosePath(action)` — single-file dialog wrapper
+- `window.__ELECTRON__.chooseMulti()` — multi-file dialog wrapper
+- `window.__ELECTRON__.window{Minimize,Maximize,Unmaximize,Close}()` — window controls
 
 `contextIsolation: true` and `nodeIntegration: false` are enabled on the BrowserWindow — the renderer is a pure web context with no Node.js access.
 
@@ -140,7 +141,7 @@ The preload script (`src/preload/index.js`) exposes a minimal surface via `conte
 
 ## React Frontend
 
-The frontend is unchanged in structure. The key addition is `src/renderer/api/client.js`, which all Redux actions use instead of direct IPC or Node.js calls.
+The frontend is unchanged in structure. `src/renderer/api/client.js` has been added and provides the authenticated HTTP/SSE layer. Redux actions will migrate to use it as Go API endpoints are implemented (Tracks A3/A4). Until then, some actions still use direct IPC or the in-renderer JS checker.
 
 ### API client
 
@@ -175,7 +176,7 @@ In web server mode, when no valid session token exists in `localStorage` (`check
 
 `{userData}` is Electron's `app.getPath('userData')`, passed to the Go binary via `--data-dir` on startup. In server mode, `--data-dir` defaults to the current working directory or a path specified by the operator.
 
-The SQLite schema is forward-compatible — existing databases from the pre-migration version (which used `better-sqlite3`) work without modification.
+During the migration period, check history is stored by `better-sqlite3` in the Electron main process (`checks`, `check_results` tables). Once Track A4 is complete this moves to the Go binary's SQLite, which extends the schema with `users` and `sessions` tables. Existing `checks`/`check_results` data will be preserved.
 
 ---
 

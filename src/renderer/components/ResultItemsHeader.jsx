@@ -55,33 +55,37 @@ export default class ResultItemsHeader extends React.PureComponent {
                 px: 1,
                 borderBottom: `1px solid ${alpha('#fff', 0.1)}`,
                 mb: 0.5,
+                minWidth: 0,
                 '& svg': { width: 10, height: 10, fill: 'currentColor' },
             }}>
-                <Box sx={{ width: 40, ...headerSx }}><SortIcon /></Box>
-                <Box sx={{ flex: '2 0 0', ...headerSx }} onClick={this.sortBy.ip}>
+                <Box sx={{ width: 40, flexShrink: 0, ...headerSx }}><SortIcon /></Box>
+                <Box sx={{ flex: '2 0 120px', ...headerSx }} onClick={this.sortBy.ip}>
                     <span>Host</span><SortSVG {...sorting} />
                 </Box>
-                <Box sx={{ flex: '1 0 0', ...headerSx }} onClick={this.sortBy.port}>
+                <Box sx={{ flex: '0 0 55px', ...headerSx }} onClick={this.sortBy.port}>
                     <span>Port</span><SortSVG {...sorting} />
                 </Box>
-                <Box sx={{ flex: '1.5 0 0', ...headerSx }} onClick={this.sortBy.protocols}>
+                <Box sx={{ flex: '1.5 0 110px', ...headerSx }} onClick={this.sortBy.protocols}>
                     <span>Protocols</span><SortSVG {...sorting} />
                 </Box>
-                <Box sx={{ flex: '1 0 0', ...headerSx }} onClick={this.sortBy.anon}>
+                <Box sx={{ flex: '1 0 75px', ...headerSx }} onClick={this.sortBy.anon}>
                     <span>Anon</span><SortSVG {...sorting} />
                 </Box>
-                <Box sx={{ flex: '1.5 0 0', ...headerSx }} onClick={this.sortBy.country}>
+                <Box sx={{ flex: '1.5 0 110px', ...headerSx }} onClick={this.sortBy.country}>
                     <span>Country</span><SortSVG {...sorting} />
                 </Box>
-                <Box sx={{ width: 30 }} />
-                {keepAlive && <Box sx={{ width: 30 }} />}
+                <Box sx={{ width: 30, flexShrink: 0 }} />
+                {keepAlive && <Box sx={{ width: 30, flexShrink: 0 }} />}
                 {captureServer && (
-                    <Box sx={{ flex: '1 0 0', ...headerSx }} onClick={this.sortBy.server}>
+                    <Box sx={{ flex: '1 0 75px', ...headerSx }} onClick={this.sortBy.server}>
                         <span>Server</span><SortSVG {...sorting} />
                     </Box>
                 )}
-                <Box sx={{ width: 70, ...headerSx, justifyContent: 'flex-end' }} onClick={this.sortBy.timeout}>
+                <Box sx={{ width: 70, flexShrink: 0, ...headerSx, justifyContent: 'center' }} onClick={this.sortBy.timeout}>
                     <TimeIcon />
+                </Box>
+                <Box sx={{ width: 58, flexShrink: 0, ...headerSx, justifyContent: 'center', cursor: 'default', '&:hover': {} }}>
+                    <span>Details</span>
                 </Box>
             </Box>
         );

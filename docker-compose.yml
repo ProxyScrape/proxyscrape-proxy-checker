@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  checker:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - checker-data:/data
+    command: ["serve", "--mode=server", "--port=8080", "--bind=0.0.0.0", "--data-dir=/data"]
+volumes:
+  checker-data:

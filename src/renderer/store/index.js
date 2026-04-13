@@ -1,13 +1,11 @@
 import mainReducer from './reducers/';
 import { createStore, applyMiddleware } from 'redux';
 import thunkMiddleware from 'redux-thunk';
-import { saveSettings } from '../core/settings.js';
+import settingsPersistMiddleware from './settingsPersistMiddleware';
 
-const createStoreWithMiddleware = applyMiddleware(thunkMiddleware)(createStore);
-const store = createStoreWithMiddleware(mainReducer);
-
-store.subscribe(() => {
-    saveSettings();
-});
+const store = createStore(
+    mainReducer,
+    applyMiddleware(thunkMiddleware, settingsPersistMiddleware)
+);
 
 export default store;

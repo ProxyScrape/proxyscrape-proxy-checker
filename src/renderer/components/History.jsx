@@ -1,36 +1,45 @@
-import React, { memo, useEffect } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import { connect } from 'react-redux';
-import { loadHistory, viewPastCheck, deleteHistoryCheck } from '../actions/HistoryActions';
+import { loadHistory, viewPastCheck, deleteHistoryCheck, clearHistory } from '../actions/HistoryActions';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
+import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
 import { alpha } from '@mui/material/styles';
 import { blueBrand } from '../theme/palette';
 
+/** Parses API timestamps: RFC3339 with Z/offset, or legacy date strings without timezone. */
+const parseApiDate = (dateStr) => {
+    if (dateStr == null || dateStr === '') return null;
+    const s = String(dateStr).trim();
+    if (!s) return null;
+    if (/Z|[+-]\d{2}:?\d{2}$/.test(s)) {
+        return new Date(s);
+    }
+    return new Date(s + 'Z');
+};
+
+const formatInvalid = () => '–';
+
 const formatDate = (dateStr) => {
-    const d = new Date(dateStr + 'Z');
+    const d = parseApiDate(dateStr);
+    if (!d || Number.isNaN(d.getTime())) return formatInvalid();
     const now = new Date();
-    const diff = now - d;
-    const mins = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (mins < 1) return 'Just now';
-    if (mins < 60) return `${mins}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-
+    if (d.toDateString() === now.toDateString()) return 'Today';
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
 };
 
 const formatTime = (dateStr) => {
-    const d = new Date(dateStr + 'Z');
+    const d = parseApiDate(dateStr);
+    if (!d || Number.isNaN(d.getTime())) return formatInvalid();
     return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-};
-
-const formatFullDate = (dateStr) => {
-    const d = new Date(dateStr + 'Z');
-    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) + ' at ' + formatTime(dateStr);
 };
 
 const DeleteIcon = () => (
@@ -147,12 +156,19 @@ const EmptyState = () => (
     </Box>
 );
 
-const History = ({ checks, loading, loadHistory, viewPastCheck, deleteHistoryCheck, visible }) => {
+const History = ({ checks, loading, loadHistory, viewPastCheck, deleteHistoryCheck, clearHistory, visible }) => {
+    const [confirmOpen, setConfirmOpen] = useState(false);
+
     useEffect(() => {
         if (visible) loadHistory();
     }, [visible]);
 
     if (!visible) return null;
+
+    const handleClear = () => {
+        setConfirmOpen(false);
+        clearHistory();
+    };
 
     return (
         <Box sx={{ pt: 1 }}>
@@ -165,7 +181,42 @@ const History = ({ checks, loading, loadHistory, viewPastCheck, deleteHistoryChe
                         {checks.length} {checks.length === 1 ? 'check' : 'checks'} saved
                     </Typography>
                 </Box>
+                {checks.length > 0 && (
+                    <Button
+                        size="small"
+                        onClick={() => setConfirmOpen(true)}
+                        sx={{
+                            color: 'text.disabled',
+                            fontSize: '0.75rem',
+                            textTransform: 'none',
+                            '&:hover': { color: 'error.main' },
+                        }}
+                    >
+                        Clear history
+                    </Button>
+                )}
             </Box>
+
+            <Dialog
+                open={confirmOpen}
+                onClose={() => setConfirmOpen(false)}
+                sx={{ '& .MuiDialog-paper': { bgcolor: 'background.paper', borderRadius: 2 } }}
+            >
+                <DialogTitle sx={{ fontSize: '1rem', fontWeight: 700 }}>Clear all history?</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                        This will permanently delete all {checks.length} saved {checks.length === 1 ? 'check' : 'checks'}. This cannot be undone.
+                    </Typography>
+                </DialogContent>
+                <DialogActions sx={{ px: 2, pb: 2 }}>
+                    <Button size="small" onClick={() => setConfirmOpen(false)} sx={{ textTransform: 'none' }}>
+                        Cancel
+                    </Button>
+                    <Button size="small" onClick={handleClear} color="error" variant="contained" sx={{ textTransform: 'none' }}>
+                        Clear all
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             {checks.length === 0 && !loading ? (
                 <EmptyState />
@@ -198,6 +249,7 @@ const mapDispatchToProps = {
     loadHistory,
     viewPastCheck,
     deleteHistoryCheck,
+    clearHistory,
 };
 
 export default connect(mapStateToProps, mapDispatchToProps)(History);

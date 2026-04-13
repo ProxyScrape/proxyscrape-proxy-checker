@@ -1,4 +1,4 @@
-import { getIP } from '../core/ip';
+import { apiFetch } from '../api/client';
 import { wait } from '../misc/wait';
 import { isIP } from '../misc/regexes';
 import { OVERLAY_IP_CHANGE_LOOKUP_STATUS, OVERLAY_IP_CHANGE_LOOKUP_TO_INITIAL } from '../constants/ActionTypes';
@@ -14,7 +14,7 @@ export const toInitialState = () => ({
 });
 
 export const IpLookup = chainEvent => async (dispatch, getState) => {
-    const { ip, overlay } = getState();
+    const { overlay } = getState();
 
     if (overlay.ip.locked) {
         return;
@@ -38,7 +38,8 @@ export const IpLookup = chainEvent => async (dispatch, getState) => {
     };
 
     try {
-        const response = await getIP(ip.lookupUrl);
+        const data = await apiFetch('/api/ip');
+        const response = data && data.ip ? data.ip : null;
 
         if (!isIP(response)) {
             return onError();

@@ -4,7 +4,7 @@ import { openLink, psUrl } from '../misc/other';
 import WhiteLogo from '../../../public/icons/Logo-ProxyScrape-white.png';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import { FOOTER_BACKGROUND, CARD_BACKGROUND } from '../theme/palette';
+import { FOOTER_BACKGROUND, CARD_BACKGROUND, blueBrand } from '../theme/palette';
 import { openIntercom } from '../misc/intercom';
 import SideDrawer from './ui/SideDrawer';
 
@@ -52,7 +52,7 @@ const socialLinkSx = {
 };
 
 const linkSx = {
-    color: 'primary.main',
+    color: blueBrand[300],
     textDecoration: 'none',
     fontSize: '0.85rem',
     transition: 'opacity 0.2s',
@@ -109,7 +109,7 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                 }}>
                     <Typography variant="body2" sx={{ color: 'text.primary', mb: 1, lineHeight: 1.6 }}>
                         Need help? Contact us via our{' '}
-                        <Box component="a" href="#" onClick={(e) => { e.preventDefault(); openIntercom(); }} sx={linkSx}>
+                        <Box component="a" href="#" onClick={(e) => { e.preventDefault(); toggleInfo(); openIntercom(); }} sx={linkSx}>
                             24/7 live chat
                         </Box>
                         {' '}or via{' '}
@@ -169,7 +169,7 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                             '&:last-child': { borderBottom: 'none', mb: 0, pb: 0 },
                         }}>
                             <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5 }}>
-                                <Typography variant="body2" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                                <Typography variant="body2" sx={{ fontWeight: 700, color: blueBrand[300] }}>
                                     {release.tag_name}
                                 </Typography>
                                 <Typography variant="caption" sx={{ color: 'text.disabled' }}>
@@ -181,7 +181,7 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                                 '& ul': { pl: 2.5, m: 0, mb: 0.5 },
                                 '& li': { fontSize: '0.8rem', color: 'text.secondary', lineHeight: 1.7 },
                                 '& h1, & h2, & h3': { fontSize: '0.85rem', fontWeight: 600, color: 'text.primary', mt: 1, mb: 0.5 },
-                                '& a': { color: 'primary.main', textDecoration: 'none' },
+                                '& a': { color: blueBrand[300], textDecoration: 'none' },
                                 '& code': {
                                     bgcolor: FOOTER_BACKGROUND,
                                     px: 0.5,

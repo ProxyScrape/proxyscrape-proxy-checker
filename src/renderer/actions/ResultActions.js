@@ -1,8 +1,6 @@
 import { getFilteredProxies } from '../store/selectors/getFilteredProxies';
 import { trackScreen, trackAction } from '../misc/analytics';
-import { writeFile } from 'fs';
-import { ipcRenderer } from 'electron';
-import { v4 as uuidv4 } from 'uuid';
+import { saveTextFile } from '../misc/filePicker';
 import {
     RESULT_SHOW,
     RESULT_TOGGLE_ANON,
@@ -13,18 +11,44 @@ import {
     RESULT_LOAD_MORE,
     RESULT_CLOSE,
     RESULT_TOGGLE_BLACKLIST,
-    RESULT_TOGGLE_COUNTRIES,
-    RESULT_CLOSE_COUNTRIES,
     RESULT_SET_MAX_TIMEOUT,
     RESULT_CHANGE_PORTS_INPUT,
     RESULT_SET_PORTS_ALLOW,
     RESULT_SORT,
     RESULT_EXPORT_TOGGLE,
     RESULT_EXPORT_CHANGE_TYPE,
-    RESULT_EXPORT_CHANGE_AUTH_TYPE
+    RESULT_EXPORT_CHANGE_AUTH_TYPE,
+    RESULT_TOGGLE_HIDE_STATUS
 } from '../constants/ActionTypes';
 import { otherChanges } from './CheckingActions';
 import { wait } from '../misc/wait';
+
+/**
+ * Maps a raw proxy result object (from SSE events or the history API) to the
+ * normalised shape stored in Redux. The `traces` field is present for live
+ * check results and null for history items — both callers are safe with this.
+ */
+export const mapResultItem = item => ({
+    host: item.proxy.host,
+    port: item.proxy.port,
+    auth: item.proxy.auth,
+    status: item.status || 'failed',
+    protocols: item.protocols || [],
+    anon: item.anon || '',
+    timeout: item.timeoutMs || 0,
+    country: {
+        code: item.country ? item.country.code : '',
+        name: item.country ? item.country.name : '',
+        flag: item.country ? item.country.flag : '',
+        city: item.city || '',
+    },
+    blacklist: Array.isArray(item.blacklist) && item.blacklist.length > 0 ? item.blacklist : false,
+    errors: item.errors || {},
+    server: item.server || null,
+    keepAlive: item.keepAlive || false,
+    traces: item.traces || null,
+    fullData: item.fullData || null,
+});
 
 const getProtocolPrefix = (protocols) => {
     if (protocols.length === 1) {
@@ -63,14 +87,17 @@ export const getResultsInProtocolIpPort = (items, authType = 1) =>
 export const save = () => async (dispatch, getState) => {
     const { type, authType } = getState().result.exporting;
     const saveType = type == 1 ? getResultsInIpPort : getResultsInProtocolIpPort;
-    const path = await ipcRenderer.invoke('choose-path', 'save');
+    const filtered = getFilteredProxies(getState());
+    const content = saveType(filtered, authType);
 
-    if (path) {
-        const filtered = getFilteredProxies(getState());
-        writeFile(path, saveType(filtered, authType), () => {
+    try {
+        const ok = await saveTextFile(content, 'proxies.txt');
+        if (ok) {
             trackAction('results_exported', { export_method: 'file', proxy_count: filtered.length });
             dispatch(toggleExport());
-        });
+        }
+    } catch (err) {
+        console.error('Export to file failed:', err);
     }
 };
 
@@ -92,13 +119,15 @@ const createCountries = items => {
     const res = [];
 
     items.forEach(item => {
-        if (countries[item.country.name] === undefined) {
-            countries[item.country.name] = {
+        const name = item.country && item.country.name;
+        if (!name) return;
+        if (countries[name] === undefined) {
+            countries[name] = {
                 count: 1,
                 flag: item.country.flag
             };
         } else {
-            countries[item.country.name].count++;
+            countries[name].count++;
         }
     });
 
@@ -115,7 +144,7 @@ const createCountries = items => {
 
 export const showResult = result => async (dispatch, getState) => {
     const {
-        core: { timeout, protocols },
+        core: { timeout },
         input
     } = getState();
 
@@ -129,7 +158,7 @@ export const showResult = result => async (dispatch, getState) => {
         timeout
     });
 
-    const working = result.items;
+    const working = result.items.filter(item => item.status === 'working');
     const totalChecked = input.list ? input.list.length : 0;
     const workingCount = working.length;
     const failedCount = totalChecked - workingCount;
@@ -143,18 +172,6 @@ export const showResult = result => async (dispatch, getState) => {
 
     const timeouts = working.map(i => i.timeout).filter(t => typeof t === 'number' && t > 0);
     const avgTimeout = timeouts.length > 0 ? Math.round(timeouts.reduce((a, b) => a + b, 0) / timeouts.length) : null;
-
-    const enabledProtocols = Object.keys(protocols).filter(p => protocols[p]);
-    ipcRenderer.invoke('db-save-check', {
-        id: uuidv4(),
-        totalChecked,
-        workingCount,
-        timeoutSetting: timeout,
-        protocols: enabledProtocols,
-        avgTimeout,
-        items: working,
-        inBlacklists: result.inBlacklists,
-    }).catch(err => console.error('Failed to save check to history:', err));
 
     trackScreen('Results');
     trackAction('proxy_check_completed', {
@@ -184,14 +201,6 @@ export const toggleBlacklist = title => ({
 export const toggleAnon = e => ({
     type: RESULT_TOGGLE_ANON,
     anon: e.target.name
-});
-
-export const toggleCountries = () => ({
-    type: RESULT_TOGGLE_COUNTRIES
-});
-
-export const closeCountries = () => ({
-    type: RESULT_CLOSE_COUNTRIES
 });
 
 export const toggleProtocol = e => ({
@@ -255,4 +264,9 @@ export const changeExportType = e => ({
 export const changeExportAuthType = e => ({
     type: RESULT_EXPORT_CHANGE_AUTH_TYPE,
     value: e.target.value
+});
+
+export const toggleHideStatus = status => ({
+    type: RESULT_TOGGLE_HIDE_STATUS,
+    status,
 });

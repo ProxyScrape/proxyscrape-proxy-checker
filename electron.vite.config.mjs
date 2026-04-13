@@ -28,7 +28,12 @@ if (isBuild) {
   }
 }
 
-const rendererDefine = {}
+const rendererDefine = {
+  // Replace process.env references in shared files so the renderer never accesses
+  // the Node.js `process` global, which is not defined in a browser context.
+  'process.env.NODE_ENV': JSON.stringify(isBuild ? 'production' : 'development'),
+  'process.env.PORTABLE_EXECUTABLE_DIR': 'undefined',
+}
 REQUIRED_ENV.forEach(key => {
   rendererDefine[`__${key}__`] = JSON.stringify(process.env[key] || '')
 })
@@ -37,8 +42,7 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        input: path.resolve(__dirname, 'src/main/index.js'),
-        external: ['better-sqlite3']
+        input: path.resolve(__dirname, 'src/main/index.js')
       }
     },
     resolve: {
@@ -69,7 +73,10 @@ export default defineConfig({
     resolve: {
       alias: {
         '@shared': path.resolve(__dirname, 'src/shared'),
-        'axios': path.resolve(__dirname, 'node_modules/axios/dist/node/axios.cjs')
+        // Route `import { ipcRenderer } from 'electron'` to the contextBridge shim.
+        // The alias takes priority over electronRendererPlugin's virtual module.
+        // The plugin still runs to polyfill Node built-ins (fs, path, etc.).
+        'electron': path.resolve(__dirname, 'src/renderer/electron-shim.js'),
       }
     }
   }

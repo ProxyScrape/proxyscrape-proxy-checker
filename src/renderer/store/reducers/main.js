@@ -1,16 +1,5 @@
-import { initial } from '../../core/settings';
-import { MAIN_SET_STATS } from '../../constants/ActionTypes';
+import { MERGED_DEFAULT_SETTINGS } from '../../constants/SettingsConstants';
 
-const main = (state = initial.main, action) => {
-    switch (action.type) {
-        case MAIN_SET_STATS:
-            return {
-                ...state,
-                stats: action.stats
-            };
-        default:
-            return state;
-    }
-};
+const main = (state = MERGED_DEFAULT_SETTINGS.main) => state;
 
 export default main;

@@ -1,7 +1,7 @@
 {
     "name": "proxyscrape-proxy-checker",
     "version": "1.1.0",
-    "main": "./out/main/index.js",
+    "main": "./dist/main/index.js",
     "license": "MIT",
     "author": {
         "name": "ProxyScrape",
@@ -22,9 +22,15 @@
     },
     "homepage": "https://proxyscrape.com/proxy-checker",
     "scripts": {
-        "dev": "electron-vite dev",
-        "build": "electron-vite build",
-        "start": "electron-vite preview",
+        "dev": "electron-vite dev --outDir dist",
+        "dev:web": "vite --config vite.web.config.mjs",
+        "dev:web:all": "concurrently --names \"go,vite\" --prefix-colors \"cyan,magenta\" \"cd backend && air\" \"vite --config vite.web.config.mjs\"",
+        "build": "npm run build:backend && electron-vite build --outDir dist",
+        "build:backend": "bash scripts/build-backend.sh",
+        "build:webserver": "bash scripts/build-webserver.sh",
+        "build:renderer": "electron-vite build --outDir dist",
+        "start": "electron-vite preview --outDir dist",
+        "dist": "npm run build && electron-builder",
         "package": "npm run build && electron-builder --win",
         "package-mac": "npm run build && electron-builder --mac",
         "package-linux": "npm run build && electron-builder --linux",
@@ -42,13 +48,12 @@
         "@mui/material": "^9.0.0",
         "@vitejs/plugin-react": "^4.3.0",
         "axios": "^1.2.0",
+        "concurrently": "^9.2.1",
         "electron": "^41.1.0",
         "electron-builder": "^26.8.2",
         "electron-updater": "^6.3.0",
         "electron-vite": "^3.1.0",
         "fast-sort": "^3.4.0",
-        "ip": "^2.0.1",
-        "maxmind": "^4.3.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "react-markdown": "^9.0.0",
@@ -56,13 +61,15 @@
         "redux": "^4.2.0",
         "redux-thunk": "^2.4.1",
         "reselect": "^4.1.6",
-        "socks-proxy-agent": "^8.0.5",
-        "uuid": "^9.0.0",
         "vite-plugin-electron-renderer": "^0.14.6"
     },
     "build": {
         "mac": {
             "icon": "./public/icons/icon.icns",
+            "binaries": [
+                "bin/checker-darwin-arm64",
+                "bin/checker-darwin-x64"
+            ],
             "target": [
                 {
                     "target": "dmg",
@@ -127,7 +134,23 @@
         "productName": "ProxyScrape Proxy Checker",
         "copyright": "ProxyScrape",
         "extraResources": [
-            "./files/**"
+            "./files/**",
+            {
+                "from": "bin/checker-darwin-arm64",
+                "to": "bin/checker-darwin-arm64"
+            },
+            {
+                "from": "bin/checker-darwin-x64",
+                "to": "bin/checker-darwin-x64"
+            },
+            {
+                "from": "bin/checker-win-x64.exe",
+                "to": "bin/checker-win-x64.exe"
+            },
+            {
+                "from": "bin/checker-linux-x64",
+                "to": "bin/checker-linux-x64"
+            }
         ],
         "portable": {
             "artifactName": "${name}-v${version}-${arch}-${os}-portable.${ext}"
@@ -142,7 +165,6 @@
     "dependencies": {
         "@intercom/messenger-js-sdk": "^0.0.19",
         "@posthog/react": "^1.9.0",
-        "better-sqlite3": "^12.8.0",
         "posthog-js": "^1.367.0"
     }
 }

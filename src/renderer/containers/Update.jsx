@@ -8,7 +8,7 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import LinearProgress from '@mui/material/LinearProgress';
 import { alpha } from '@mui/material/styles';
-import { PAGE_BACKGROUND } from '../theme/palette';
+import { PAGE_BACKGROUND, blueBrand } from '../theme/palette';
 
 class Update extends React.PureComponent {
     constructor(props) {
@@ -57,7 +57,7 @@ class Update extends React.PureComponent {
                                 onClick={openLink}
                                 href={portableAsset.browser_download_url}
                                 sx={{
-                                    color: 'primary.main',
+                                    color: blueBrand[300],
                                     fontWeight: 600,
                                     fontSize: '1.1rem',
                                     textDecoration: 'none',

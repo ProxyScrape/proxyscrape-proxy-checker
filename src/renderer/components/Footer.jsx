@@ -3,14 +3,14 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import { alpha } from '@mui/material/styles';
-import { currentVersion } from '../core/updater';
+import { version as currentVersion } from '../../../package.json';
 import { openLink, psUrl } from '../misc/other';
 import GitIcon from '../components/ui/GitIcon';
 import DocIcon from '../components/ui/DocIcon';
 import LicenseIcon from '../components/ui/LicenseIcon';
 import SupportIcon from '../components/ui/SupportIcon';
 import WhiteLogo from "../../../public/icons/Logo-ProxyScrape-white.png";
-import { FOOTER_BACKGROUND } from '../theme/palette';
+import { FOOTER_BACKGROUND, blueBrand } from '../theme/palette';
 import { openIntercom } from '../misc/intercom';
 
 const footerLinkSx = {
@@ -26,7 +26,7 @@ const footerLinkSx = {
     '& svg': { width: 14, height: 14, fill: 'currentColor' },
 };
 
-const Footer = ({ toggleModal }) => (
+const Footer = ({ toggleModal, closeDrawer }) => (
     <Box
         component="footer"
         sx={{
@@ -56,7 +56,7 @@ const Footer = ({ toggleModal }) => (
                 <LicenseIcon />
                 <span>License</span>
             </Box>
-            <Box component="a" href="#" title="Live Support" onClick={(e) => { e.preventDefault(); openIntercom(); }} sx={footerLinkSx}>
+            <Box component="a" href="#" title="Live Support" onClick={(e) => { e.preventDefault(); if (closeDrawer) closeDrawer(); openIntercom(); }} sx={footerLinkSx}>
                 <SupportIcon />
                 <span>Support</span>
             </Box>
@@ -75,7 +75,7 @@ const Footer = ({ toggleModal }) => (
                 href={psUrl('/premium', 'premium-upsell')}
                 onClick={openLink}
                 sx={{
-                    color: 'primary.main',
+                    color: blueBrand[300],
                     textDecoration: 'none',
                     fontWeight: 600,
                     fontSize: '0.75rem',

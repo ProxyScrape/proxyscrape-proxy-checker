@@ -1,22 +1,29 @@
 import findMixedProxies from '../misc/FindMixedProxies.js';
-import { readFile } from 'fs/promises';
-import { ipcRenderer } from 'electron';
+import { chooseMultiTxtFiles } from '../misc/filePicker';
 import { uniq } from '../misc/array';
 import { trackAction } from '../misc/analytics';
-import { INPUT_SET_LOADED_FILE_DATA } from '../constants/ActionTypes';
-import { parse, join } from 'path';
+import { INPUT_SET_LOADED_FILE_DATA, INPUT_CLEAR } from '../constants/ActionTypes';
+const getDownloadsPath = () => window.__ELECTRON__?.getDownloadsPath() ?? Promise.resolve('');
 
-const getDownloadsPath = () => ipcRenderer.sendSync('getDownloadsPath');
+/** Extract the filename from a native path without importing Node's `path` module. */
+const pathBasename = (p) => (p ? p.replace(/^.*[\\/]/, '') : '');
 
-const getFilePath = (file) => {
-    const electron = globalThis['requi' + 're']('electron');
-    return electron.webUtils.getPathForFile(file);
+/** Join two path segments without importing Node's `path` module. */
+const pathJoin = (a, b) => {
+    const sep = a && a.includes('\\') ? '\\' : '/';
+    return (a || '').replace(/[/\\]$/, '') + sep + b;
 };
+
+// webUtils.getPathForFile must be called from the preload (Electron 32+ removed
+// File.path from the renderer). The preload exposes it via contextBridge.
+const getFilePath = (file) => window.__ELECTRON__?.getPathForFile(file) ?? '';
 
 export const setLoadedData = nextState => ({
     type: INPUT_SET_LOADED_FILE_DATA,
     nextState
 });
+
+export const clearInput = () => ({ type: INPUT_CLEAR });
 
 const getResult = (text, event, getState) => {
     try {
@@ -60,15 +67,15 @@ const getResult = (text, event, getState) => {
 export const loadFromTxt = event => async (dispatch, getState) => {
  
     try {
-        const paths = await ipcRenderer.invoke('choose-multi');
+        const fileEntries = await chooseMultiTxtFiles();
 
-        if (paths) {
+        if (fileEntries && fileEntries.length) {
             let filesText = '';
             const names = [];
 
-            for await (const path of paths) {
-                filesText += await readFile(path, 'utf8');
-                names.push(parse(path).base);
+            for (const entry of fileEntries) {
+                filesText += entry.text;
+                names.push(entry.name);
             }
 
             const { list, errors, total, unique, size } = getResult(filesText, event, getState);
@@ -102,10 +109,10 @@ export const checkProxy = event => async (dispatch, getState) => {
         if (event.target.dataset.file != "") {
             let filesText = '';
             const names = [];
-            let path = join(getDownloadsPath(), event.target.dataset.file);
+            let filePath = pathJoin(await getDownloadsPath(), event.target.dataset.file);
 
-            filesText = await readFile(path, 'utf8');
-            names.push(parse(path).base);
+            filesText = await window.__ELECTRON__.readFile(filePath);
+            names.push(pathBasename(filePath));
         
 
             const { list, errors, total, unique, size } = getResult(filesText, event, getState);
@@ -152,8 +159,8 @@ export const onFileDrop = event => async (dispatch, getState) => {
 
                 for await (const file of event.dataTransfer.files) {
                     const filePath = getFilePath(file);
-                    filesText += await readFile(filePath, 'utf8');
-                    names.push(parse(filePath).base);
+                    filesText += await window.__ELECTRON__.readFile(filePath);
+                    names.push(pathBasename(filePath));
                 }
 
                 const { list, errors, total, unique, size } = getResult(filesText, event, getState);

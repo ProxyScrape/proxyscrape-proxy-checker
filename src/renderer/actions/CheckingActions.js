@@ -1,27 +1,35 @@
-import Core from '../core';
-import Judges from '../core/judges';
+import { apiFetch, openCheckStream } from '../api/client';
 import { wait } from '../misc/wait';
-import { shuffle } from '../misc/array';
-import { isURL, isIP, isPath } from '../misc/regexes';
-import { IpLookup } from './OverlayIpActions';
-import Blacklist from '../core/blacklist';
+import { isIP } from '../misc/regexes';
 import { trackAction } from '../misc/analytics';
-import { CHECKING_UP_COUNTER_STATUS, CHECKING_OPEN, CHECKING_OTHER_CHANGES } from '../constants/ActionTypes';
+import { CHECKING_UP_COUNTER_STATUS, CHECKING_OPEN, CHECKING_OTHER_CHANGES, CORE_SET_PROTOCOL_WARNING } from '../constants/ActionTypes';
+import { showResult, mapResultItem } from './ResultActions';
+import { pingJudgesWithOverlay } from './OverlayJudgesActions';
+
+let currentCheckId = null;
+let closeCurrentStream = null;
+let resolveProtocolWarning = null;
+
+export const respondToProtocolWarning = choice => dispatch => {
+    dispatch({ type: CORE_SET_PROTOCOL_WARNING, warning: { open: false } });
+    if (resolveProtocolWarning) {
+        resolveProtocolWarning(choice);
+        resolveProtocolWarning = null;
+    }
+};
 
 const validateJudges = (judges, targetProtocols) => {
-    if (targetProtocols.includes('https') && !judges.some(({ url }) => url.match(/https:\/\//))) {
-        throw new Error('You have no judges for HTTPS');
-    }
-
-    if (targetProtocols.some(protocol => ['http'].includes(protocol)) && !judges.some(({ url }) => !url.match(/https:\/\//))) {
-        throw new Error('You have no judges for HTTP');
+    if (targetProtocols.some(protocol => ['http', 'https'].includes(protocol)) && !judges.some(({ url }) => !url.match(/https:\/\//))) {
+        throw new Error('You have no judges for HTTP/HTTPS');
     }
 
     if (judges.filter(({ active }) => active).length == 0) {
         throw new Error('You have no active judges');
     }
 
-    if (judges.every(({ url }) => isURL(url))) {
+    if (judges.every(({ url }) => {
+        try { new URL(url); return true; } catch { return false; }
+    })) {
         return true;
     }
 
@@ -29,7 +37,8 @@ const validateJudges = (judges, targetProtocols) => {
 };
 
 const validateBlacklist = items => {
-    if (items.every(({ path }) => isURL(path) || isPath(path))) {
+    const urlOrPath = /^(https?:\/\/.+)|(\/.+)|([A-Za-z]:\\.+)$/;
+    if (items.every(({ path }) => urlOrPath.test(path))) {
         return true;
     }
 
@@ -54,44 +63,161 @@ const transformProtocols = protocols => {
     throw new Error('Select protocols');
 };
 
+const getUniqueListProtocols = list =>
+    [...new Set(list.map(p => p.protocol).filter(Boolean))];
+
+const showProtocolWarning = (dispatch, listProtocols, selectedProtocols) =>
+    new Promise(resolve => {
+        resolveProtocolWarning = resolve;
+        dispatch({
+            type: CORE_SET_PROTOCOL_WARNING,
+            warning: { open: true, listProtocols, selectedProtocols },
+        });
+    });
+
 export const start = () => async (dispatch, getState) => {
     try {
         const { core, judges, blacklist, ip, input, checking, overlay } = getState();
 
-        if (overlay.judges.locked || overlay.ip.locked || checking.isOpened) {
+        if (checking.opened || overlay.judges.locked) {
             return;
         }
 
-        const protocols = transformProtocols(core.protocols);
+        const selectedProtocols = transformProtocols(core.protocols);
         const activeJudges = judges.items.filter(item => item.active);
 
         validateInput(input.list);
+
+        // Determine effective per-proxy protocol mode.
+        // When overrideProtocols is true, ignore declared protocols and use the
+        // selected ones uniformly (legacy behaviour).
+        // When false (default), honour the protocol declared in each import line.
+        const listProtocols = getUniqueListProtocols(input.list);
+        let useListProtocols = !core.overrideProtocols && listProtocols.length > 0;
+
+        if (useListProtocols) {
+            const mismatched = listProtocols.filter(p => !selectedProtocols.includes(p));
+            if (mismatched.length > 0) {
+                const choice = await showProtocolWarning(dispatch, listProtocols, selectedProtocols);
+                if (choice === 'cancel') {
+                    return;
+                }
+                if (choice === 'override') {
+                    useListProtocols = false;
+                }
+            }
+        }
+
+        // Collect the full set of protocols we actually need judges for.
+        const protocols = useListProtocols
+            ? [...new Set([...listProtocols, ...selectedProtocols])]
+            : selectedProtocols;
+
         validateJudges(activeJudges, protocols);
 
         if (blacklist.filter) {
             validateBlacklist(blacklist.items);
         }
 
-        const proxyList = core.shuffle ? shuffle([...input.list]) : [...input.list];
-        const initBlacklist = blacklist.filter ? await new Blacklist(blacklist.items) : false;
-        const initJudges = await new Judges({ swap: judges.swap, items: activeJudges }, protocols);
-
-        if (!initJudges) return;
+        // Show the judge ping overlay, ping all judges, then proceed only if
+        // required judge types are reachable for the selected protocols.
+        const judgesOk = await dispatch(pingJudgesWithOverlay(protocols));
+        if (!judgesOk) {
+            throw new Error('No working judges found for the selected protocols. Check the Judges tab for details.');
+        }
 
         trackAction('proxy_check_started', {
-            proxy_count: proxyList.length,
+            proxy_count: input.list.length,
             protocols: protocols.join(','),
             threads: core.threads,
             timeout: core.timeout,
         });
 
-        const chainCheck = ip => Core.start(proxyList, core, initJudges, protocols, ip, initBlacklist);
+        const payload = {
+            proxies: input.list.map(p => ({
+                host: p.host,
+                port: parseInt(p.port),
+                auth: p.auth || 'none',
+                protocol: useListProtocols ? (p.protocol || '') : '',
+            })),
+            protocols,
+            threads: core.threads,
+            timeout: core.timeout,
+            retries: core.retries,
+            judgeUrls: activeJudges.map(j => ({ url: j.url, validate: j.validate, active: j.active })),
+            blacklistSources: blacklist.filter ? blacklist.items : [],
+            myIP: isIP(ip.current) ? ip.current : null,
+            keepAlive: core.keepAlive,
+            captureServer: core.captureServer,
+            captureTrace: core.captureTrace,
+            localDns: core.localDns,
+            captureFullData: core.captureFullData,
+            shuffle: core.shuffle,
+        };
 
-        if (isIP(ip.current)) {
-            chainCheck(ip.current);
-        } else {
-            dispatch(IpLookup(chainCheck));
-        }
+        const data = await apiFetch('/api/check', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+
+        currentCheckId = data.id;
+
+        dispatch(openChecking({ all: input.list.length, done: 0, protocols: {} }));
+
+        const bufferedResults = [];
+
+        const buildInBlacklists = items => {
+            const seen = {};
+            const list = [];
+            items.forEach(item => {
+                if (Array.isArray(item.blacklist)) {
+                    item.blacklist.forEach(bl => {
+                        if (!seen[bl]) {
+                            seen[bl] = true;
+                            list.push({ title: bl, active: true });
+                        }
+                    });
+                }
+            });
+            return list;
+        };
+
+        const finalise = () => {
+            if (closeCurrentStream) {
+                closeCurrentStream();
+                closeCurrentStream = null;
+            }
+            currentCheckId = null;
+        };
+
+        const displayResults = () => {
+            finalise();
+            dispatch(showResult({
+                items: bufferedResults,
+                inBlacklists: buildInBlacklists(bufferedResults),
+            }));
+        };
+
+        closeCurrentStream = openCheckStream(currentCheckId, {
+            onResult: event => {
+                bufferedResults.push(mapResultItem(event));
+            },
+            onProgress: event => {
+                dispatch(upCounterStatus({
+                    all: event.total,
+                    done: event.done,
+                    working: event.working,
+                    threads: event.threads,
+                    protocols: {},
+                }));
+            },
+            // All proxies were checked — natural finish.
+            onComplete: displayResults,
+            // User cancelled the run mid-way via the Stop button.
+            onStopped: displayResults,
+            // Backend sent an SSE error frame (e.g. store read failed); show whatever was collected.
+            onBackendError: displayResults,
+        });
     } catch (error) {
         alert(error);
     }
@@ -109,15 +235,15 @@ export const stop = () => async (dispatch, getState) => {
         total_proxies: checking.counter.all,
     });
 
-    dispatch(
-        otherChanges({
-            preparing: true
-        })
-    );
+    dispatch(otherChanges({ preparing: true }));
 
-    await wait(300);
-
-    Core.stop();
+    if (currentCheckId) {
+        try {
+            await apiFetch('/api/check/' + currentCheckId, { method: 'DELETE' });
+        } catch {
+            // SSE onStopped will handle cleanup regardless
+        }
+    }
 };
 
 export const otherChanges = state => ({

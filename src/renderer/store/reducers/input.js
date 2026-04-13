@@ -1,4 +1,4 @@
-import { INPUT_SET_LOADED_FILE_DATA } from '../../constants/ActionTypes';
+import { INPUT_SET_LOADED_FILE_DATA, INPUT_CLEAR } from '../../constants/ActionTypes';
 
 const initial = {
     loaded: false,
@@ -6,7 +6,8 @@ const initial = {
     errors: [],
     total: 0,
     unique: 0,
-    name: ''
+    name: '',
+    size: 0,
 };
 
 const input = (state = initial, action) => {
@@ -16,6 +17,8 @@ const input = (state = initial, action) => {
                 ...state,
                 ...action.nextState
             };
+        case INPUT_CLEAR:
+            return initial;
         default:
             return state;
     }

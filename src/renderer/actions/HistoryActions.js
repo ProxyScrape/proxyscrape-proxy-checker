@@ -1,23 +1,31 @@
-import { ipcRenderer } from 'electron';
-import { HISTORY_SET_CHECKS, HISTORY_SET_LOADING, HISTORY_REMOVE_CHECK, RESULT_SHOW } from '../constants/ActionTypes';
+import { apiFetch } from '../api/client';
+import { HISTORY_SET_CHECKS, HISTORY_SET_LOADING, HISTORY_REMOVE_CHECK, HISTORY_CLEAR, RESULT_SHOW } from '../constants/ActionTypes';
+import { mapResultItem } from './ResultActions';
 
 export const loadHistory = () => async (dispatch) => {
     dispatch({ type: HISTORY_SET_LOADING });
-    const checks = await ipcRenderer.invoke('db-get-checks');
-    dispatch({ type: HISTORY_SET_CHECKS, checks: checks || [] });
+    try {
+        const checks = await apiFetch('/api/checks');
+        dispatch({ type: HISTORY_SET_CHECKS, checks: checks || [] });
+    } catch {
+        dispatch({ type: HISTORY_SET_CHECKS, checks: [] });
+    }
 };
 
 export const viewPastCheck = (checkId) => async (dispatch) => {
-    const data = await ipcRenderer.invoke('db-get-check-results', checkId);
-    if (!data) return;
+    const data = await apiFetch('/api/checks/' + checkId + '/results?page=1&limit=1000');
+    if (!data || !data.items) return;
+
+    const items = data.items.map(mapResultItem);
 
     const countries = {};
-    data.items.forEach(item => {
-        if (item.country && item.country.name) {
-            if (!countries[item.country.name]) {
-                countries[item.country.name] = { count: 0, flag: item.country.flag };
+    items.forEach(item => {
+        const countryName = item.country && item.country.name ? item.country.name : null;
+        if (countryName) {
+            if (!countries[countryName]) {
+                countries[countryName] = { count: 0, flag: item.country.flag || '' };
             }
-            countries[item.country.name].count++;
+            countries[countryName].count++;
         }
     });
 
@@ -27,9 +35,10 @@ export const viewPastCheck = (checkId) => async (dispatch) => {
 
     const inBlacklists = [];
     const seenBlacklists = {};
-    data.items.forEach(item => {
-        if (item.blacklists && Array.isArray(item.blacklists)) {
-            item.blacklists.forEach(bl => {
+    items.forEach(item => {
+        const bls = item.blacklist;
+        if (Array.isArray(bls)) {
+            bls.forEach(bl => {
                 const title = typeof bl === 'string' ? bl : bl.title;
                 if (title && !seenBlacklists[title]) {
                     seenBlacklists[title] = true;
@@ -41,16 +50,27 @@ export const viewPastCheck = (checkId) => async (dispatch) => {
 
     dispatch({
         type: RESULT_SHOW,
-        items: data.items,
+        items,
         countries: countryList,
         inBlacklists,
-        timeout: data.timeoutSetting,
+        timeout: 0,
     });
 };
 
 export const deleteHistoryCheck = (checkId) => async (dispatch) => {
-    const success = await ipcRenderer.invoke('db-delete-check', checkId);
-    if (success) {
+    try {
+        await apiFetch('/api/checks/' + checkId, { method: 'DELETE' });
         dispatch({ type: HISTORY_REMOVE_CHECK, id: checkId });
+    } catch {
+        // deletion failed silently — item remains in list
+    }
+};
+
+export const clearHistory = () => async (dispatch) => {
+    try {
+        await apiFetch('/api/checks', { method: 'DELETE' });
+        dispatch({ type: HISTORY_CLEAR });
+    } catch {
+        // clear failed silently
     }
 };

@@ -1,0 +1,11 @@
+[Unit]
+Description=ProxyScrape Proxy Checker
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/checker serve --mode=server --port=8080 --data-dir=/var/lib/checker
+Restart=always
+User=checker
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,30 @@
+# Air — Go live-reload for web server mode dev.
+# https://github.com/air-verse/air
+#
+# Install:  go install github.com/air-verse/air@latest
+# Usage:    cd backend && air -- serve --mode=server --port=8080
+
+root = "."
+tmp_dir = ".air_tmp"
+
+[build]
+  cmd        = "go build -o .air_tmp/checker ./cmd/checker"
+  bin        = ".air_tmp/checker"
+  full_bin   = ".air_tmp/checker serve --mode=server --port=8080"
+  include_ext = ["go", "toml"]
+  exclude_dir = [".air_tmp", "vendor"]
+  delay      = 500      # ms after a change before rebuilding
+  kill_delay = "200ms"
+  rerun      = false
+
+[log]
+  time = false
+
+[color]
+  main    = "magenta"
+  watcher = "cyan"
+  build   = "yellow"
+  runner  = "green"
+
+[misc]
+  clean_on_exit = true

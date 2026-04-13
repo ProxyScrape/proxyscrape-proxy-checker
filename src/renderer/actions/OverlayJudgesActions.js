@@ -1,4 +1,5 @@
-import { OVERLAY_JUDGES_CHANGE_STATE, OVERLAY_JUDGE_CHANGE_PING_STATE } from '../constants/ActionTypes';
+import { OVERLAY_JUDGES_CHANGE_STATE, OVERLAY_JUDGE_CHANGE_PING_STATE, JUDGES_SET_STATUSES } from '../constants/ActionTypes';
+import { apiFetch } from '../api/client';
 
 export const changeState = state => ({
     type: OVERLAY_JUDGES_CHANGE_STATE,
@@ -24,3 +25,65 @@ export const changeJudgePingState = (url, state) => ({
     url,
     state
 });
+
+/**
+ * Shows the judge ping overlay, pings all active judges via the backend,
+ * updates each judge's result in the overlay, then dismisses it.
+ * Returns true if required judge types are reachable for the given protocols.
+ */
+export const pingJudgesWithOverlay = protocols => async (dispatch, getState) => {
+    const { judges } = getState();
+    const activeJudges = judges.items.filter(item => item.active);
+
+    // Show overlay — all judges start in "checking" (spinner) state
+    dispatch(changeState({
+        isActive: true,
+        locked: true,
+        items: activeJudges.map(item => ({
+            url: item.url,
+            state: { checking: true, working: false, timeout: 0 },
+        })),
+    }));
+
+    let statusMap = {};
+    try {
+        const statuses = await apiFetch('/api/judges/refresh', { method: 'POST' });
+        if (Array.isArray(statuses)) {
+            statuses.forEach(s => { statusMap[s.url] = s; });
+        }
+    } catch {
+        // leave all judges showing as failed
+    }
+
+    // Update each judge row in the overlay with its result
+    activeJudges.forEach(judge => {
+        const s = statusMap[judge.url];
+        dispatch(changeJudgePingState(judge.url, {
+            state: {
+                checking: false,
+                working: s ? s.alive : false,
+                timeout: s ? s.timeoutMs : 0,
+            },
+        }));
+    });
+
+    // Sync results into the Judges tab status dots too
+    dispatch({ type: JUDGES_SET_STATUSES, statuses: statusMap });
+
+    // Hold results visible briefly so the user can read them
+    await new Promise(r => setTimeout(r, 1500));
+
+    dispatch(changeState({ isActive: false, locked: false }));
+
+    const needsSSL = protocols.includes('https');
+    const needsHTTP = protocols.includes('http');
+    const needsSocks = protocols.some(p => p === 'socks4' || p === 'socks5');
+    const hasSSL = Object.values(statusMap).some(s => s.isSSL && s.alive);
+    const hasHTTP = Object.values(statusMap).some(s => !s.isSSL && s.alive);
+    const hasAny = hasSSL || hasHTTP;
+
+    if (needsSSL && !hasSSL) return false;
+    if (needsHTTP && !hasHTTP) return false;
+    if (needsSocks && !hasAny) return false;
+    return true;
+};

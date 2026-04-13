@@ -12,16 +12,16 @@ import Footer from '../components/Footer';
 import Info from '../components/Info';
 import LicenseModal from '../components/LicenseModal';
 import Notification from '../components/Notification';
+import ProtocolWarningDialog from '../components/ProtocolWarningDialog';
 import Result from './Result';
 import History from '../components/History';
 import Titlebar from './Titlebar';
 import { checkProxy } from '../actions/InputActions';
-import { close as closeResult, closeCountries } from '../actions/ResultActions';
+import { close as closeResult } from '../actions/ResultActions';
+import { openDrawer, closeDrawer } from '../actions/UIActions';
 import { trackScreen } from '../misc/analytics';
 import { ipcRenderer } from 'electron';
-import fs from "fs";
-
-const TITLEBAR_HEIGHT = 38;
+import { TITLEBAR_HEIGHT } from '../constants/Layout';
 const TAB_SCREENS = ['Core', 'Judges', 'Ip', 'Blacklist', 'History'];
 
 class Main extends React.PureComponent {
@@ -29,7 +29,6 @@ class Main extends React.PureComponent {
     constructor(props) {
         super(props);
         this.state = {
-            showInfo: false,
             showModal: false,
             showNotify: false,
             fileName: "",
@@ -40,13 +39,12 @@ class Main extends React.PureComponent {
     }
 
     toggleInfo = () => {
-        const willOpen = !this.state.showInfo;
-        if (willOpen && this.props.countriesActive) {
-            this.props.closeCountries();
+        if (this.props.infoActive) {
+            this.props.closeDrawer();
+        } else {
+            this.props.openDrawer('info');
         }
-        this.setState({ showInfo: willOpen });
     };
-    closeInfo = () => this.setState({ showInfo: false });
     toggleModal = () => this.setState({ showModal: !this.state.showModal });
     toggleNotify = () => this.setState({ showNotify: !this.state.showNotify });
     disable = () => this.setState({ disableNotify: !this.state.disableNotify });
@@ -58,22 +56,15 @@ class Main extends React.PureComponent {
         trackScreen(TAB_SCREENS[v] || 'Core');
     };
 
-    DirectoryCheck = (t = this) => {
-        let folder = ipcRenderer.sendSync('getDownloadsPath');
-
-        let watcher = fs.watch(folder, { persistent: true }, function (event, fileName) {
-            if(event == "change") {
-                let file = fileName.split('.');
-                if(file[file.length-1] == 'txt') {
-                    if(t.state.disableNotify)
-                        watcher.close();
-
-                    t.setState({
-                        showNotify: true,
-                        fileName: fileName
-                    });
-                }
+    DirectoryCheck = () => {
+        if (!window.__ELECTRON__) return;
+        window.__ELECTRON__.watchDownloads();
+        window.__ELECTRON__.onDownloadsChanged((fileName) => {
+            if (this.state.disableNotify) {
+                window.__ELECTRON__.unwatchDownloads();
+                return;
             }
+            this.setState({ showNotify: true, fileName });
         });
     }
 
@@ -86,6 +77,11 @@ class Main extends React.PureComponent {
                     <MuiTabs
                         value={this.state.tabIndex}
                         onChange={this.setTabIndex}
+                        onClick={() => {
+                            if (this.props.resultIsOpened) {
+                                this.props.closeResult();
+                            }
+                        }}
                         sx={{
                             minHeight: TITLEBAR_HEIGHT,
                             height: TITLEBAR_HEIGHT,
@@ -125,14 +121,15 @@ class Main extends React.PureComponent {
                             <History visible={this.state.tabIndex === 4} />
                         </Box>
                     </Box>
-                    <Info show={this.state.showInfo} releases={releases} toggleInfo={this.toggleInfo}/>
+                    <Info show={this.props.infoActive} releases={releases} toggleInfo={this.toggleInfo}/>
                     <LicenseModal show={this.state.showModal} toggleModal={this.toggleModal}/>
-                    <Result closeInfo={this.closeInfo} />
+                    <Result />
                     <Checking />
                     <Overlay />
                     <Update />
                     <Notification fileName={this.state.fileName} show={this.state.showNotify} toggleNotify={this.toggleNotify} checkProxy={checkProxy} disable={this.disable}/>
-                    <Footer toggleModal={this.toggleModal}/>
+                    <ProtocolWarningDialog />
+                    <Footer toggleModal={this.toggleModal} closeDrawer={this.props.closeDrawer}/>
                 </Box>
             </>
         );
@@ -142,13 +139,14 @@ class Main extends React.PureComponent {
 const mapStateToProps = state => ({
     releases: state.update.releases,
     resultIsOpened: state.result.isOpened,
-    countriesActive: state.result.countries.active
+    infoActive: state.ui.activeDrawer === 'info',
 });
 
 const mapDispatchToProps = {
     checkProxy,
     closeResult,
-    closeCountries
+    openDrawer,
+    closeDrawer,
 };
 
 export default connect(

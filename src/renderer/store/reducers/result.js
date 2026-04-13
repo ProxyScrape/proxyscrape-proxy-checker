@@ -1,4 +1,4 @@
-import { initial } from '../../core/settings';
+import { MERGED_DEFAULT_SETTINGS } from '../../constants/SettingsConstants';
 import {
     RESULT_SHOW,
     RESULT_TOGGLE_ANON,
@@ -9,19 +9,25 @@ import {
     RESULT_LOAD_MORE,
     RESULT_CLOSE,
     RESULT_TOGGLE_BLACKLIST,
-    RESULT_TOGGLE_COUNTRIES,
-    RESULT_CLOSE_COUNTRIES,
     RESULT_SET_MAX_TIMEOUT,
     RESULT_CHANGE_PORTS_INPUT,
     RESULT_SET_PORTS_ALLOW,
     RESULT_SORT,
     RESULT_EXPORT_TOGGLE,
     RESULT_EXPORT_CHANGE_TYPE,
-    RESULT_EXPORT_CHANGE_AUTH_TYPE
+    RESULT_EXPORT_CHANGE_AUTH_TYPE,
+    RESULT_TOGGLE_HIDE_STATUS,
+    SETTINGS_LOAD
 } from '../../constants/ActionTypes';
+
+// See PERSISTED_CORE_FIELDS in core.js for the persistence contract.
+// These fields live under result.exporting in Redux but are saved under the top-level
+// "exporting" key in settings.json.
+export const PERSISTED_EXPORTING_FIELDS = ['type', 'authType'];
 
 const initialState = {
     isOpened: false,
+    hiddenStatuses: ['cancelled'],
     items: [],
     misc: {
         onlyKeepAlive: false
@@ -33,7 +39,6 @@ const initialState = {
     },
     inBlacklists: [],
     countries: {
-        active: false,
         items: []
     },
     sorting: {
@@ -57,24 +62,46 @@ const initialState = {
         active: false,
         authType: 1,
         type: 1,
-        ...initial.exporting
+        ...MERGED_DEFAULT_SETTINGS.exporting
     }
 };
 
 const result = (state = initialState, action) => {
     switch (action.type) {
+        case SETTINGS_LOAD:
+            if (action.settings && action.settings.exporting) {
+                return {
+                    ...state,
+                    exporting: { ...state.exporting, ...action.settings.exporting },
+                };
+            }
+            return state;
         case RESULT_SHOW:
+            // Reset filters/search/ports from a previous run so a new result set (including history replay) is fully visible.
             return {
-                ...state,
+                ...initialState,
                 isOpened: true,
+                hiddenStatuses: ['cancelled'],
                 items: action.items,
                 countries: {
-                    active: state.countries.active,
+                    active: false,
                     items: action.countries
                 },
                 inBlacklists: action.inBlacklists,
-                timeout: action.timeout
+                timeout: action.timeout,
+                exporting: state.exporting,
             };
+        case RESULT_TOGGLE_HIDE_STATUS: {
+            const { status } = action;
+            const current = state.hiddenStatuses || [];
+            return {
+                ...state,
+                countOfResults: 25,
+                hiddenStatuses: current.includes(status)
+                    ? current.filter(s => s !== status)
+                    : [...current, status],
+            };
+        }
         case RESULT_CHANGE_PORTS_INPUT:
             return {
                 ...state,
@@ -126,7 +153,7 @@ const result = (state = initialState, action) => {
                     ...state,
                     countOfResults: 25,
                     countries: {
-                        active: state.countries.active,
+                        ...state.countries,
                         items: state.countries.items.map(item => {
                             return {
                                 ...item,
@@ -141,7 +168,7 @@ const result = (state = initialState, action) => {
                 ...state,
                 countOfResults: 25,
                 countries: {
-                    active: state.countries.active,
+                    ...state.countries,
                     items: state.countries.items.map(item => {
                         if (item.name == action.name) {
                             return {
@@ -152,22 +179,6 @@ const result = (state = initialState, action) => {
 
                         return item;
                     })
-                }
-            };
-        case RESULT_TOGGLE_COUNTRIES:
-            return {
-                ...state,
-                countries: {
-                    ...state.countries,
-                    active: !state.countries.active
-                }
-            };
-        case RESULT_CLOSE_COUNTRIES:
-            return {
-                ...state,
-                countries: {
-                    ...state.countries,
-                    active: false
                 }
             };
         case RESULT_SET_MAX_TIMEOUT:

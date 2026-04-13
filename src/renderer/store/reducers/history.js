@@ -1,7 +1,8 @@
 import {
     HISTORY_SET_CHECKS,
     HISTORY_SET_LOADING,
-    HISTORY_REMOVE_CHECK
+    HISTORY_REMOVE_CHECK,
+    HISTORY_CLEAR,
 } from '../../constants/ActionTypes';
 
 const initialState = {
@@ -26,6 +27,11 @@ const history = (state = initialState, action) => {
             return {
                 ...state,
                 checks: state.checks.filter(c => c.id !== action.id),
+            };
+        case HISTORY_CLEAR:
+            return {
+                ...state,
+                checks: [],
             };
         default:
             return state;
