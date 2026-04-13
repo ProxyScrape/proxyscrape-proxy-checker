@@ -17,6 +17,18 @@ let isQuitting = false;
 const isMac = process.platform === 'darwin';
 
 /**
+ * Returns the directory used for all persistent app data (settings.json, checker.db).
+ * In portable mode this is beside the executable so the install stays self-contained.
+ * In normal installs it is the standard Electron userData path.
+ */
+function getDataDir() {
+    if (isPortable && process.env.PORTABLE_EXECUTABLE_DIR) {
+        return process.env.PORTABLE_EXECUTABLE_DIR;
+    }
+    return app.getPath('userData');
+}
+
+/**
  * Kills the Go backend process and its entire process group so that neither
  * `go run` nor the compiled checker binary it spawns survive as orphans.
  * On Windows falls back to a plain kill since process groups work differently.
@@ -38,9 +50,10 @@ function killGoProcess(proc) {
 function getCheckerBinaryName() {
     const platform = process.platform;
     const arch = process.arch;
-    return platform === 'win32'
-        ? 'checker-win-x64.exe'
-        : `checker-${platform === 'darwin' ? 'darwin' : 'linux'}-${arch === 'arm64' ? 'arm64' : 'x64'}`;
+    if (platform === 'win32') {
+        return arch === 'arm64' ? 'checker-win-arm64.exe' : 'checker-win-x64.exe';
+    }
+    return `checker-${platform === 'darwin' ? 'darwin' : 'linux'}-${arch === 'arm64' ? 'arm64' : 'x64'}`;
 }
 
 function getCheckerBinaryPath() {
@@ -51,9 +64,54 @@ function getCheckerBinaryPath() {
     return path.join(__dirname, '../../bin', binaryName);
 }
 
+/**
+ * One-time migration from the v1.x settings file to the v2 Go backend format.
+ *
+ * v1 wrote settings directly from JS to:  <userData>/settings.proxyscrape.checker.json
+ * v2 uses the Go backend which reads/writes: <userData>/settings.json
+ *
+ * If the new file already exists (fresh install or already migrated) this is a no-op.
+ * Runs synchronously before the Go backend starts so the backend picks up the migrated
+ * settings on its very first load. Failure is non-fatal — the backend falls back to defaults.
+ */
+function migrateSettingsIfNeeded() {
+    const dataDir = getDataDir();
+    const newPath = path.join(dataDir, 'settings.json');
+
+    // v1 portable builds stored settings beside the exe; non-portable stored in userData.
+    const oldDir = (isPortable && process.env.PORTABLE_EXECUTABLE_DIR)
+        ? process.env.PORTABLE_EXECUTABLE_DIR
+        : app.getPath('userData');
+    const oldPath = path.join(oldDir, 'settings.proxyscrape.checker.json');
+
+    if (fs.existsSync(newPath)) return; // already migrated or new install
+    if (!fs.existsSync(oldPath)) return; // no v1 settings to migrate
+
+    try {
+        const old = JSON.parse(fs.readFileSync(oldPath, 'utf8'));
+
+        const migrated = {
+            core:      old.core      || {},
+            judges:    old.judges    || {},
+            blacklist: old.blacklist || {},
+            ip: {
+                current:   '',
+                lookupUrl: (old.ip && old.ip.lookupUrl) || 'https://api.proxyscrape.com/ip.php',
+            },
+            exporting: old.exporting || {},
+            version:   '2.0.0',
+        };
+
+        fs.writeFileSync(newPath, JSON.stringify(migrated, null, 2), 'utf8');
+        console.log('[migration] v1 settings migrated to v2 format.');
+    } catch (err) {
+        console.error('[migration] Failed to migrate settings, backend will use defaults:', err.message);
+    }
+}
+
 function startGoBackend() {
     return new Promise((resolve, reject) => {
-        const dataDir = app.getPath('userData');
+        const dataDir = getDataDir();
 
         let cmd, args, opts;
         if (isDev) {
@@ -373,6 +431,8 @@ app.whenReady().then(async () => {
         }
         callback({ responseHeaders: headers });
     });
+
+    migrateSettingsIfNeeded();
 
     try {
         await startGoBackend();

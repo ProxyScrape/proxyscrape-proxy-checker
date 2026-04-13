@@ -1,6 +1,43 @@
+MIT License with Commons Clause
+
+"Commons Clause" License Condition v1.0
+
+The Software is provided to you by the Licensor under the License, as defined
+below, subject to the following condition.
+
+Without limiting other conditions in the License, the grant of rights under
+the License will not include, and the License does not grant to you, the right
+to Sell the Software.
+
+For purposes of the foregoing, "Sell" means any of the following:
+
+  (a) distributing, licensing, or sublicensing the Software itself (or any
+      substantially similar version of it) to third parties for a fee or
+      other commercial consideration; or
+
+  (b) using the Software, or any portion of its functionality, as a backend
+      component of a commercially offered product or service — including but
+      not limited to SaaS products — where the Software's functionality
+      directly enables, powers, or constitutes a material part of the value
+      delivered to paying customers.
+
+"Sell" does not include using the Software solely as an internal support or
+operations tool (for example, to verify the quality of a proxy pool used
+internally), provided that the Software itself is not a component whose
+functionality is directly delivered to or monetised from external customers.
+
+Any license notice or attribution required by the License must also include
+this Commons Clause License Condition notice.
+
+Software: ProxyScrape Proxy Checker
+License: MIT
+Licensor: ProxyScrape (https://proxyscrape.com)
+
+---
+
 MIT License
 
-Copyright (c) 2018 assnctr
+Copyright (c) 2026-present ProxyScrape (https://proxyscrape.com)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +56,9 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+Note: The Commons Clause condition above restricts the right to "Sell" the
+Software as defined therein. All other rights granted by the MIT License
+remain in full effect.

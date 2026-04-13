@@ -1,8 +1,8 @@
 {
     "name": "proxyscrape-proxy-checker",
-    "version": "1.1.0",
+    "version": "2.0.0",
     "main": "./dist/main/index.js",
-    "license": "MIT",
+    "license": "MIT AND Commons-Clause-1.0",
     "author": {
         "name": "ProxyScrape",
         "email": "support@proxyscrape.com",
@@ -70,6 +70,10 @@
                 "bin/checker-darwin-arm64",
                 "bin/checker-darwin-x64"
             ],
+            "extraResources": [
+                { "from": "bin/checker-darwin-arm64", "to": "bin/checker-darwin-arm64" },
+                { "from": "bin/checker-darwin-x64", "to": "bin/checker-darwin-x64" }
+            ],
             "target": [
                 {
                     "target": "dmg",
@@ -91,6 +95,10 @@
         },
         "win": {
             "icon": "./public/icons/icon.ico",
+            "extraResources": [
+                { "from": "bin/checker-win-x64.exe", "to": "bin/checker-win-x64.exe" },
+                { "from": "bin/checker-win-arm64.exe", "to": "bin/checker-win-arm64.exe" }
+            ],
             "target": [
                 {
                     "target": "nsis",
@@ -111,6 +119,10 @@
         },
         "linux": {
             "icon": "./public/icons/icon.png",
+            "extraResources": [
+                { "from": "bin/checker-linux-x64", "to": "bin/checker-linux-x64" },
+                { "from": "bin/checker-linux-arm64", "to": "bin/checker-linux-arm64" }
+            ],
             "target": [
                 {
                     "target": "AppImage",
@@ -133,25 +145,6 @@
         ],
         "productName": "ProxyScrape Proxy Checker",
         "copyright": "ProxyScrape",
-        "extraResources": [
-            "./files/**",
-            {
-                "from": "bin/checker-darwin-arm64",
-                "to": "bin/checker-darwin-arm64"
-            },
-            {
-                "from": "bin/checker-darwin-x64",
-                "to": "bin/checker-darwin-x64"
-            },
-            {
-                "from": "bin/checker-win-x64.exe",
-                "to": "bin/checker-win-x64.exe"
-            },
-            {
-                "from": "bin/checker-linux-x64",
-                "to": "bin/checker-linux-x64"
-            }
-        ],
         "portable": {
             "artifactName": "${name}-v${version}-${arch}-${os}-portable.${ext}"
         },

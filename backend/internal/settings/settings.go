@@ -125,7 +125,7 @@ var DefaultSettings = Settings{
 		Type:     1,
 		AuthType: 1,
 	},
-	Version: "1.1.0",
+	Version: "2.0.0",
 }
 
 // Manager provides thread-safe access to the settings file.
