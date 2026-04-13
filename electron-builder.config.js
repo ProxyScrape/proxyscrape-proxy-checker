@@ -28,6 +28,7 @@ module.exports = {
   // inside the ASAR, so they don't appear here.
   files: [
     'dist/**',
+    'public/icons/**',
     'package.json',
   ],
 
