@@ -1,23 +1,12 @@
 import path from 'path';
 import url from 'url';
-import http from 'http';
 import { BrowserWindow, app, ipcMain, dialog } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { isDev, isPortable } from './constants/AppConstants';
 
-const DEV_SERVER_URL = 'http://localhost:32321';
-
-// Poll the webpack-dev-server until it responds, then resolve.
-const waitForDevServer = () => new Promise(resolve => {
-    const check = () => {
-        http.get(DEV_SERVER_URL, res => {
-            res.destroy();
-            resolve();
-        }).on('error', () => setTimeout(check, 300));
-    };
-    check();
-});
 import installExtension, { REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
+
+const DEV_SERVER_URL = 'http://localhost:32321';
 
 let window;
 
@@ -70,15 +59,21 @@ const prodWindow = () => {
 const createWindow = () => {
     isDev ? devWindow() : prodWindow();
 
-    window.loadURL(
-        isDev
-            ? 'http://localhost:32321'
-            : url.format({
-                  pathname: path.join(__dirname, 'index.html'),
-                  protocol: 'file:',
-                  slashes: true
-              })
-    );
+    const devURL = DEV_SERVER_URL;
+    const prodURL = url.format({
+        pathname: path.join(__dirname, 'index.html'),
+        protocol: 'file:',
+        slashes: true,
+    });
+
+    window.loadURL(isDev ? devURL : prodURL);
+
+    // In dev mode the webpack-dev-server may not be ready yet — retry until it is.
+    if (isDev) {
+        window.webContents.on('did-fail-load', () => {
+            setTimeout(() => window.loadURL(devURL), 300);
+        });
+    }
 
     window.on('ready-to-show', () => {
         window.show();
@@ -138,8 +133,7 @@ ipcMain.on('getUserData', event => {
     event.returnValue = app.getPath('userData');
 });
 
-app.on('ready', async () => {
-    if (isDev) await waitForDevServer();
+app.on('ready', () => {
     createWindow();
     if (!isDev && !isPortable) autoUpdater.checkForUpdates();
 });
