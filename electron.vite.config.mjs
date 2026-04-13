@@ -70,6 +70,12 @@ export default defineConfig({
   renderer: {
     root: path.resolve(__dirname, 'src/renderer'),
     build: {
+      // outDir must be absolute (or relative to project root, not to `root`).
+      // Without this, Vite resolves outDir relative to the renderer `root`
+      // (src/renderer), producing src/renderer/dist/renderer/ instead of
+      // dist/renderer/. That wrong path is never picked up by upload-artifact
+      // or electron-builder's files glob, so the renderer never reaches the ASAR.
+      outDir: path.resolve(__dirname, 'dist/renderer'),
       rollupOptions: {
         input: path.resolve(__dirname, 'src/renderer/index.html')
       }
