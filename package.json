@@ -101,7 +101,7 @@
                     ]
                 }
             ],
-            "icon": "/public/icons/icon.ico",
+            "icon": "public/icons/icon.ico",
             "artifactName": "${name}-v${version}-${arch}-${os}-installer.${ext}"
         },
         "linux": {
