@@ -102,13 +102,13 @@ jobs:
         run: |
           CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
             go build -C backend -ldflags="-s -w" \
-            -o bin/checker-darwin-arm64 ./cmd/checker
+            -o ../bin/checker-darwin-arm64 ./cmd/checker
 
       - name: Build darwin-x64
         run: |
           CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
             go build -C backend -ldflags="-s -w" \
-            -o bin/checker-darwin-x64 ./cmd/checker
+            -o ../bin/checker-darwin-x64 ./cmd/checker
 
       - uses: actions/upload-artifact@v4
         with:
