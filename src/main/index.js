@@ -4,7 +4,7 @@ import readline from 'readline';
 import { spawn, execSync } from 'child_process';
 import { BrowserWindow, app, ipcMain, dialog, session } from 'electron';
 import { autoUpdater } from 'electron-updater';
-import { isDev, isPortable } from '../shared/AppConstants';
+import { isDev, isPortable, IS_CANARY } from '../shared/AppConstants';
 
 const iconPath = path.join(__dirname, '../../public/icons/icon.png');
 
@@ -442,9 +442,9 @@ app.whenReady().then(async () => {
     }
 
     createWindow();
-    // Canary builds manage their own update flow via the in-app CanaryBanner
-    // (which calls the Go backend and opens GitHub releases in the browser).
-    // electron-updater auto-install is intentionally disabled on this branch.
+    if (!IS_CANARY && !isDev && !isPortable) {
+        autoUpdater.checkForUpdates();
+    }
 });
 
 app.on('activate', () => {
@@ -470,8 +470,19 @@ app.on('window-all-closed', async () => {
     }
 });
 
-// electron-updater events are not wired on the canary branch.
-// Updates are handled by the CanaryBanner component via the Go backend + GitHub API.
+// On stable builds (IS_CANARY = false) electron-updater handles updates automatically.
+// On canary builds the CanaryBanner + Go backend handles updates instead.
+if (!IS_CANARY) {
+    autoUpdater.on('update-downloaded', () => {
+        autoUpdater.quitAndInstall(true, true);
+    });
+
+    autoUpdater.on('download-progress', (progressObj) => {
+        if (window && !window.isDestroyed()) {
+            window.webContents.send('download-progress', Math.floor(progressObj.percent));
+        }
+    });
+}
 
 ipcMain.on('window-minimize', () => {
     if (window && !window.isDestroyed()) {
