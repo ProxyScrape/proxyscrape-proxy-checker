@@ -141,6 +141,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_PRE_RELEASE: true
+          POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
+          POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}
+          POSTHOG_UI_HOST: ${{ secrets.POSTHOG_UI_HOST }}
+          INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
 
   # ── Electron: Linux AppImage ─────────────────────────────────────────────────
   release-linux:
@@ -170,6 +174,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_PRE_RELEASE: true
+          POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
+          POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}
+          POSTHOG_UI_HOST: ${{ secrets.POSTHOG_UI_HOST }}
+          INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
 
   # ── Electron: macOS DMG + zip ────────────────────────────────────────────────
   release-macos:
@@ -199,6 +207,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_PRE_RELEASE: true
+          POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
+          POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}
+          POSTHOG_UI_HOST: ${{ secrets.POSTHOG_UI_HOST }}
+          INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
           # No code signing for canary builds — users bypass Gatekeeper
           # by right-clicking the app and choosing Open on first launch.
           CSC_IDENTITY_AUTO_DISCOVERY: false
