@@ -4,12 +4,20 @@
 //   - plain semver (e.g. "2.0.0") →  stable identifiers
 // This means merging canary into master and bumping the version is all that is
 // needed at graduation — no manual edits to this file required.
+//
+// IMPORTANT — stable appId continuity:
+// v1.x releases shipped with no explicit appId, so electron-builder used its
+// default: "com.electron.proxyscrape-proxy-checker". The stable v2 appId MUST
+// match this so that:
+//   - Windows NSIS recognises the existing v1 install and upgrades it cleanly
+//   - macOS/Linux userData directories are the same path (settings + DB preserved)
+// Do NOT change the stable appId without a cross-directory migration strategy.
 
 const pkg = require('./package.json');
 const isCanary = pkg.version.includes('-canary');
 
 module.exports = {
-  appId: isCanary ? 'com.proxyscrape.checker.canary' : 'com.proxyscrape.checker',
+  appId: isCanary ? 'com.proxyscrape.checker.canary' : 'com.electron.proxyscrape-proxy-checker',
   productName: isCanary ? 'ProxyScrape Proxy Checker Canary' : 'ProxyScrape Proxy Checker',
   copyright: 'ProxyScrape',
 
