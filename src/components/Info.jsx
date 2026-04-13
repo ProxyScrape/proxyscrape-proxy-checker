@@ -13,6 +13,21 @@ const Info = memo(({ show, releases, toggleInfo }) => {
     const [canaryConfirm, setCanaryConfirm] = useState(false);
     const [canaryLoading, setCanaryLoading] = useState(false);
     const [canaryError, setCanaryError] = useState(null);
+    // null = not yet checked, false = none available, string = latest pre-release html_url
+    const [latestCanaryUrl, setLatestCanaryUrl] = useState(null);
+
+    React.useEffect(() => {
+        let cancelled = false;
+        fetch(CANARY_RELEASES_API, { headers: { 'User-Agent': 'ProxyScrape Proxy Checker' } })
+            .then(r => r.json())
+            .then(all => {
+                if (cancelled) return;
+                const found = Array.isArray(all) ? all.find(r => r.prerelease) : null;
+                setLatestCanaryUrl(found ? found.html_url : false);
+            })
+            .catch(() => { if (!cancelled) setLatestCanaryUrl(false); });
+        return () => { cancelled = true; };
+    }, []);
 
     const handleSwitchToCanary = () => setCanaryConfirm(true);
     const handleCancelCanary = () => { setCanaryConfirm(false); setCanaryError(null); };
@@ -21,18 +36,20 @@ const Info = memo(({ show, releases, toggleInfo }) => {
         setCanaryLoading(true);
         setCanaryError(null);
         try {
-            const res = await fetch(CANARY_RELEASES_API, {
+            // Use the pre-fetched URL; re-fetch only if somehow missing
+            const url = latestCanaryUrl || await fetch(CANARY_RELEASES_API, {
                 headers: { 'User-Agent': 'ProxyScrape Proxy Checker' }
+            }).then(r => r.json()).then(all => {
+                const found = Array.isArray(all) ? all.find(r => r.prerelease) : null;
+                return found ? found.html_url : null;
             });
-            const all = await res.json();
-            const canaryRelease = all.find(r => r.prerelease);
-            if (!canaryRelease) {
+
+            if (!url) {
                 setCanaryError('No canary release found yet. Check back soon.');
                 setCanaryLoading(false);
                 return;
             }
-            // Open the canary release page so the user can download the right asset
-            shell.openExternal(canaryRelease.html_url);
+            shell.openExternal(url);
             setCanaryConfirm(false);
         } catch {
             setCanaryError('Failed to fetch canary releases. Check your connection.');
@@ -153,18 +170,22 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                         <span>Telegram</span>
                     </a>
                 </div>
-                <div className='section canary-section'>
-                    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-                        <polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/>
-                    </svg>
-                    <span>Try Canary</span>
-                </div>
-                <div className='canary-description'>
-                    <p>Get early access to upcoming features before they reach the stable release. Canary builds may be unstable.</p>
-                    <button className='canary-btn' onClick={handleSwitchToCanary}>
-                        Switch to Canary Version
-                    </button>
-                </div>
+                {latestCanaryUrl && (
+                    <>
+                        <div className='section canary-section'>
+                            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+                                <polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/>
+                            </svg>
+                            <span>Try Canary</span>
+                        </div>
+                        <div className='canary-description'>
+                            <p>Get early access to upcoming features before they reach the stable release. Canary builds may be unstable.</p>
+                            <button className='canary-btn' onClick={handleSwitchToCanary}>
+                                Switch to Canary Version
+                            </button>
+                        </div>
+                    </>
+                )}
 
                 {canaryConfirm && (
                     <div className='canary-overlay'>
