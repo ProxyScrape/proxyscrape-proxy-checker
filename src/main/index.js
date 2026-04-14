@@ -25,6 +25,11 @@ let isQuitting = false;
 
 const isMac = process.platform === 'darwin';
 
+// Pass --enable-updater on the command line to force electron-updater active
+// even on canary builds. Used to test the auto-update flow end-to-end.
+// Example: "ProxyScrape Proxy Checker Canary.exe" --enable-updater
+const enableUpdater = app.commandLine.hasSwitch('enable-updater');
+
 /**
  * Returns the directory used for all persistent app data (settings.json, checker.db).
  * In portable mode this is beside the executable so the install stays self-contained.
@@ -454,7 +459,7 @@ app.whenReady().then(async () => {
     }
 
     createWindow();
-    if (!IS_CANARY && app.isPackaged && !isPortable) {
+    if ((!IS_CANARY || enableUpdater) && app.isPackaged && !isPortable) {
         autoUpdater.checkForUpdates();
     }
 });
@@ -482,9 +487,10 @@ app.on('window-all-closed', async () => {
     }
 });
 
-// On stable builds (IS_CANARY = false) electron-updater handles updates automatically.
-// On canary builds the CanaryBanner + Go backend handles updates instead.
-if (!IS_CANARY) {
+// On stable builds electron-updater handles updates automatically.
+// On canary builds the CanaryBanner + Go backend handles updates instead,
+// unless --enable-updater is passed for testing the auto-update flow.
+if (!IS_CANARY || enableUpdater) {
     autoUpdater.on('update-downloaded', () => {
         autoUpdater.quitAndInstall(true, true);
     });

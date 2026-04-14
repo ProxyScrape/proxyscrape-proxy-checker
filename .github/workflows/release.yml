@@ -13,7 +13,8 @@ env:
   # Derived from the pushed tag (e.g. v2.0.0-canary or v2.0.0).
   # Used to inject appVersion into Go binaries.
   APP_VERSION: ${{ github.ref_name }}
-  # R2 upload configuration.
+  # R2 configuration — stored as secrets so forks can't accidentally write to
+  # or rely on ProxyScrape's bucket.
   R2_BUCKET: ${{ secrets.R2_BUCKET }}
   R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
 
@@ -190,6 +191,8 @@ jobs:
           path: bin/
 
   # ── Electron: Windows installer + portable ──────────────────────────────────
+  # Builds, uploads binaries directly to R2, then saves only the .yml metadata
+  # as an artifact for the publish job to upload last (after binaries are live).
   build-windows:
     runs-on: windows-latest
     needs: [build-renderer, build-go-windows]
@@ -229,10 +232,43 @@ jobs:
           POSTHOG_UI_HOST: ${{ secrets.POSTHOG_UI_HOST }}
           INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
 
+      - name: Install s5cmd
+        shell: bash
+        run: |
+          curl -sL "https://github.com/peak/s5cmd/releases/download/v2.2.2/s5cmd_2.2.2_Windows-64bit.zip" \
+            -o /tmp/s5cmd.zip
+          unzip -q /tmp/s5cmd.zip -d /tmp/s5cmd-bin
+          mv /tmp/s5cmd-bin/s5cmd.exe /usr/local/bin/
+
+      - name: Upload Windows binaries to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          [[ "${{ github.ref_name }}" == *"-canary"* ]] && CHANNEL=canary || CHANNEL=stable
+
+          # Upload all binary and blockmap files in parallel (immutable — versioned filenames never change)
+          s5cmd --endpoint-url "$R2_ENDPOINT" --numworkers 10 \
+            cp --concurrency 8 \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "application/octet-stream" \
+            "release/*.exe" "s3://$R2_BUCKET/$CHANNEL/" &
+
+          s5cmd --endpoint-url "$R2_ENDPOINT" --numworkers 10 \
+            cp --concurrency 8 \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "application/octet-stream" \
+            "release/*.blockmap" "s3://$R2_BUCKET/$CHANNEL/" &
+
+          wait
+
+      # Only yml files are passed to the publish job — binaries are already on R2.
       - uses: actions/upload-artifact@v6
         with:
-          name: release-win
-          path: release/
+          name: win-yml
+          path: release/*.yml
 
   # ── Electron: Linux AppImage ─────────────────────────────────────────────────
   build-linux:
@@ -277,10 +313,37 @@ jobs:
           POSTHOG_UI_HOST: ${{ secrets.POSTHOG_UI_HOST }}
           INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
 
+      - name: Install s5cmd
+        run: |
+          curl -sL "https://github.com/peak/s5cmd/releases/download/v2.2.2/s5cmd_2.2.2_Linux-64bit.tar.gz" \
+            | tar -xz -C /usr/local/bin s5cmd
+
+      - name: Upload Linux binaries to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          [[ "${{ github.ref_name }}" == *"-canary"* ]] && CHANNEL=canary || CHANNEL=stable
+
+          s5cmd --endpoint-url "$R2_ENDPOINT" --numworkers 10 \
+            cp --concurrency 8 \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "application/octet-stream" \
+            "release/*.AppImage" "s3://$R2_BUCKET/$CHANNEL/" &
+
+          s5cmd --endpoint-url "$R2_ENDPOINT" --numworkers 10 \
+            cp --concurrency 8 \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "application/octet-stream" \
+            "release/*.blockmap" "s3://$R2_BUCKET/$CHANNEL/" &
+
+          wait
+
       - uses: actions/upload-artifact@v6
         with:
-          name: release-linux
-          path: release/
+          name: linux-yml
+          path: release/*.yml
 
   # ── Electron: macOS DMG + zip ────────────────────────────────────────────────
   build-macos:
@@ -326,15 +389,51 @@ jobs:
           INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      - name: Install s5cmd
+        run: |
+          # macos-latest runners are arm64 (Apple Silicon)
+          ARCH="${{ runner.arch }}"
+          [[ "$ARCH" == "ARM64" ]] && S5_ARCH="macOS-arm64" || S5_ARCH="macOS-64bit"
+          curl -sL "https://github.com/peak/s5cmd/releases/download/v2.2.2/s5cmd_2.2.2_${S5_ARCH}.tar.gz" \
+            | tar -xz -C /usr/local/bin s5cmd
+
+      - name: Upload macOS binaries to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          [[ "${{ github.ref_name }}" == *"-canary"* ]] && CHANNEL=canary || CHANNEL=stable
+
+          s5cmd --endpoint-url "$R2_ENDPOINT" --numworkers 10 \
+            cp --concurrency 8 \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "application/x-apple-diskimage" \
+            "release/*.dmg" "s3://$R2_BUCKET/$CHANNEL/" &
+
+          s5cmd --endpoint-url "$R2_ENDPOINT" --numworkers 10 \
+            cp --concurrency 8 \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "application/zip" \
+            "release/*.zip" "s3://$R2_BUCKET/$CHANNEL/" &
+
+          s5cmd --endpoint-url "$R2_ENDPOINT" --numworkers 10 \
+            cp --concurrency 8 \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "application/octet-stream" \
+            "release/*.blockmap" "s3://$R2_BUCKET/$CHANNEL/" &
+
+          wait
+
       - uses: actions/upload-artifact@v6
         with:
-          name: release-macos
-          path: release/
+          name: macos-yml
+          path: release/*.yml
 
-  # ── Publish: upload to R2 + create GitHub Release ────────────────────────────
-  # Runs after all three platform builds complete. Uploads binaries and update
-  # metadata (.yml files) to Cloudflare R2, then creates a GitHub Release
-  # containing only the changelog (no binary assets attached).
+  # ── Publish: upload .yml metadata to R2 + create GitHub Release ──────────────
+  # Binaries are already on R2 (uploaded in parallel by each platform job above).
+  # YML metadata files are uploaded LAST so electron-updater never fetches a
+  # latest.yml that references a binary not yet live.
   publish:
     runs-on: ubuntu-latest
     needs: [build-windows, build-linux, build-macos]
@@ -350,51 +449,41 @@ jobs:
             echo "path=stable" >> $GITHUB_OUTPUT
           fi
 
-      - name: Download all platform artifacts
+      - name: Download all yml artifacts
         uses: actions/download-artifact@v7
         with:
-          pattern: release-*
-          path: release-all/
+          pattern: '*-yml'
+          path: ymls/
           merge-multiple: true
 
-      - name: Upload to R2
+      - name: Tune AWS CLI for R2 uploads
+        run: |
+          mkdir -p ~/.aws
+          cat >> ~/.aws/config << 'EOF'
+          [default]
+          s3 =
+            multipart_threshold = 64MB
+            multipart_chunksize = 64MB
+            max_concurrent_requests = 20
+            max_queue_size = 10000
+          EOF
+
+      - name: Upload yml metadata to R2
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
         run: |
           CHANNEL=${{ steps.channel.outputs.path }}
 
-          # Upload binaries (cached by filename — content-addressed by version in name)
-          aws s3 sync release-all/ s3://${{ env.R2_BUCKET }}/$CHANNEL/ \
-            --endpoint-url "${{ env.R2_ENDPOINT }}" \
-            --exclude "*.yml" \
-            --exclude "*.yaml" \
-            --no-progress
-
-          # Upload .yml metadata files with no-cache so clients always get the
-          # latest version info and never serve a stale "up to date" response.
-          for yml in release-all/*.yml; do
+          for yml in ymls/*.yml; do
             [ -f "$yml" ] || continue
-            aws s3 cp "$yml" s3://${{ env.R2_BUCKET }}/$CHANNEL/$(basename "$yml") \
-              --endpoint-url "${{ env.R2_ENDPOINT }}" \
+            aws s3 cp "$yml" "s3://$R2_BUCKET/$CHANNEL/$(basename "$yml")" \
+              --endpoint-url "$R2_ENDPOINT" \
               --content-type "text/yaml" \
               --cache-control "no-cache, max-age=0" \
               --no-progress
           done
-
-      # TRANSITIONAL: This step lets v1.x.x users auto-update to v2 via their
-      # existing GitHub provider. Their installed app checks GitHub Release assets
-      # for latest.yml — without this, they would never see v2.
-      #
-      # HOW TO USE: Change `if: false` to `if: true` when tagging the FIRST v2
-      # stable release (no -canary suffix), then revert it once that release has
-      # been live for ~2 weeks and most v1 users have updated.
-      - name: Upload to GitHub Release assets (v1 backwards compat — transitional)
-        if: false
-        run: |
-          gh release upload ${{ github.ref_name }} release-all/* --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release (changelog only)
         run: |
@@ -402,5 +491,26 @@ jobs:
             --title "${{ github.ref_name }}" \
             --generate-notes \
             ${{ contains(github.ref_name, '-canary') && '--prerelease' || '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # TRANSITIONAL: This step lets v1.x.x users auto-update to v2 via their
+      # existing GitHub provider. Their installed app checks GitHub Release assets
+      # for latest.yml — without this, they would never see v2 exist.
+      #
+      # HOW TO USE: Change `if: false` to `if: true` when tagging the FIRST v2
+      # stable release (no -canary suffix), then revert to `if: false` once that
+      # release has been live for ~2 weeks and most v1 users have updated.
+      - name: Upload assets to GitHub Release (v1 backwards compat — transitional)
+        if: false
+        run: |
+          # Download all platform artifacts so we have the binaries to attach.
+          # This step is intentionally separate from the yml-only download above.
+          mkdir -p release-all
+          gh run download --name release-win --dir release-all/ 2>/dev/null || true
+          gh run download --name release-linux --dir release-all/ 2>/dev/null || true
+          gh run download --name release-macos --dir release-all/ 2>/dev/null || true
+          cp ymls/*.yml release-all/ 2>/dev/null || true
+          gh release upload ${{ github.ref_name }} release-all/* --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
