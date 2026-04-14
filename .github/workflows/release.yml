@@ -539,31 +539,6 @@ jobs:
             --cache-control "no-cache, max-age=0" \
             --no-progress
 
-      # Extract the notes for this specific version from releases.json to use
-      # as the GitHub Release body (the in-app changelog is served from R2).
-      - name: Extract release notes for GitHub Release
-        run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
-          NOTES=$(node -e "
-            const r = JSON.parse(require('fs').readFileSync('releases.json','utf-8'));
-            const entry = r.find(x => x.version === '$VERSION');
-            process.stdout.write(entry ? entry.notes : '');
-          " 2>/dev/null || echo "")
-          if [ -z "$NOTES" ]; then
-            NOTES="_Release notes unavailable — see the in-app changelog._"
-          fi
-          printf '%s' "$NOTES" > /tmp/release-notes.md
-
-      - name: Create GitHub Release (changelog only)
-        run: |
-          gh release create ${{ github.ref_name }} \
-            --title "${{ github.ref_name }}" \
-            --notes-file /tmp/release-notes.md \
-            ${{ contains(github.ref_name, '-canary') && '--prerelease' || '' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       # TRANSITIONAL: This step lets v1.x.x users auto-update to v2 via their
       # existing GitHub provider. Their installed app checks GitHub Release assets
       # for latest.yml — without this, they would never see v2 exist.
@@ -571,16 +546,30 @@ jobs:
       # HOW TO USE: Change `if: false` to `if: true` when tagging the FIRST v2
       # stable release (no -canary suffix), then revert to `if: false` once that
       # release has been live for ~2 weeks and most v1 users have updated.
-      - name: Upload assets to GitHub Release (v1 backwards compat — transitional)
+      - name: Create GitHub Release + upload assets (v1 backwards compat — transitional)
         if: false
         run: |
-          # Download all platform artifacts so we have the binaries to attach.
-          # This step is intentionally separate from the yml-only download above.
+          VERSION="${{ github.ref_name }}"
+          VERSION_BARE="${VERSION#v}"
+
+          # Extract notes from the releases.json we just updated
+          NOTES=$(node -e "
+            const r = JSON.parse(require('fs').readFileSync('releases.json','utf-8'));
+            const entry = r.find(x => x.version === '$VERSION_BARE');
+            process.stdout.write(entry ? entry.notes : '_See in-app changelog._');
+          " 2>/dev/null || echo "_See in-app changelog._")
+          printf '%s' "$NOTES" > /tmp/release-notes.md
+
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --notes-file /tmp/release-notes.md
+
+          # Attach binaries so v1 electron-updater can find latest.yml
           mkdir -p release-all
           gh run download --name release-win --dir release-all/ 2>/dev/null || true
           gh run download --name release-linux --dir release-all/ 2>/dev/null || true
           gh run download --name release-macos --dir release-all/ 2>/dev/null || true
           cp ymls/*.yml release-all/ 2>/dev/null || true
-          gh release upload ${{ github.ref_name }} release-all/* --clobber
+          gh release upload "${{ github.ref_name }}" release-all/* --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
