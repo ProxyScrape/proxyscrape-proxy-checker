@@ -260,8 +260,14 @@ function startGoBackend() {
 ipcMain.on('get-api-config', (event) => {
     event.returnValue = {
         apiBase: checkerPort != null ? `http://127.0.0.1:${checkerPort}` : '',
-        token: checkerToken || ''
+        token: checkerToken || '',
+        enableUpdater,
     };
+});
+
+// Triggered by the renderer's "Restart now" button after update-ready fires.
+ipcMain.on('install-update', () => {
+    autoUpdater.quitAndInstall(false, true);
 });
 
 ipcMain.handle('choose-path', async (event, action = 'save') => {
@@ -494,14 +500,29 @@ app.on('window-all-closed', async () => {
 // On canary builds the CanaryBanner + Go backend handles updates instead,
 // unless --enable-updater is passed for testing the auto-update flow.
 if (!IS_CANARY || enableUpdater) {
-    autoUpdater.on('update-downloaded', () => {
-        autoUpdater.quitAndInstall(true, true);
+    autoUpdater.on('update-available', () => {
+        if (window && !window.isDestroyed()) {
+            window.webContents.send('update-available');
+        }
     });
 
     autoUpdater.on('download-progress', (progressObj) => {
         if (window && !window.isDestroyed()) {
             window.webContents.send('download-progress', Math.floor(progressObj.percent));
         }
+    });
+
+    // Notify the renderer so it can prompt the user. quitAndInstall is
+    // triggered by the renderer via the 'install-update' IPC channel after
+    // the user confirms (or immediately for stable if the user hasn't dismissed).
+    autoUpdater.on('update-downloaded', () => {
+        if (window && !window.isDestroyed()) {
+            window.webContents.send('update-ready');
+        }
+    });
+
+    autoUpdater.on('error', (err) => {
+        console.error('[updater] error:', err?.message || err);
     });
 }
 

@@ -22,6 +22,9 @@ export const shell = {
     },
 };
 
+// True when the packaged app was launched with --enable-updater.
+export const enableUpdater = E ? (E.enableUpdater ?? false) : false;
+
 export const ipcRenderer = {
     invoke(channel, ...args) {
         if (!E) return Promise.resolve(undefined);
@@ -41,6 +44,7 @@ export const ipcRenderer = {
             case 'window-maximize':    return E.windowMaximize();
             case 'window-unmaximize':  return E.windowUnmaximize();
             case 'window-close':       return E.windowClose();
+            case 'install-update':     return E.installUpdate();
             default:
                 warn('send', channel);
         }
@@ -57,6 +61,8 @@ export const ipcRenderer = {
         switch (channel) {
             case 'app-before-quit':        return E.onBeforeQuit(callback);
             case 'download-progress':      return E.onDownloadProgress(callback);
+            case 'update-available':       return E.onUpdateAvailable(callback);
+            case 'update-ready':           return E.onUpdateReady(callback);
             case 'on-window-maximize':     return E.onWindowMaximize(callback);
             case 'on-window-unmaximize':   return E.onWindowUnmaximize(callback);
             default:
