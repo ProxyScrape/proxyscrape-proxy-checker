@@ -600,7 +600,7 @@ jobs:
       # stable release (no -canary suffix), then revert to `if: false` once that
       # release has been live for ~2 weeks and most v1 users have updated.
       - name: Create GitHub Release + upload assets (v1 backwards compat — transitional)
-        if: false
+        if: true
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION_BARE="${VERSION#v}"
