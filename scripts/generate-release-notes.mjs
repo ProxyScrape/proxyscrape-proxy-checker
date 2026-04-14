@@ -185,7 +185,7 @@ async function generateNotes(prompt) {
       'X-Title': 'ProxyScrape Proxy Checker CI',
     },
     body: JSON.stringify({
-      model: 'anthropic/claude-haiku-4',
+      model: 'anthropic/claude-sonnet-4.5',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 600,
     }),

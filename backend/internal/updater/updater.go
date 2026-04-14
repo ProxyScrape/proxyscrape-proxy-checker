@@ -11,9 +11,10 @@ import (
 	"time"
 )
 
-// releasesURL is the public R2 endpoint that serves releases.json.
+// releasesBaseURL is the base R2 URL. The channel path segment is appended at
+// runtime so each build only fetches its own channel's entries.
 // Override with UPDATES_URL env var for local testing (e.g. a mock server).
-const defaultReleasesURL = "https://updates.proxyscrape.com/releases.json"
+const releasesBaseURL = "https://updates.proxyscrape.com"
 
 // Release holds the fields we expose from a single changelog entry.
 type Release struct {
@@ -40,10 +41,15 @@ type r2Release struct {
 	Notes   string `json:"notes"`
 }
 
-// Check fetches releases.json from R2, splits by channel, and compares the
-// latest matching release against currentVersion.
+// Check fetches the channel-specific releases.json from R2 and compares the
+// latest entry against currentVersion.
 // On network or parse error, returns VersionInfo with HasUpdate=false.
 func Check(ctx context.Context, currentVersion string) VersionInfo {
+	current := strings.TrimPrefix(currentVersion, "v")
+	isCanaryBuild := strings.Contains(current, "-canary") ||
+		strings.Contains(current, "-beta") ||
+		strings.Contains(current, "-alpha")
+
 	info := VersionInfo{
 		Current:        currentVersion,
 		Latest:         currentVersion,
@@ -52,9 +58,15 @@ func Check(ctx context.Context, currentVersion string) VersionInfo {
 		Releases:       []Release{},
 	}
 
-	url := defaultReleasesURL
+	// Each channel has its own releases.json so users only download their
+	// channel's history. UPDATES_URL overrides the full URL for local testing.
+	var url string
 	if override := os.Getenv("UPDATES_URL"); override != "" {
 		url = override
+	} else if isCanaryBuild {
+		url = releasesBaseURL + "/canary/releases.json"
+	} else {
+		url = releasesBaseURL + "/stable/releases.json"
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -81,9 +93,9 @@ func Check(ctx context.Context, currentVersion string) VersionInfo {
 		return info
 	}
 
-	// Split into canary and stable lists (releases.json is already sorted
-	// latest-first by the build script, so the first entry in each slice is
-	// the newest).
+	// The file only contains entries for the current channel (canary or stable),
+	// so every entry goes into the matching slice. The array is already sorted
+	// latest-first so index 0 is always the newest release.
 	for _, r := range all {
 		rel := Release{
 			TagName:     r.Version,
@@ -91,19 +103,12 @@ func Check(ctx context.Context, currentVersion string) VersionInfo {
 			HtmlURL:     "https://github.com/ProxyScrape/proxyscrape-proxy-checker/releases/tag/v" + r.Version,
 			Body:        r.Notes,
 		}
-		if r.Channel == "canary" {
+		if isCanaryBuild {
 			info.CanaryReleases = append(info.CanaryReleases, rel)
 		} else {
 			info.Releases = append(info.Releases, rel)
 		}
 	}
-
-	// Determine the relevant "latest" version based on whether the running
-	// build is a canary or stable release.
-	current := strings.TrimPrefix(currentVersion, "v")
-	isCanaryBuild := strings.Contains(current, "-canary") ||
-		strings.Contains(current, "-beta") ||
-		strings.Contains(current, "-alpha")
 
 	if isCanaryBuild && len(info.CanaryReleases) > 0 {
 		latest := strings.TrimPrefix(info.CanaryReleases[0].TagName, "v")

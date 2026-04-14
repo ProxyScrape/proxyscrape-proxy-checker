@@ -503,15 +503,18 @@ jobs:
         with:
           node-version: 20
 
-      # Download the current releases.json from R2 so we can prepend the new
-      # entry.  Fall back to an empty array if this is the very first release.
+      # Download the channel-specific releases.json from R2 so we can prepend
+      # the new entry.  Fall back to an empty array on first release.
+      # Each channel has its own file (canary/releases.json, stable/releases.json)
+      # so users only download entries relevant to their build.
       - name: Download current releases.json from R2
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          aws s3 cp "s3://$R2_BUCKET/releases.json" releases.json \
+          CHANNEL=${{ steps.channel.outputs.path }}
+          aws s3 cp "s3://$R2_BUCKET/$CHANNEL/releases.json" releases.json \
             --endpoint-url "$R2_ENDPOINT" \
             --no-progress 2>/dev/null || echo '[]' > releases.json
 
@@ -533,7 +536,8 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          aws s3 cp releases.json "s3://$R2_BUCKET/releases.json" \
+          CHANNEL=${{ steps.channel.outputs.path }}
+          aws s3 cp releases.json "s3://$R2_BUCKET/$CHANNEL/releases.json" \
             --endpoint-url "$R2_ENDPOINT" \
             --content-type "application/json" \
             --cache-control "no-cache, max-age=0" \
