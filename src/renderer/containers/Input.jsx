@@ -5,7 +5,6 @@ import { loadFromTxt,
         overrideEventDefaults,
         onFileDrop,
         clearInput } from '../actions/InputActions';
-import { start } from '../actions/CheckingActions';
 import Checkbox from '../components/ui/Checkbox';
 import { splitByKK } from '../misc/text';
 import { toggleOption } from '../actions/CoreActions';
@@ -13,7 +12,6 @@ import DropDocIcon from '../components/ui/DropDocIcon';
 import { InfoIcon } from '../components/ui/HelpTip';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import Collapse from '@mui/material/Collapse';
 import { alpha } from '@mui/material/styles';
@@ -118,7 +116,7 @@ const ClearIcon = () => (
     </svg>
 );
 
-const Input = ({ loaded, total, errors, unique, name, size, loadFromTxt, onFileDrop, overrideEventDefaults, pasteFromClipboard, clearInput, start, shuffle, toggleOption }) => {
+const Input = ({ loaded, total, errors, unique, name, size, loadFromTxt, onFileDrop, overrideEventDefaults, pasteFromClipboard, clearInput, shuffle, toggleOption }) => {
     const [errorsExpanded, setErrorsExpanded] = useState(false);
 
     // Both inner panels share the same fixed height so the card doesn't
@@ -137,8 +135,8 @@ const Input = ({ loaded, total, errors, unique, name, size, loadFromTxt, onFileD
     };
 
     return (
-        <Box sx={{ mb: 3 }}>
-            <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 3 }}>
+        <Box>
+            <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 3, pb: 2 }}>
 
                 {/* ── Header row ── */}
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -270,30 +268,10 @@ const Input = ({ loaded, total, errors, unique, name, size, loadFromTxt, onFileD
                     </Box>
                 )}
 
-                {/* ── Shuffle + Check ── */}
-                {/* Always rendered to prevent a height shift; hidden when no list is loaded. */}
-                <Box sx={{ mt: 1.5, visibility: loaded ? 'visible' : 'hidden' }}>
+                <Box sx={{ mt: 1.5 }}>
                     <Checkbox id='core-shuffle' name='shuffle' checked={shuffle} onChange={toggleOption} text='Shuffle' tip="Randomize the order of proxies before checking begins" />
                 </Box>
-                <Button
-                    variant="contained"
-                    fullWidth
-                    onClick={start}
-                    sx={{ mt: 1.5 }}
-                >
-                    Check
-                </Button>
             </Box>
-
-            {/* Always reserve space for the decorative SVG to prevent a page-level layout shift. */}
-            <Box sx={{ textAlign: 'center', mt: 3, visibility: loaded ? 'hidden' : 'visible', '& svg': { width: 200, fill: alpha('#fff', 0.06) } }}>
-                <svg viewBox='0 -17 512 512'>
-                        <path d='m74.722656 297.265625h-51.734375c-12.675781 0-22.988281 10.3125-22.988281 22.992187v134.375c0 12.675782 10.3125 22.988282 22.988281 22.988282h51.734375c12.679688 0 22.992188-10.3125 22.992188-22.988282v-134.375c0-12.679687-10.3125-22.992187-22.992188-22.992187zm7.992188 157.367187c0 4.402344-3.585938 7.988282-7.992188 7.988282h-51.734375c-4.402343 0-7.988281-3.585938-7.988281-7.988282v-134.375c0-4.40625 3.585938-7.992187 7.988281-7.992187h51.734375c4.40625 0 7.992188 3.585937 7.992188 7.992187zm0 0' />
-                        <path d='m212.820312 191.945312h-51.734374c-12.675782 0-22.988282 10.3125-22.988282 22.988282v42.644531c0 4.140625 3.355469 7.5 7.5 7.5 4.140625 0 7.5-3.359375 7.5-7.5v-42.644531c0-4.402344 3.582032-7.988282 7.988282-7.988282h51.734374c4.40625 0 7.988282 3.585938 7.988282 7.988282v239.699218c0 4.402344-3.582032 7.988282-7.988282 7.988282h-51.734374c-4.40625 0-7.988282-3.585938-7.988282-7.988282v-167.054687c0-4.140625-3.359375-7.5-7.5-7.5-4.144531 0-7.5 3.359375-7.5 7.5v167.054687c0 12.675782 10.3125 22.988282 22.988282 22.988282h51.734374c12.675782 0 22.988282-10.3125 22.988282-22.988282v-239.695312c0-12.679688-10.3125-22.992188-22.988282-22.992188zm0 0' />
-                        <path d='m350.914062 255.140625h-51.734374c-12.675782 0-22.988282 10.3125-22.988282 22.988281v176.503906c0 12.675782 10.3125 22.988282 22.988282 22.988282h51.734374c12.679688 0 22.992188-10.3125 22.992188-22.988282v-176.503906c0-12.675781-10.3125-22.988281-22.992188-22.988281zm7.992188 199.492187c0 4.402344-3.585938 7.988282-7.992188 7.988282h-51.734374c-4.40625 0-7.988282-3.585938-7.988282-7.988282v-176.503906c0-4.40625 3.582032-7.988281 7.988282-7.988281h51.734374c4.40625 0 7.992188 3.582031 7.992188 7.988281zm0 0' />
-                        <path d='m489.011719 139.285156h-51.734375c-12.675782 0-22.992188 10.3125-22.992188 22.988282v214.304687c0 4.140625 3.359375 7.5 7.5 7.5 4.144532 0 7.5-3.359375 7.5-7.5v-214.304687c0-4.40625 3.585938-7.988282 7.992188-7.988282h51.734375c4.402343 0 7.988281 3.582032 7.988281 7.988282v292.359374c0 4.402344-3.585938 7.988282-7.988281 7.988282h-51.734375c-4.40625 0-7.992188-3.585938-7.992188-7.988282v-48.054687c0-4.140625-3.355468-7.5-7.5-7.5-4.140625 0-7.5 3.359375-7.5 7.5v48.054687c0 12.675782 10.316406 22.988282 22.992188 22.988282h51.734375c12.675781 0 22.988281-10.3125 22.988281-22.988282v-292.359374c0-12.675782-10.3125-22.988282-22.988281-22.988282zm0 0' />
-                    </svg>
-                </Box>
         </Box>
     );
 };
@@ -309,8 +287,7 @@ const mapDispatchToProps = {
     overrideEventDefaults,
     onFileDrop,
     clearInput,
-    start,
-    toggleOption
+    toggleOption,
 };
 
 export default connect(mapStateToProps, mapDispatchToProps)(Input);

@@ -1,4 +1,4 @@
-import findMixedProxies from '../misc/FindMixedProxies.js';
+import findMixedProxies, { extractScheme } from '../misc/FindMixedProxies.js';
 import { chooseMultiTxtFiles } from '../misc/filePicker';
 import { uniq } from '../misc/array';
 import { trackAction } from '../misc/analytics';
@@ -46,13 +46,15 @@ const getResult = (text, event, getState) => {
         const totalLines = text.split(/\r?\n/).filter(item => item.length > 0);
         const uniqueLines = uniq(totalLines);
         const { successed: list, failed: errors } = findMixedProxies(uniqueLines);
+        const hasProtocols = totalLines.length > 0 && extractScheme(totalLines[0]) !== '';
 
         return {
             list,
             errors,
             total: totalLines.length,
             unique: uniqueLines.length,
-            size: text.length
+            size: text.length,
+            hasProtocols,
         };
     } catch (error) {
         return {
@@ -78,7 +80,7 @@ export const loadFromTxt = event => async (dispatch, getState) => {
                 names.push(entry.name);
             }
 
-            const { list, errors, total, unique, size } = getResult(filesText, event, getState);
+            const { list, errors, total, unique, size, hasProtocols } = getResult(filesText, event, getState);
 
             if (!list.length) throw new Error('No proxies found');
 
@@ -90,7 +92,8 @@ export const loadFromTxt = event => async (dispatch, getState) => {
                     name: names.join(', '),
                     total,
                     unique,
-                    size
+                    size,
+                    hasProtocols,
                 })
             );
 
@@ -115,7 +118,7 @@ export const checkProxy = event => async (dispatch, getState) => {
             names.push(pathBasename(filePath));
         
 
-            const { list, errors, total, unique, size } = getResult(filesText, event, getState);
+            const { list, errors, total, unique, size, hasProtocols } = getResult(filesText, event, getState);
 
             if (!list.length) throw new Error('No proxies found');
 
@@ -127,7 +130,8 @@ export const checkProxy = event => async (dispatch, getState) => {
                     name: names.join(', '),
                     total,
                     unique,
-                    size
+                    size,
+                    hasProtocols,
                 })
             );
         }
@@ -163,7 +167,7 @@ export const onFileDrop = event => async (dispatch, getState) => {
                     names.push(pathBasename(filePath));
                 }
 
-                const { list, errors, total, unique, size } = getResult(filesText, event, getState);
+                const { list, errors, total, unique, size, hasProtocols } = getResult(filesText, event, getState);
 
                 if (!list.length) throw new Error('No proxies found');
 
@@ -175,7 +179,8 @@ export const onFileDrop = event => async (dispatch, getState) => {
                         name: names.join(', '),
                         total,
                         unique,
-                        size
+                        size,
+                        hasProtocols,
                     })
                 );
 
@@ -190,7 +195,7 @@ export const onFileDrop = event => async (dispatch, getState) => {
 export const pasteFromClipboard = event => async (dispatch, getState) => {
     try {
         const text = await navigator.clipboard.readText();
-        const { list, errors, total, unique, size } = getResult(text, event, getState);
+        const { list, errors, total, unique, size, hasProtocols } = getResult(text, event, getState);
 
         if (!list.length) throw new Error('No proxies found');
 
@@ -202,7 +207,8 @@ export const pasteFromClipboard = event => async (dispatch, getState) => {
                 name: 'Clipboard',
                 total,
                 unique,
-                size
+                size,
+                hasProtocols,
             })
         );
 

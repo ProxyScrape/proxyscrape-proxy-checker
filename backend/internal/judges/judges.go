@@ -36,15 +36,11 @@ type judgeEntry struct {
 
 // Judges manages judge server availability for proxy checking.
 type Judges struct {
-	sslList   []judgeEntry
-	usualList []judgeEntry
-	anyList   []judgeEntry
-	sslIdx    atomic.Int64
-	usualIdx  atomic.Int64
-	anyIdx    atomic.Int64
-	swap      bool
-	statuses  []JudgeStatus
-	mu        sync.Mutex
+	anyList  []judgeEntry
+	anyIdx   atomic.Int64
+	swap     bool
+	statuses []JudgeStatus
+	mu       sync.Mutex
 }
 
 // New pings all active judges concurrently (5 at a time) and returns a ready Judges.
@@ -78,30 +74,8 @@ func New(ctx context.Context, items []JudgeItem, targetProtocols []string, swap 
 		wg.Wait()
 	}
 
-	// Merge ssl + usual into any
-	j.anyList = append(j.anyList, j.usualList...)
-	j.anyList = append(j.anyList, j.sslList...)
-
-	// Validate required judge types
-	needsHTTPS := false
-	needsHTTP := false
-	needsSocks := false
-	for _, p := range targetProtocols {
-		switch p {
-		case "https":
-			needsHTTPS = true
-		case "http":
-			needsHTTP = true
-		case "socks4", "socks5":
-			needsSocks = true
-		}
-	}
-
-	if (needsHTTP || needsHTTPS) && len(j.usualList) == 0 {
+	if len(targetProtocols) > 0 && len(j.anyList) == 0 {
 		return nil, fmt.Errorf("no working judges")
-	}
-	if needsSocks && len(j.anyList) == 0 {
-		return nil, fmt.Errorf("no working judges for SOCKS protocols")
 	}
 
 	return j, nil
@@ -154,25 +128,9 @@ func (j *Judges) ping(ctx context.Context, item JudgeItem) {
 	}
 
 	j.mu.Lock()
-	if isSSL {
-		j.sslList = append(j.sslList, entry)
-	} else {
-		j.usualList = append(j.usualList, entry)
-	}
+	j.anyList = append(j.anyList, entry)
 	j.statuses = append(j.statuses, status)
 	j.mu.Unlock()
-}
-
-// GetUsual returns an HTTP judge URL (round-robin if swap=true).
-func (j *Judges) GetUsual() string {
-	if len(j.usualList) == 0 {
-		return ""
-	}
-	if !j.swap || len(j.usualList) == 1 {
-		return j.usualList[0].url
-	}
-	idx := j.usualIdx.Add(1) - 1
-	return j.usualList[idx%int64(len(j.usualList))].url
 }
 
 // GetAny returns any judge URL (round-robin if swap=true).
@@ -191,12 +149,10 @@ func (j *Judges) GetAny() string {
 func (j *Judges) Validate(body, judgeURL string) bool {
 	j.mu.Lock()
 	var compiled *regexp.Regexp
-	for _, list := range [][]judgeEntry{j.sslList, j.usualList} {
-		for _, e := range list {
-			if e.url == judgeURL {
-				compiled = e.compiled
-				break
-			}
+	for _, e := range j.anyList {
+		if e.url == judgeURL {
+			compiled = e.compiled
+			break
 		}
 	}
 	j.mu.Unlock()

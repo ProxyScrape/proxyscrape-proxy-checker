@@ -2,7 +2,7 @@ import { isIP } from './regexes.js';
 
 const KNOWN_PROTOCOLS = ['http', 'https', 'socks4', 'socks5'];
 
-const extractScheme = raw => {
+export const extractScheme = raw => {
     const match = /^(\w+):\/\//.exec(raw.trim());
     if (!match) return '';
     const scheme = match[1].toLowerCase();

@@ -15,6 +15,7 @@ import ProtocolWarningDialog from '../components/ProtocolWarningDialog';
 import Result from './Result';
 import History from '../components/History';
 import Titlebar from './Titlebar';
+import Protocols from './Protocols';
 import { checkProxy } from '../actions/InputActions';
 import { close as closeResult } from '../actions/ResultActions';
 import { openDrawer, closeDrawer } from '../actions/UIActions';
@@ -100,6 +101,7 @@ class Main extends React.PureComponent {
                         <Box sx={{ pt: 3 }}>
                             {this.state.tabIndex <= 3 && <Settings tabIndex={this.state.tabIndex} />}
                             {this.state.tabIndex === 0 && <Input />}
+                            {this.state.tabIndex === 0 && <Protocols />}
                             <History visible={this.state.tabIndex === 4} />
                         </Box>
                     </Box>

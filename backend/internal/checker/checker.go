@@ -394,12 +394,10 @@ func (c *Checker) checkProxy(ctx context.Context, p Proxy) Result {
 			proxyIP = extractIP(pr.body)
 		}
 
-		if pr.protocol == "http" {
-			result.Anon = c.getAnon(pr.body)
-			if c.options.CaptureServer && result.Server == "" {
-				result.Server = getServer(pr.headers, pr.body)
-			}
-		} else if c.options.CaptureServer && result.Server == "" {
+		if anon := c.getAnon(pr.body); result.Anon == "" || anonRank(anon) < anonRank(result.Anon) {
+			result.Anon = anon
+		}
+		if c.options.CaptureServer && result.Server == "" {
 			result.Server = getServer(pr.headers, pr.body)
 		}
 
@@ -515,13 +513,7 @@ func (c *Checker) checkProtocol(ctx context.Context, p Proxy, protocol string, t
 		}
 	}
 
-	var judgeURL string
-	switch protocol {
-	case "http", "https":
-		judgeURL = c.judges.GetUsual()
-	default:
-		judgeURL = c.judges.GetAny()
-	}
+	judgeURL := c.judges.GetAny()
 
 	if judgeURL == "" {
 		pr.err = "no judge"
@@ -887,6 +879,19 @@ func (c *Checker) getAnon(body string) string {
 	}
 
 	return "elite"
+}
+
+// anonRank returns a priority score for an anonymity level.
+// Lower = more revealing. Used to keep the worst level across protocols.
+func anonRank(a string) int {
+	switch a {
+	case "transparent":
+		return 0
+	case "anonymous":
+		return 1
+	default: // "elite"
+		return 2
+	}
 }
 
 func getServer(headers http.Header, body string) string {

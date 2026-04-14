@@ -336,6 +336,8 @@ const preloadPath = path.join(__dirname, '../preload/index.js');
 const windowOptions = {
     width: 1220,
     height: 905,
+    minWidth: 700,
+    minHeight: 500,
     show: false,
     icon: iconPath,
     ...(isMac
@@ -421,7 +423,7 @@ app.whenReady().then(async () => {
         "img-src 'self' data: https:",
         // Local Go backend (any port) + analytics/chat services
         "connect-src 'self' http://127.0.0.1:* https://n.proxyscrape.com https://app.posthog.com https://eu.posthog.com https://widget.intercom.io https://js.intercomcdn.com https://api-iam.intercom.io https://api.intercom.io wss://nexus-websocket-a.intercom.io wss://nexus-websocket-b.intercom.io https://github.com https://api.proxyscrape.com",
-        "font-src 'self' data:",
+        "font-src 'self' data: https://fonts.intercomcdn.com",
         "object-src 'none'",
         "base-uri 'self'",
     ].join('; ');

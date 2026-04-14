@@ -5,37 +5,83 @@ alwaysApply: true
 
 # Release Versioning
 
-## Version format
+## Version scheme: `2.X.Y`
 
-| Channel | Branch | Format | Example |
-|---------|--------|--------|---------|
-| Stable | `master` | `MAJOR.MINOR.PATCH` | `2.0.0` |
-| Canary | `canary` | `MAJOR.MINOR.PATCH-canary` | `2.0.0-canary` |
+| Part | Meaning |
+|------|---------|
+| `2` | Major — fixed for this generation |
+| `X` | Feature cycle — shared between canary and the stable it graduates to |
+| `Y` | Iteration — increments freely in canary, always `0` in stable |
+
+### The full cycle
+
+```
+2.1.1-canary → 2.1.2-canary → 2.1.3-canary   (Y increments in canary)
+        ↓
+     2.1.0                                      (promote to stable: same X, Y resets to 0)
+        ↓
+2.2.1-canary → 2.2.2-canary → ...              (new canary cycle: X bumps, Y starts at 1)
+        ↓
+     2.2.0                                      (next stable)
+```
+
+**X is the same in canary and the stable it produces.**
+X only bumps when starting the *next* canary cycle after a stable promotion.
+
+## Cutting a canary release
+
+```bash
+npm version 2.X.Y-canary --no-git-tag-version
+git add package.json package-lock.json
+git commit -m "chore: bump version to 2.X.Y-canary"
+git tag v2.X.Y-canary
+git push origin canary && git push origin v2.X.Y-canary
+```
+
+## Promoting canary to stable
+
+The stable version uses the **same X** as the canary cycle, with **Y = 0**:
+
+```bash
+# Last canary was 2.1.7-canary → stable is 2.1.0
+
+# 1. Merge canary into master
+git checkout master && git merge canary --no-edit
+
+# 2. Set version to 2.X.0 (same X as canary, Y reset to 0)
+npm version 2.X.0 --no-git-tag-version
+
+# 3. Commit, tag, push master
+git add package.json package-lock.json
+git commit -m "chore: promote v2.X.0 to stable"
+git push origin master && git tag v2.X.0 && git push origin v2.X.0
+
+# 4. Merge master back into canary to keep branches in sync
+git checkout canary && git merge master --no-edit && git push origin canary
+```
+
+## Starting the next canary cycle (after a stable promotion)
+
+X bumps by 1, Y starts at 1:
+
+```bash
+# Last stable was 2.1.0 → next canary cycle is 2.2.x
+npm version 2.2.1-canary --no-git-tag-version
+git add package.json package-lock.json
+git commit -m "chore: start 2.2.x-canary cycle"
+git push origin canary
+```
 
 ## Tags are immutable — never delete and recreate
 
-Once a tag is pushed to the remote, it **must not** be deleted or recreated. If a fix is needed after tagging:
+Once a tag is pushed, never delete or recreate it. Increment Y and push a new tag instead:
 
 ```
-# ✅ CORRECT — bump the version and create a new tag
-# Edit package.json: "version": "2.0.1-canary"
-# Edit backend/internal/api/server.go: var appVersion = "dev"  (auto-injected, no edit needed)
-git add package.json
-git commit -m "chore: bump version to 2.0.1-canary"
-git push origin canary
-git tag v2.0.1-canary
-git push origin v2.0.1-canary
-
-# ❌ WRONG — deleting and recreating the same tag
-git tag -d v2.0.0-canary
-git push origin :refs/tags/v2.0.0-canary
-git tag v2.0.0-canary   # same version, new commit — breaks users' update checks
-git push origin v2.0.0-canary
+v2.1.1-canary  →  v2.1.2-canary   ✅
+git tag -d v2.1.1-canary           ❌ never do this
 ```
 
-## Sources of truth that must stay in sync
-
-Only **one file** needs to be updated manually — `package.json`. Everything else is automatic:
+## Sources of truth — only `package.json` needs manual edits
 
 | Source | How it's set |
 |--------|-------------|
@@ -43,27 +89,6 @@ Only **one file** needs to be updated manually — `package.json`. Everything el
 | Go `appVersion` | Auto-injected via `-ldflags` at build time |
 | `IS_CANARY` flag | Auto-derived from version containing `-canary` |
 | `appId` / `productName` | Auto-derived in `electron-builder.config.js` |
-| `EP_PRE_RELEASE` in CI | Auto-derived from tag name in workflow |
+| R2 channel path | Auto-derived from tag name in CI workflow |
 
 The pre-push hook and CI `check-versions` job enforce that the tag matches `package.json`.
-
-## Incrementing the canary version
-
-The `-canary` suffix never gets an iteration number. When a fix is needed after pushing a tag, increment the **patch** number:
-
-```
-v2.0.0-canary  →  v2.0.1-canary  →  v2.0.2-canary
-```
-
-When a new feature set lands:
-```
-v2.0.x-canary  →  v2.1.0-canary
-```
-
-## Graduation (canary → stable)
-
-Change only `package.json` version — drop the `-canary` suffix:
-```
-"2.0.0-canary"  →  "2.0.0"
-```
-Then tag and push. All canary behaviour (banner, pre-release flag, canary appId) flips automatically.

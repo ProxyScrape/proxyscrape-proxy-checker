@@ -311,7 +311,7 @@ class Result extends React.PureComponent {
                                     <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>{splitByKK(timeout)} ms</Typography>
                                 </Box>
                                 <Slider
-                                    min={1000}
+                                    min={100}
                                     max={maxTimeoutRange}
                                     step={100}
                                     value={Number(timeout)}
@@ -377,7 +377,7 @@ class Result extends React.PureComponent {
                         <Box>
                             {filteredItems.slice(0, countOfResults).map(item => (
                                 <ResultListItem
-                                    key={`${item.auth}@${item.host}:${item.port}`}
+                                    key={item.id}
                                     {...item}
                                     isDetailsOpen={activeDetails !== null && activeDetails.host === item.host && activeDetails.port === item.port}
                                     onOpenDetails={openDetails}

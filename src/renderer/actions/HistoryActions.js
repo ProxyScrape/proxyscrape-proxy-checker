@@ -48,12 +48,14 @@ export const viewPastCheck = (checkId) => async (dispatch) => {
         }
     });
 
+    const maxItemTimeout = items.reduce((max, item) => Math.max(max, item.timeoutMs || 0), 0);
+
     dispatch({
         type: RESULT_SHOW,
         items,
         countries: countryList,
         inBlacklists,
-        timeout: 0,
+        timeout: maxItemTimeout || 60000,
     });
 };
 

@@ -150,17 +150,57 @@ The in-app changelog (Info slideout) and the auto-updater both read from this fi
 The GitHub Release body is also populated from it — do **not** write notes in the GitHub
 Release editor.
 
-### Cutting a release
+### Versioning scheme
+
+Versions follow `2.X.Y` where X is **shared between a canary cycle and the stable it produces**, and Y increments freely in canary but is always `0` in stable.
+
+```
+2.1.1-canary → 2.1.2-canary → 2.1.3-canary   (Y increments in canary)
+        ↓
+     2.1.0                                      (stable: same X, Y resets to 0)
+        ↓
+2.2.1-canary → 2.2.2-canary → ...              (new canary cycle: X bumps)
+        ↓
+     2.2.0                                      (next stable)
+```
+
+### Cutting a canary release
 
 ```bash
-# 1. Bump the version in package.json
-npm version X.Y.Z-canary --no-git-tag-version
+# 1. Bump the patch version in package.json
+npm version 2.X.Y-canary --no-git-tag-version
 
 # 2. Commit, tag, push
-git add package.json
-git commit -m "chore: bump version to X.Y.Z-canary"
-git tag vX.Y.Z-canary
-git push origin canary --tags
+git add package.json package-lock.json
+git commit -m "chore: bump version to 2.X.Y-canary"
+git tag v2.X.Y-canary
+git push origin canary && git push origin v2.X.Y-canary
+```
+
+### Promoting canary to stable
+
+Stable uses the **same X** as the canary cycle — only Y resets to 0:
+
+```bash
+# 1. Merge canary into master
+git checkout master && git merge canary --no-edit
+
+# 2. Set version to 2.X.0 (same X as canary, Y reset to 0)
+npm version 2.X.0 --no-git-tag-version
+
+# 3. Commit, tag, push master
+git add package.json package-lock.json
+git commit -m "chore: promote v2.X.0 to stable"
+git push origin master && git tag v2.X.0 && git push origin v2.X.0
+
+# 4. Merge master back into canary to keep branches in sync
+git checkout canary && git merge master --no-edit && git push origin canary
+
+# 5. Start next canary cycle — now X bumps by 1
+npm version 2.(X+1).1-canary --no-git-tag-version
+git add package.json package-lock.json
+git commit -m "chore: start 2.(X+1).x-canary cycle"
+git push origin canary
 ```
 
 CI picks up the tag, builds all platforms, uploads binaries to R2, calls the AI to

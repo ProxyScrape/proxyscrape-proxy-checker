@@ -8,6 +8,7 @@ const initial = {
     unique: 0,
     name: '',
     size: 0,
+    hasProtocols: false,
 };
 
 const input = (state = initial, action) => {

@@ -20,8 +20,6 @@
     display: flex;
     align-items: center;
     height: 100%;
-    flex: 1;
-    min-width: 0;
     -webkit-app-region: no-drag;
     padding-left: 12px;
 }

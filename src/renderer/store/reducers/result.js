@@ -27,7 +27,7 @@ export const PERSISTED_EXPORTING_FIELDS = ['type', 'authType'];
 
 const initialState = {
     isOpened: false,
-    hiddenStatuses: ['cancelled'],
+    hiddenStatuses: ['cancelled', 'failed'],
     items: [],
     misc: {
         onlyKeepAlive: false
@@ -81,8 +81,7 @@ const result = (state = initialState, action) => {
             return {
                 ...initialState,
                 isOpened: true,
-                hiddenStatuses: ['cancelled'],
-                items: action.items,
+                items: action.items.map((item, i) => ({ ...item, id: i })),
                 countries: {
                     active: false,
                     items: action.countries

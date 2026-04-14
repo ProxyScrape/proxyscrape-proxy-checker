@@ -107,8 +107,8 @@ var DefaultSettings = Settings{
 			{URL: "http://judge3.api.proxyscrape.com", Validate: "AZ Environment variables", Active: true},
 			{URL: "http://judge4.api.proxyscrape.com", Validate: "AZ Environment variables", Active: true},
 			{URL: "http://judge5.api.proxyscrape.com", Validate: "AZ Environment variables", Active: true},
-			{URL: "https://ssl-judge1.api.proxyscrape.com", Validate: ipRegex, Active: true},
-			{URL: "https://ssl-judge2.api.proxyscrape.com", Validate: ipRegex, Active: true},
+			{URL: "https://ssl-judge1.api.proxyscrape.com", Validate: ipRegex, Active: false},
+			{URL: "https://ssl-judge2.api.proxyscrape.com", Validate: ipRegex, Active: false},
 		},
 	},
 	IP: IPSettings{

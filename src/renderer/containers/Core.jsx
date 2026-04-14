@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { connect } from 'react-redux';
-import { changeOption, toggleOption, toggleProtocol, toggleCaptureTrace, recheckTraceStatus } from '../actions/CoreActions';
+import { changeOption, toggleOption, toggleCaptureTrace, recheckTraceStatus } from '../actions/CoreActions';
 import Checkbox from '../components/ui/Checkbox';
 import { HelpTip, InfoIcon } from '../components/ui/HelpTip';
 import { splitByKK } from '../misc/text';
@@ -116,35 +116,13 @@ const CommandBlock = ({ cmd }) => {
     );
 };
 
-const Core = ({ protocols, overrideProtocols, captureFullData, captureServer, captureTrace, traceStatus, localDns, threads, timeout, retries, keepAlive, changeOption, toggleOption, toggleProtocol, toggleCaptureTrace, recheckTraceStatus }) => {
+const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceStatus, localDns, threads, timeout, retries, keepAlive, changeOption, toggleOption, toggleCaptureTrace, recheckTraceStatus }) => {
     const handleSliderChange = (name) => (e, value) => {
         changeOption({ target: { name, value } });
     };
 
     return (
         <>
-            <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, mb: 2 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>
-                    Protocols
-                    <InfoIcon title="By default, each proxy is tested using the protocol declared in the import list (e.g. http:// → HTTP only). Enable 'Override' to ignore list protocols and test all selected protocols against every proxy." />
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                    <Checkbox id='http-protocol' name='http' checked={protocols.http} onChange={toggleProtocol} text='HTTP' tip="Check proxies for HTTP protocol support" />
-                    <Checkbox id='https-protocol' name='https' checked={protocols.https} onChange={toggleProtocol} text='HTTPs' tip="Check proxies for HTTPS proxy protocol support (TLS connection to the proxy itself)" />
-                    <Checkbox id='socks4-protocol' name='socks4' checked={protocols.socks4} onChange={toggleProtocol} text='Socks4' tip="Check proxies for SOCKS4 protocol support" />
-                    <Checkbox id='socks5-protocol' name='socks5' checked={protocols.socks5} onChange={toggleProtocol} text='Socks5' tip="Check proxies for SOCKS5 protocol support" />
-                </Box>
-                <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                    <Checkbox
-                        id='override-protocols'
-                        name='overrideProtocols'
-                        checked={overrideProtocols}
-                        onChange={toggleOption}
-                        text='Override list protocols'
-                        tip="When enabled, the selected protocols above are tested against every proxy regardless of any protocol prefix in the imported list (e.g. http://, socks5://). When disabled (default), each proxy is only tested with its declared protocol."
-                    />
-                </Box>
-            </Box>
             <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, mb: 2 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>
                     Data Capturing
@@ -269,7 +247,6 @@ const mapStateToProps = state => ({
 const mapDispatchToProps = {
     changeOption,
     toggleOption,
-    toggleProtocol,
     toggleCaptureTrace,
     recheckTraceStatus,
 };
