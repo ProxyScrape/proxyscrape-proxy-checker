@@ -114,8 +114,8 @@ jobs:
           name: go-win-bins
           path: bin/
 
-  # ── Go binaries: Linux (x64 native, arm64 via GCC cross-compiler) ───────────
-  build-go-linux:
+  # ── Go binaries: Linux x64 (native) ─────────────────────────────────────────
+  build-go-linux-x64:
     needs: [check-versions]
     runs-on: ubuntu-latest
     steps:
@@ -135,41 +135,11 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ${{ steps.gocache.outputs.path }}
-          # Both amd64 (native gcc) and arm64 (aarch64-linux-gnu-gcc) share this
-          # cache entry — both compilers are apt-installed and tied to the runner
-          # image, which rarely changes.
-          key: go-build-linux-${{ hashFiles('backend/go.sum') }}
-          restore-keys: go-build-linux-
+          key: go-build-linux-x64-${{ hashFiles('backend/go.sum') }}
+          restore-keys: go-build-linux-x64-
 
-      - name: Install libpcap headers + arm64 cross-compiler
-        run: |
-          sudo dpkg --add-architecture arm64
-
-          sudo tee /etc/apt/sources.list.d/ubuntu.sources > /dev/null << 'EOF'
-          Types: deb
-          URIs: http://azure.archive.ubuntu.com/ubuntu/
-          Suites: noble noble-updates noble-backports
-          Components: main restricted universe multiverse
-          Architectures: amd64
-          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-
-          Types: deb
-          URIs: http://security.ubuntu.com/ubuntu/
-          Suites: noble-security
-          Components: main restricted universe multiverse
-          Architectures: amd64
-          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-
-          Types: deb
-          URIs: http://ports.ubuntu.com/ubuntu-ports/
-          Suites: noble noble-updates noble-backports noble-security
-          Components: main restricted universe multiverse
-          Architectures: arm64
-          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-          EOF
-
-          sudo apt-get update -qq
-          sudo apt-get install -y libpcap-dev libpcap-dev:arm64 gcc-aarch64-linux-gnu
+      - name: Install libpcap
+        run: sudo apt-get install -y libpcap-dev
 
       - name: Build linux-x64
         run: |
@@ -178,19 +148,51 @@ jobs:
             -ldflags="-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION#v}'" \
             -o ../bin/checker-linux-x64 ./cmd/checker
 
-      - name: Build linux-arm64 (aarch64-linux-gnu-gcc cross-compile)
+      - uses: actions/upload-artifact@v6
+        with:
+          name: go-linux-x64-bin
+          path: bin/checker-linux-x64
+
+  # ── Go binaries: Linux arm64 (native runner — no cross-compilation) ──────────
+  # ubuntu-24.04-arm is a native arm64 runner, so CGO just works without any
+  # cross-compiler or arm64 sysroot. libpcap-dev installs the native arm64 package.
+  build-go-linux-arm64:
+    needs: [check-versions]
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Get GOCACHE path
+        id: gocache
+        shell: bash
+        run: echo "path=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+
+      - name: Restore Go build cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.gocache.outputs.path }}
+          key: go-build-linux-arm64-native-${{ hashFiles('backend/go.sum') }}
+          restore-keys: go-build-linux-arm64-native-
+
+      - name: Install libpcap
+        run: sudo apt-get install -y libpcap-dev
+
+      - name: Build linux-arm64
         run: |
           CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \
-            CC=aarch64-linux-gnu-gcc \
-            CGO_LDFLAGS="-L/usr/lib/aarch64-linux-gnu" \
             go build -C backend -buildvcs=false \
             -ldflags="-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION#v}'" \
             -o ../bin/checker-linux-arm64 ./cmd/checker
 
       - uses: actions/upload-artifact@v6
         with:
-          name: go-linux-bins
-          path: bin/
+          name: go-linux-arm64-bin
+          path: bin/checker-linux-arm64
 
   # ── Go binaries: macOS ───────────────────────────────────────────────────────
   build-go-macos:
@@ -320,7 +322,7 @@ jobs:
   # ── Electron: Linux AppImage ─────────────────────────────────────────────────
   build-linux:
     runs-on: ubuntu-latest
-    needs: [build-renderer, build-go-linux]
+    needs: [build-renderer, build-go-linux-x64, build-go-linux-arm64]
     steps:
       - uses: actions/checkout@v5
 
@@ -342,8 +344,9 @@ jobs:
 
       - uses: actions/download-artifact@v7
         with:
-          name: go-linux-bins
+          pattern: go-linux-*-bin
           path: bin
+          merge-multiple: true
 
       - name: Make Linux binaries executable
         run: chmod +x bin/checker-linux-*
