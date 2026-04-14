@@ -235,10 +235,11 @@ jobs:
       - name: Install s5cmd
         shell: bash
         run: |
+          mkdir -p "$RUNNER_TEMP/s5cmd-bin"
           curl -sL "https://github.com/peak/s5cmd/releases/download/v2.2.2/s5cmd_2.2.2_Windows-64bit.zip" \
-            -o /tmp/s5cmd.zip
-          unzip -q /tmp/s5cmd.zip -d /tmp/s5cmd-bin
-          mv /tmp/s5cmd-bin/s5cmd.exe /usr/local/bin/
+            -o "$RUNNER_TEMP/s5cmd.zip"
+          unzip -q "$RUNNER_TEMP/s5cmd.zip" -d "$RUNNER_TEMP/s5cmd-bin"
+          echo "$RUNNER_TEMP/s5cmd-bin" >> "$GITHUB_PATH"
 
       - name: Upload Windows binaries to R2
         shell: bash
@@ -315,8 +316,10 @@ jobs:
 
       - name: Install s5cmd
         run: |
+          mkdir -p "$RUNNER_TEMP/s5cmd-bin"
           curl -sL "https://github.com/peak/s5cmd/releases/download/v2.2.2/s5cmd_2.2.2_Linux-64bit.tar.gz" \
-            | tar -xz -C /usr/local/bin s5cmd
+            | tar -xz -C "$RUNNER_TEMP/s5cmd-bin" s5cmd
+          echo "$RUNNER_TEMP/s5cmd-bin" >> "$GITHUB_PATH"
 
       - name: Upload Linux binaries to R2
         env:
@@ -391,11 +394,12 @@ jobs:
 
       - name: Install s5cmd
         run: |
-          # macos-latest runners are arm64 (Apple Silicon)
+          mkdir -p "$RUNNER_TEMP/s5cmd-bin"
           ARCH="${{ runner.arch }}"
           [[ "$ARCH" == "ARM64" ]] && S5_ARCH="macOS-arm64" || S5_ARCH="macOS-64bit"
           curl -sL "https://github.com/peak/s5cmd/releases/download/v2.2.2/s5cmd_2.2.2_${S5_ARCH}.tar.gz" \
-            | tar -xz -C /usr/local/bin s5cmd
+            | tar -xz -C "$RUNNER_TEMP/s5cmd-bin" s5cmd
+          echo "$RUNNER_TEMP/s5cmd-bin" >> "$GITHUB_PATH"
 
       - name: Upload macOS binaries to R2
         env:
