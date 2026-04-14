@@ -3,28 +3,23 @@ import { connect } from 'react-redux';
 import { AnimatePresence, motion } from 'framer-motion';
 import { checkAtAvailable } from '../actions/UpdateActions';
 import { openLink } from '../misc/other';
-import { isPortable, IS_CANARY } from '../../shared/AppConstants';
+import { isPortable, IS_CANARY, isDev } from '../../shared/AppConstants';
 import { ipcRenderer } from 'electron';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import LinearProgress from '@mui/material/LinearProgress';
+import { alpha } from '@mui/material/styles';
 import { blueBrand } from '../theme/palette';
+import { FOOTER_HEIGHT, CANARY_BANNER_HEIGHT } from '../constants/Layout';
 
 // ─── Animation variants ────────────────────────────────────────────────────────
 
-// Card: spring slide-up + scale on enter, fade-only on exit (Apple pattern).
 const CARD_VARIANTS = {
-    hidden: {
-        y: 80,
-        opacity: 0,
-        scale: 0.92,
-    },
+    hidden:  { y: 80, opacity: 0, scale: 0.92 },
     visible: {
-        y: 0,
-        opacity: 1,
-        scale: 1,
+        y: 0, opacity: 1, scale: 1,
         transition: {
             y:       { type: 'spring', stiffness: 380, damping: 28, mass: 0.9 },
             opacity: { duration: 0.25, ease: 'easeOut' },
@@ -38,38 +33,51 @@ const CARD_VARIANTS = {
     },
 };
 
-// Content panes: drift upward on exit, rise into place on enter.
-// This directional motion gives a sense of forward progression.
+// Content panes: old drifts upward out, new rises up into place.
 const CONTENT_VARIANTS = {
     hidden:  { opacity: 0, y: 8 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.15, ease: [0.25, 0.46, 0.45, 0.94] } },
     exit:    { opacity: 0, y: -8, transition: { duration: 0.12, ease: [0.55, 0, 1, 0.45] } },
 };
 
-// ─── Shared card styles ────────────────────────────────────────────────────────
-
-const CARD_STYLE = {
-    position: 'fixed',
-    bottom: 24,
-    right: 24,
-    zIndex: 1400,
-    width: 300,
-    // Prevent layout shifts from affecting parent
-    pointerEvents: 'auto',
-};
-
-const CARD_SX = {
-    bgcolor: 'background.paper',
-    borderRadius: 3,
-    p: 2,
-    boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
-    overflow: 'hidden',
-};
+// ─── Sub-components ────────────────────────────────────────────────────────────
 
 const CloseIcon = () => (
-    <svg viewBox="0 0 224.512 224.512" style={{ width: 11, height: 11, fill: 'currentColor' }}>
+    <svg viewBox="0 0 224.512 224.512" style={{ width: 10, height: 10, fill: 'currentColor' }}>
         <polygon points="224.507,6.997 217.521,0 112.256,105.258 6.998,0 0.005,6.997 105.263,112.254 0.005,217.512 6.998,224.512 112.256,119.24 217.521,224.512 224.507,217.512 119.249,112.254" />
     </svg>
+);
+
+const DismissButton = ({ onClick }) => (
+    <IconButton
+        onClick={onClick}
+        size="small"
+        sx={{
+            color: alpha('#fff', 0.5),
+            flexShrink: 0,
+            ml: 0.5,
+            mt: -0.25,
+            '&:hover': { color: alpha('#fff', 0.9), bgcolor: alpha('#fff', 0.06) },
+        }}
+    >
+        <CloseIcon />
+    </IconButton>
+);
+
+// Shared card wrapper with a coloured top-border accent to signal state.
+const ToastCard = ({ accentColor, children }) => (
+    <Box sx={{
+        bgcolor: 'background.paper',
+        borderRadius: 3,
+        overflow: 'hidden',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.45)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderTop: `2px solid ${accentColor}`,
+    }}>
+        <Box sx={{ p: '14px 16px 16px' }}>
+            {children}
+        </Box>
+    </Box>
 );
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -79,11 +87,8 @@ class Update extends React.PureComponent {
         super(props);
         this.state = {
             percent: 0,
-            // 'downloading' when update-available fires, 'ready' when update-ready fires.
-            phase: null,
-            // When true, hides the downloading toast but the download continues.
-            // The ready toast will still appear (and re-enter with spring animation).
-            dismissed: false,
+            phase: null,      // null | 'downloading' | 'ready'
+            dismissed: false, // hides the downloading card; ready still appears
         };
     }
 
@@ -98,149 +103,180 @@ class Update extends React.PureComponent {
             this.setState({ percent: data });
         });
 
-        // Always show ready toast even if the downloading one was dismissed.
         ipcRenderer.on('update-ready', () => {
             this.setState({ phase: 'ready', dismissed: false });
         });
+
+        // ── Dev-only: Shift+U runs the full animated simulation ────────────────
+        // Dead-code eliminated from production builds (isDev bakes to false).
+        if (isDev) {
+            this._onSimKey = (e) => {
+                if (e.key === 'U' && e.shiftKey) this._startSim();
+            };
+            window.addEventListener('keydown', this._onSimKey);
+        }
     }
 
-    handleDismiss = () => {
-        // Hides the downloading card. autoInstallOnAppQuit = true ensures
-        // the update still installs silently on the next app quit.
-        this.setState({ dismissed: true });
+    componentWillUnmount() {
+        this._clearSim();
+        if (this._onSimKey) window.removeEventListener('keydown', this._onSimKey);
+    }
+
+    _startSim = () => {
+        this._clearSim();
+        this.setState({ phase: 'downloading', dismissed: false, percent: 0 });
+        this._simInterval = setInterval(() => {
+            this.setState(prev => {
+                const next = Math.min(prev.percent + 2, 100);
+                if (next >= 100) {
+                    this._clearSim();
+                    this._simTimeout = setTimeout(() => this.setState({ phase: 'ready' }), 400);
+                    return { percent: 100 };
+                }
+                return { percent: next };
+            });
+        }, 60);
     };
 
-    handleInstall = () => {
-        ipcRenderer.send('install-update');
+    _clearSim = () => {
+        clearInterval(this._simInterval);
+        clearTimeout(this._simTimeout);
+        this._simInterval = null;
+        this._simTimeout = null;
     };
+
+    handleDismiss       = () => this.setState({ dismissed: true });
+    handleDismissReady  = () => { this._clearSim(); this.setState({ phase: null }); };
+    handleInstall       = () => ipcRenderer.send('install-update');
+
+    // Sits above the footer. On stable builds the canary banner isn't present
+    // so only FOOTER_HEIGHT is added. On canary both heights are included.
+    cardStyle = () => ({
+        position: 'fixed',
+        bottom: FOOTER_HEIGHT + (IS_CANARY ? CANARY_BANNER_HEIGHT : 0) + 12,
+        right: 20,
+        zIndex: 1400,
+        width: 310,
+        pointerEvents: 'auto',
+    });
 
     render() {
         const { available, portableAsset } = this.props;
         const { percent, phase, dismissed } = this.state;
 
-        // ── Portable: manual download link (electron-updater doesn't run) ──────
+        // ── Portable ───────────────────────────────────────────────────────────
         if (isPortable) {
             return (
                 <AnimatePresence>
                     {!!available && (
-                        <motion.div
-                            key="portable"
-                            style={CARD_STYLE}
-                            variants={CARD_VARIANTS}
-                            initial="hidden"
-                            animate="visible"
-                            exit="exit"
+                        <motion.div key="portable" style={this.cardStyle()}
+                            variants={CARD_VARIANTS} initial="hidden" animate="visible" exit="exit"
                         >
-                            <Box sx={CARD_SX}>
-                                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                                    Update available
-                                </Typography>
-                                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
+                            <ToastCard accentColor={blueBrand[500]}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                                        Update available
+                                    </Typography>
+                                    <DismissButton onClick={() => this.setState({ phase: null })} />
+                                </Box>
+                                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5, lineHeight: 1.5 }}>
                                     Download and replace your portable executable.
                                 </Typography>
-                                <Box
-                                    component="a"
-                                    onClick={openLink}
-                                    href={portableAsset?.browser_download_url}
-                                    sx={{
-                                        color: blueBrand[300],
-                                        fontWeight: 600,
-                                        fontSize: '0.875rem',
-                                        textDecoration: 'none',
-                                        cursor: 'pointer',
-                                        '&:hover': { textDecoration: 'underline' },
-                                    }}
+                                <Box component="a" onClick={openLink} href={portableAsset?.browser_download_url}
+                                    sx={{ color: blueBrand[300], fontWeight: 600, fontSize: '0.8125rem',
+                                          textDecoration: 'none', cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
                                 >
-                                    Download Update
+                                    Download Update →
                                 </Box>
-                            </Box>
+                            </ToastCard>
                         </motion.div>
                     )}
                 </AnimatePresence>
             );
         }
 
-        // ── Non-portable: IPC-driven. Canary only shows with --enable-updater. ──
+        // ── Non-portable ───────────────────────────────────────────────────────
         if (IS_CANARY && phase === null) return null;
 
-        // Card is visible when downloading (and not dismissed) or when ready.
-        const cardVisible = (phase === 'downloading' && !dismissed) || phase === 'ready';
-
-        // The content key drives AnimatePresence to cross-fade between states.
-        const contentKey = phase === 'ready' ? 'ready' : 'downloading';
+        const cardVisible  = (phase === 'downloading' && !dismissed) || phase === 'ready';
+        const contentKey   = phase === 'ready' ? 'ready' : 'downloading';
 
         return (
             <AnimatePresence>
                 {cardVisible && (
-                    // layout: smoothly spring-animates height when content changes size.
-                    <motion.div
-                        key="update-card"
-                        style={CARD_STYLE}
-                        variants={CARD_VARIANTS}
-                        initial="hidden"
-                        animate="visible"
-                        exit="exit"
-                        layout
+                    <motion.div key="update-card" style={this.cardStyle()}
+                        variants={CARD_VARIANTS} initial="hidden" animate="visible" exit="exit" layout
                     >
-                        <Box sx={CARD_SX}>
-                            {/* Inner AnimatePresence cross-fades between content panes.
-                                mode="wait" ensures the old pane exits before the new one enters. */}
-                            <AnimatePresence mode="wait" initial={false}>
-                                {contentKey === 'downloading' ? (
-                                    <motion.div
-                                        key="downloading"
-                                        variants={CONTENT_VARIANTS}
-                                        initial="hidden"
-                                        animate="visible"
-                                        exit="exit"
-                                    >
-                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                            <Typography variant="body2" sx={{ fontWeight: 600, mb: 1.5 }}>
-                                                Downloading update…
+                        <AnimatePresence mode="wait" initial={false}>
+
+                            {contentKey === 'downloading' ? (
+                                <motion.div key="downloading" variants={CONTENT_VARIANTS}
+                                    initial="hidden" animate="visible" exit="exit"
+                                >
+                                    <ToastCard accentColor={blueBrand[500]}>
+                                        {/* Title row: label + live percent + dismiss */}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.25 }}>
+                                            <Typography variant="body2" sx={{ fontWeight: 600, flexGrow: 1 }}>
+                                                Downloading update
                                             </Typography>
-                                            <IconButton
-                                                onClick={this.handleDismiss}
-                                                size="small"
-                                                sx={{ mt: -0.5, mr: -0.5, color: 'text.disabled', '&:hover': { color: 'text.secondary' } }}
-                                            >
-                                                <CloseIcon />
-                                            </IconButton>
+                                            <Typography variant="caption" sx={{
+                                                color: blueBrand[300], fontWeight: 600,
+                                                fontSize: '0.75rem', mr: 0.5, flexShrink: 0,
+                                            }}>
+                                                {percent}%
+                                            </Typography>
+                                            <DismissButton onClick={this.handleDismiss} />
                                         </Box>
+
+                                        {/* Progress bar */}
                                         <LinearProgress
                                             variant="determinate"
                                             value={percent}
-                                            sx={{ mb: 1 }}
+                                            sx={{ height: 5, borderRadius: 99, mb: 1.25 }}
                                         />
-                                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                            {percent}% complete
+
+                                        {/* Footer hint */}
+                                        <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.7rem', lineHeight: 1.4 }}>
+                                            You can dismiss this — the download continues in the background.
                                         </Typography>
-                                    </motion.div>
-                                ) : (
-                                    <motion.div
-                                        key="ready"
-                                        variants={CONTENT_VARIANTS}
-                                        initial="hidden"
-                                        animate="visible"
-                                        exit="exit"
-                                    >
-                                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                                            Update ready
+                                    </ToastCard>
+                                </motion.div>
+                            ) : (
+                                <motion.div key="ready" variants={CONTENT_VARIANTS}
+                                    initial="hidden" animate="visible" exit="exit"
+                                >
+                                    <ToastCard accentColor="#00B70B">
+                                        {/* Title row: status dot + label + dismiss */}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.75 }}>
+                                            <Box sx={{
+                                                width: 7, height: 7, borderRadius: '50%',
+                                                bgcolor: '#00B70B', flexShrink: 0, mr: 1,
+                                                boxShadow: '0 0 6px rgba(0,183,11,0.6)',
+                                            }} />
+                                            <Typography variant="body2" sx={{ fontWeight: 600, flexGrow: 1 }}>
+                                                Update ready
+                                            </Typography>
+                                            <DismissButton onClick={this.handleDismissReady} />
+                                        </Box>
+
+                                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5, lineHeight: 1.5 }}>
+                                            Installs automatically when you close the app.
                                         </Typography>
-                                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
-                                            It will install automatically when you close the app.
-                                        </Typography>
+
                                         <Button
                                             variant="contained"
                                             size="small"
                                             onClick={this.handleInstall}
                                             fullWidth
+                                            sx={{ fontSize: '0.8125rem', py: 0.75 }}
                                         >
                                             Restart now
                                         </Button>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </Box>
+                                    </ToastCard>
+                                </motion.div>
+                            )}
+
+                        </AnimatePresence>
                     </motion.div>
                 )}
             </AnimatePresence>
