@@ -319,6 +319,16 @@ jobs:
           name: win-yml
           path: release/*.yml
 
+      # Stable-only: save installers so the TRANSITIONAL publish step can attach
+      # them to the GitHub Release for v1.x clients (GitHub provider).
+      - uses: actions/upload-artifact@v6
+        if: ${{ !contains(github.ref_name, '-canary') }}
+        with:
+          name: release-win
+          path: |
+            release/*.exe
+            release/*.blockmap
+
   # ── Electron: Linux AppImage ─────────────────────────────────────────────────
   build-linux:
     runs-on: ubuntu-latest
@@ -396,6 +406,12 @@ jobs:
         with:
           name: linux-yml
           path: release/*.yml
+
+      - uses: actions/upload-artifact@v6
+        if: ${{ !contains(github.ref_name, '-canary') }}
+        with:
+          name: release-linux
+          path: release/*.AppImage
 
   # ── Electron: macOS DMG + zip ────────────────────────────────────────────────
   build-macos:
@@ -482,6 +498,15 @@ jobs:
         with:
           name: macos-yml
           path: release/*.yml
+
+      - uses: actions/upload-artifact@v6
+        if: ${{ !contains(github.ref_name, '-canary') }}
+        with:
+          name: release-macos
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
 
   # ── Publish: upload .yml metadata to R2 + create GitHub Release ──────────────
   # Binaries are already on R2 (uploaded in parallel by each platform job above).
@@ -617,9 +642,12 @@ jobs:
             --title "${{ github.ref_name }}" \
             --notes-file /tmp/release-notes.md
 
-          # Attach binaries so v1 electron-updater can find latest.yml
+          # Download the installer artifacts saved by each build job and upload them
+          # to the GitHub Release alongside the yml metadata files.
+          # v1.x clients (GitHub provider) resolve urls in latest.yml as GitHub Release
+          # asset filenames — the actual binaries must be present as Release assets.
           mkdir -p release-all
-          gh run download --name release-win --dir release-all/ 2>/dev/null || true
+          gh run download --name release-win   --dir release-all/ 2>/dev/null || true
           gh run download --name release-linux --dir release-all/ 2>/dev/null || true
           gh run download --name release-macos --dir release-all/ 2>/dev/null || true
           cp ymls/*.yml release-all/ 2>/dev/null || true
