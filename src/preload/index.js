@@ -38,9 +38,14 @@ contextBridge.exposeInMainWorld('__ELECTRON__', {
     // Whether the packaged app was launched with --enable-updater (canary testing).
     enableUpdater: config.enableUpdater ?? false,
 
-    // Events pushed from the main process (callback-based, IPC event object is never exposed)
+    // Events pushed from the main process (callback-based, IPC event object is never exposed).
+    // The Electron IPC event object cannot cross the contextBridge, so it is never forwarded.
+    // For channels that carry data, pass null as the first argument so component callbacks
+    // can use the natural Electron IPC signature (_e, data) without breaking:
+    //   CORRECT:   (cb) => ipcRenderer.on('ch', (_e, val) => cb(null, val))
+    //   WRONG:     (cb) => ipcRenderer.on('ch', (_e, val) => cb(val))   ← val lands in _e
     onBeforeQuit: (cb) => ipcRenderer.on('app-before-quit', () => cb()),
-    onDownloadProgress: (cb) => ipcRenderer.on('download-progress', (_e, p) => cb(p)),
+    onDownloadProgress: (cb) => ipcRenderer.on('download-progress', (_e, p) => cb(null, p)),
     onUpdateAvailable: (cb) => ipcRenderer.on('update-available', () => cb()),
     onUpdateReady: (cb) => ipcRenderer.on('update-ready', () => cb()),
     onWindowMaximize: (cb) => ipcRenderer.on('on-window-maximize', () => cb()),
