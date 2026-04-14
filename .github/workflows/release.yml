@@ -438,11 +438,21 @@ jobs:
   # Binaries are already on R2 (uploaded in parallel by each platform job above).
   # YML metadata files are uploaded LAST so electron-updater never fetches a
   # latest.yml that references a binary not yet live.
+  #
+  # Concurrency group ensures that if two tags land close together, the
+  # releases.json read-modify-write is serialised (never races).
   publish:
     runs-on: ubuntu-latest
     needs: [build-windows, build-linux, build-macos]
+    concurrency:
+      group: releases-json-update
+      cancel-in-progress: false
     steps:
+      # fetch-depth: 0 — full history + all tags needed for `git log` in
+      # generate-release-notes.mjs to find commits between this tag and the last.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Detect channel
         id: channel
@@ -489,11 +499,67 @@ jobs:
               --no-progress
           done
 
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      # Download the current releases.json from R2 so we can prepend the new
+      # entry.  Fall back to an empty array if this is the very first release.
+      - name: Download current releases.json from R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          aws s3 cp "s3://$R2_BUCKET/releases.json" releases.json \
+            --endpoint-url "$R2_ENDPOINT" \
+            --no-progress 2>/dev/null || echo '[]' > releases.json
+
+      # AI generates notes from git commits between this tag and the previous
+      # same-channel tag.  If a human already added an entry for this version
+      # to releases.json before CI ran, the script exits without calling the AI.
+      - name: Generate release notes (AI from commits)
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          node scripts/generate-release-notes.mjs \
+            --tag="${{ github.ref_name }}" \
+            --input=releases.json \
+            --output=releases.json
+
+      - name: Upload releases.json to R2 (no-cache — always fetch latest)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          aws s3 cp releases.json "s3://$R2_BUCKET/releases.json" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type "application/json" \
+            --cache-control "no-cache, max-age=0" \
+            --no-progress
+
+      # Extract the notes for this specific version from releases.json to use
+      # as the GitHub Release body (the in-app changelog is served from R2).
+      - name: Extract release notes for GitHub Release
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          NOTES=$(node -e "
+            const r = JSON.parse(require('fs').readFileSync('releases.json','utf-8'));
+            const entry = r.find(x => x.version === '$VERSION');
+            process.stdout.write(entry ? entry.notes : '');
+          " 2>/dev/null || echo "")
+          if [ -z "$NOTES" ]; then
+            NOTES="_Release notes unavailable — see the in-app changelog._"
+          fi
+          printf '%s' "$NOTES" > /tmp/release-notes.md
+
       - name: Create GitHub Release (changelog only)
         run: |
           gh release create ${{ github.ref_name }} \
             --title "${{ github.ref_name }}" \
-            --generate-notes \
+            --notes-file /tmp/release-notes.md \
             ${{ contains(github.ref_name, '-canary') && '--prerelease' || '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

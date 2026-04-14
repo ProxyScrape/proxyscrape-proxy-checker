@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 )
 
-const githubReleasesURL = "https://api.github.com/repos/ProxyScrape/proxyscrape-proxy-checker/releases"
+// releasesURL is the public R2 endpoint that serves releases.json.
+// Override with UPDATES_URL env var for local testing (e.g. a mock server).
+const defaultReleasesURL = "https://updates.proxyscrape.com/releases.json"
 
-// Release holds the fields we expose from a GitHub release.
+// Release holds the fields we expose from a single changelog entry.
 type Release struct {
 	TagName     string `json:"tagName"`
 	PublishedAt string `json:"publishedAt"`
@@ -29,16 +32,17 @@ type VersionInfo struct {
 	Releases       []Release `json:"releases"`
 }
 
-type githubRelease struct {
-	TagName     string `json:"tag_name"`
-	PublishedAt string `json:"published_at"`
-	HtmlURL     string `json:"html_url"`
-	Body        string `json:"body"`
+// r2Release matches the JSON schema produced by scripts/build-releases-json.mjs.
+type r2Release struct {
+	Version string `json:"version"`
+	Date    string `json:"date"`
+	Channel string `json:"channel"`
+	Notes   string `json:"notes"`
 }
 
-// Check fetches GitHub releases, considers only pre-releases for the canary channel,
-// and compares the latest pre-release tag against currentVersion.
-// On network error, returns VersionInfo with HasUpdate=false.
+// Check fetches releases.json from R2, splits by channel, and compares the
+// latest matching release against currentVersion.
+// On network or parse error, returns VersionInfo with HasUpdate=false.
 func Check(ctx context.Context, currentVersion string) VersionInfo {
 	info := VersionInfo{
 		Current:        currentVersion,
@@ -48,14 +52,19 @@ func Check(ctx context.Context, currentVersion string) VersionInfo {
 		Releases:       []Release{},
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	url := defaultReleasesURL
+	if override := os.Getenv("UPDATES_URL"); override != "" {
+		url = override
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubReleasesURL, nil)
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return info
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "ProxyScrape-Proxy-Checker")
+	// Bypass any CDN cache so we always get the freshest release list.
+	req.Header.Set("Cache-Control", "no-cache")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -67,39 +76,44 @@ func Check(ctx context.Context, currentVersion string) VersionInfo {
 		return info
 	}
 
-	var all []githubRelease
+	var all []r2Release
 	if err := json.NewDecoder(resp.Body).Decode(&all); err != nil {
 		return info
 	}
 
-	// Separate canary from stable by tag name pattern rather than GitHub's
-	// prerelease flag. GitHub Releases are now created as regular releases
-	// (not prereleases) for all channels, so the flag is no longer reliable.
+	// Split into canary and stable lists (releases.json is already sorted
+	// latest-first by the build script, so the first entry in each slice is
+	// the newest).
 	for _, r := range all {
 		rel := Release{
-			TagName:     r.TagName,
-			PublishedAt: r.PublishedAt,
-			HtmlURL:     r.HtmlURL,
-			Body:        r.Body,
+			TagName:     r.Version,
+			PublishedAt: r.Date,
+			HtmlURL:     "https://github.com/ProxyScrape/proxyscrape-proxy-checker/releases/tag/v" + r.Version,
+			Body:        r.Notes,
 		}
-		if strings.Contains(r.TagName, "-canary") ||
-			strings.Contains(r.TagName, "-alpha") ||
-			strings.Contains(r.TagName, "-beta") {
+		if r.Channel == "canary" {
 			info.CanaryReleases = append(info.CanaryReleases, rel)
 		} else {
 			info.Releases = append(info.Releases, rel)
 		}
 	}
 
-	if len(info.CanaryReleases) == 0 {
-		return info
-	}
-
-	latest := strings.TrimPrefix(info.CanaryReleases[0].TagName, "v")
+	// Determine the relevant "latest" version based on whether the running
+	// build is a canary or stable release.
 	current := strings.TrimPrefix(currentVersion, "v")
+	isCanaryBuild := strings.Contains(current, "-canary") ||
+		strings.Contains(current, "-beta") ||
+		strings.Contains(current, "-alpha")
 
-	info.Latest = latest
-	info.HasUpdate = isNewerVersion(latest, current)
+	if isCanaryBuild && len(info.CanaryReleases) > 0 {
+		latest := strings.TrimPrefix(info.CanaryReleases[0].TagName, "v")
+		info.Latest = latest
+		info.HasUpdate = isNewerVersion(latest, current)
+	} else if !isCanaryBuild && len(info.Releases) > 0 {
+		latest := strings.TrimPrefix(info.Releases[0].TagName, "v")
+		info.Latest = latest
+		info.HasUpdate = isNewerVersion(latest, current)
+	}
 
 	return info
 }
@@ -133,7 +147,7 @@ func isNewerVersion(candidate, base string) bool {
 // String returns a human-readable description of the version check result.
 func (v VersionInfo) String() string {
 	if v.HasUpdate {
-		return fmt.Sprintf("Canary update available: %s → %s", v.Current, v.Latest)
+		return fmt.Sprintf("Update available: %s → %s", v.Current, v.Latest)
 	}
 	return fmt.Sprintf("Up to date: %s", v.Current)
 }
