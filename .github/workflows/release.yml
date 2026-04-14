@@ -43,7 +43,7 @@ jobs:
         run: npm ci
 
       - name: Build renderer bundle
-        run: npx electron-vite build --outDir dist
+        run: npx electron-vite build
         env:
           POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
           POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}

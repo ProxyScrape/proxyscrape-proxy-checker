@@ -47,6 +47,7 @@ REQUIRED_ENV.forEach(key => {
 export default defineConfig({
   main: {
     build: {
+      outDir: path.resolve(__dirname, 'dist/main'),
       rollupOptions: {
         input: path.resolve(__dirname, 'src/main/index.js')
       }
@@ -62,6 +63,7 @@ export default defineConfig({
   },
   preload: {
     build: {
+      outDir: path.resolve(__dirname, 'dist/preload'),
       rollupOptions: {
         input: path.resolve(__dirname, 'src/preload/index.js')
       }

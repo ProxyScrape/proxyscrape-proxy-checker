@@ -1,6 +1,6 @@
 {
     "name": "proxyscrape-proxy-checker",
-    "version": "2.0.5-canary",
+    "version": "2.0.6-canary",
     "main": "./dist/main/index.js",
     "license": "MIT AND Commons-Clause-1.0",
     "author": {
@@ -22,10 +22,10 @@
     },
     "homepage": "https://proxyscrape.com/proxy-checker",
     "scripts": {
-        "dev": "electron-vite dev --outDir dist",
+        "dev": "electron-vite dev",
         "dev:web": "vite --config vite.web.config.mjs",
         "dev:web:all": "concurrently --names \"go,vite\" --prefix-colors \"cyan,magenta\" \"cd backend && air\" \"vite --config vite.web.config.mjs\"",
-        "build": "npm run build:backend && electron-vite build --outDir dist",
+        "build": "npm run build:backend && electron-vite build",
         "build:backend": "bash scripts/build-backend.sh",
         "build:webserver": "bash scripts/build-webserver.sh",
         "build:renderer": "electron-vite build --outDir dist",
