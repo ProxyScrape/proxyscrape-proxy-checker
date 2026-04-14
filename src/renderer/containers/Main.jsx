@@ -23,7 +23,6 @@ import { trackScreen } from '../misc/analytics';
 import { ipcRenderer } from 'electron';
 import { TITLEBAR_HEIGHT, FOOTER_HEIGHT, CANARY_BANNER_HEIGHT } from '../constants/Layout';
 import { IS_CANARY } from '../../shared/AppConstants';
-import CanaryBanner from '../components/CanaryBanner';
 const TAB_SCREENS = ['Core', 'Judges', 'Ip', 'Blacklist', 'History'];
 
 class Main extends React.PureComponent {
@@ -129,7 +128,6 @@ class Main extends React.PureComponent {
                     <Checking />
                     <Overlay />
                     <Update />
-                    {IS_CANARY && <CanaryBanner />}
                     <Notification fileName={this.state.fileName} show={this.state.showNotify} toggleNotify={this.toggleNotify} checkProxy={checkProxy} disable={this.disable}/>
                     <ProtocolWarningDialog />
                     <Footer toggleModal={this.toggleModal} closeDrawer={this.props.closeDrawer}/>

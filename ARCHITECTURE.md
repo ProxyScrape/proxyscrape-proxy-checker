@@ -180,6 +180,27 @@ During the migration period, check history is stored by `better-sqlite3` in the 
 
 ---
 
+## Testing the v1 → v2 settings migration (Windows)
+
+The migration runs automatically the first time v2 launches on a machine that has v1.x settings. To reproduce it manually during development:
+
+```cmd
+REM 1. Create the canary userData folder if it doesn't exist yet
+mkdir "%APPDATA%\proxyscrape-proxy-checker Canary" 2>nul
+
+REM 2. Remove any already-migrated settings.json so the migration isn't skipped
+del "%APPDATA%\proxyscrape-proxy-checker Canary\settings.json" 2>nul
+
+REM 3. Copy the v1.x settings file into the canary folder as the migration source
+copy /y "%APPDATA%\proxyscrape-proxy-checker\settings.proxyscrape.checker.json" "%APPDATA%\proxyscrape-proxy-checker Canary\"
+```
+
+Then launch the canary build normally. On startup `migrateSettingsIfNeeded()` will find `settings.proxyscrape.checker.json`, convert it to `settings.json` in v2 format, and the Go backend will load it (the Go `migrate()` function sanitises any string-typed numeric fields left by the v1.x React form inputs).
+
+The three commands are idempotent — repeat them to reset and re-run the migration.
+
+---
+
 ## Build
 
 ### Desktop

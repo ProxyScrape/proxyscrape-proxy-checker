@@ -146,6 +146,9 @@ function startGoBackend() {
             // the compiled binary it spawns), preventing orphaned processes.
             opts = {
                 cwd: backendDir,
+                // Pass the real app version via env so the backend knows what version
+                // it is running as (used for the /api/version update check).
+                env: { ...process.env, APP_VERSION: app.getVersion() },
                 stdio: ['ignore', 'pipe', 'pipe'],
                 detached: process.platform !== 'win32',
             };

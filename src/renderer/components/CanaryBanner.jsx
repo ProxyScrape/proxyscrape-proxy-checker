@@ -8,7 +8,6 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import { alpha } from '@mui/material/styles';
 import { shell } from 'electron';
-import { FOOTER_HEIGHT } from '../constants/Layout';
 import { IS_CANARY } from '@shared/AppConstants';
 
 const CANARY_ORANGE = '#e67e00';
@@ -35,11 +34,6 @@ const CanaryBanner = memo(({ hasUpdate, latestCanary, canaryReleases }) => {
         <>
             <Box
                 sx={{
-                    position: 'fixed',
-                    bottom: FOOTER_HEIGHT,
-                    left: 0,
-                    right: 0,
-                    zIndex: 99,
                     bgcolor: CANARY_BG,
                     borderTop: `1px solid ${CANARY_BORDER}`,
                     borderBottom: `1px solid ${CANARY_BORDER}`,
@@ -55,10 +49,12 @@ const CanaryBanner = memo(({ hasUpdate, latestCanary, canaryReleases }) => {
                     variant="caption"
                     sx={{ color: CANARY_ORANGE, fontSize: '0.72rem', lineHeight: 1.4 }}
                 >
-                    ⚡ <strong>Canary build</strong> — things may break. If they do, remove all app data and reinstall the stable version from our website.
+                    ⚡ <strong>Canary build</strong> — things may break. If they do, remove all app data and reinstall the{' '}
+                    <Box component="a" href="https://proxyscrape.com/proxy-checker" onClick={(e) => { e.preventDefault(); shell.openExternal('https://proxyscrape.com/proxy-checker'); }} sx={{ color: CANARY_ORANGE, textDecoration: 'underline', cursor: 'pointer' }}>stable version</Box>
+                    {' '}from our website.
                 </Typography>
 
-                {hasUpdate && latestCanary && (
+                {canaryReleases && canaryReleases.length > 0 && (
                     <Button
                         size="small"
                         variant="outlined"
@@ -78,7 +74,7 @@ const CanaryBanner = memo(({ hasUpdate, latestCanary, canaryReleases }) => {
                             },
                         }}
                     >
-                        Update to {latestCanary}
+                        {hasUpdate ? `Update to ${latestCanary}` : 'Switch version'}
                     </Button>
                 )}
             </Box>
@@ -97,7 +93,9 @@ const CanaryBanner = memo(({ hasUpdate, latestCanary, canaryReleases }) => {
                 </DialogTitle>
                 <DialogContent>
                     <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2, fontSize: '0.82rem' }}>
-                        Canary versions may be unstable. If the app breaks, remove all data and reinstall the stable release from our website.
+                        Canary versions may be unstable. If the app breaks, remove all data and reinstall the{' '}
+                        <Box component="a" href="https://proxyscrape.com/proxy-checker" onClick={(e) => { e.preventDefault(); shell.openExternal('https://proxyscrape.com/proxy-checker'); }} sx={{ color: CANARY_ORANGE, textDecoration: 'underline', cursor: 'pointer' }}>stable release</Box>
+                        {' '}from our website.
                     </Typography>
 
                     <Button

@@ -12,6 +12,8 @@ import SupportIcon from '../components/ui/SupportIcon';
 import WhiteLogo from "../../../public/icons/Logo-ProxyScrape-white.png";
 import { FOOTER_BACKGROUND, blueBrand } from '../theme/palette';
 import { openIntercom } from '../misc/intercom';
+import CanaryBanner from './CanaryBanner';
+import { IS_CANARY } from '@shared/AppConstants';
 
 const footerLinkSx = {
     display: 'flex',
@@ -86,6 +88,7 @@ const Footer = ({ toggleModal, closeDrawer }) => (
                 Get it all
             </Box>
         </Box>
+        {IS_CANARY && <CanaryBanner />}
         <Box
             sx={{
                 display: 'flex',

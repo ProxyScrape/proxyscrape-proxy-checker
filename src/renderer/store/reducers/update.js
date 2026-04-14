@@ -4,6 +4,7 @@ const initialState = {
     active: true,
     isChecking: true,
     available: false,
+    releases: [],
     // Canary-only fields populated when IS_CANARY=true
     hasUpdate: false,
     latestCanary: null,

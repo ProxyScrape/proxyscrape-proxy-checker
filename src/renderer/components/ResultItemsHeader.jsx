@@ -20,6 +20,7 @@ export default class ResultItemsHeader extends React.PureComponent {
     sortResults = this.props.sortResults;
 
     sortBy = {
+        status: () => this.sortResults('status'),
         ip: () => this.sortResults('ip'),
         port: () => this.sortResults('port'),
         protocols: () => this.sortResults('protocols'),
@@ -58,7 +59,7 @@ export default class ResultItemsHeader extends React.PureComponent {
                 minWidth: 0,
                 '& svg': { width: 10, height: 10, fill: 'currentColor' },
             }}>
-                <Box sx={{ width: 40, flexShrink: 0, ...headerSx }}><SortIcon /></Box>
+                <Box sx={{ width: 40, flexShrink: 0, ...headerSx }} onClick={this.sortBy.status} title="Sort by status"><SortIcon /></Box>
                 <Box sx={{ flex: '2 0 120px', ...headerSx }} onClick={this.sortBy.ip}>
                     <span>Host</span><SortSVG {...sorting} />
                 </Box>

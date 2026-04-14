@@ -28,6 +28,7 @@ export const checkAtAvailable = () => async dispatch => {
         if (IS_CANARY) {
             // On canary, never show the full-screen update overlay.
             // The CanaryBanner reads hasUpdate and canaryReleases directly from state.
+            // Info slideout shows canary releases.
             dispatch(changeUpdateState({
                 active: false,
                 isChecking: false,
@@ -35,17 +36,19 @@ export const checkAtAvailable = () => async dispatch => {
                 hasUpdate: !!versionData?.hasUpdate,
                 latestCanary: versionData?.latest || null,
                 canaryReleases: versionData?.canaryReleases || [],
+                releases: versionData?.canaryReleases || [],
             }));
         } else {
             dispatch(changeUpdateState({
                 active: !!versionData?.hasUpdate && !isDev,
                 isChecking: false,
                 available: !!versionData?.hasUpdate && !isDev,
+                releases: versionData?.releases || [],
             }));
         }
-    } catch {
+    } catch (e) {
         await wait(500);
-        dispatch(changeUpdateState({ active: false, isChecking: false, available: false }));
+        dispatch(changeUpdateState({ active: false, isChecking: false, available: false, releases: [] }));
     }
 };
 

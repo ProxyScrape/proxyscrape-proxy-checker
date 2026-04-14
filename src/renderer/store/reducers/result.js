@@ -43,7 +43,7 @@ const initialState = {
     },
     sorting: {
         reverse: false,
-        by: 'timeout'
+        by: 'status'
     },
     anons: {
         transparent: true,

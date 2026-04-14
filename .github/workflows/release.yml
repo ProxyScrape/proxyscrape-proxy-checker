@@ -11,14 +11,14 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Derived from the pushed tag (e.g. v2.0.0-canary or v2.0.0).
-  # Used to inject appVersion into Go binaries and to set EP_PRE_RELEASE.
+  # Used to inject appVersion into Go binaries.
   APP_VERSION: ${{ github.ref_name }}
-  EP_PRE_RELEASE: ${{ contains(github.ref_name, '-canary') }}
+  # R2 upload configuration.
+  R2_BUCKET: ${{ secrets.R2_BUCKET }}
+  R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
 
 jobs:
   # ── Version consistency gate ──────────────────────────────────────────────────
-  # Fails fast if package.json, Go appVersion, or the git tag disagree.
-  # All build jobs depend on this so nothing is built from a mismatched state.
   check-versions:
     runs-on: ubuntu-latest
     steps:
@@ -111,11 +111,6 @@ jobs:
         run: |
           sudo dpkg --add-architecture arm64
 
-          # Ubuntu 24.04 uses deb822 format (/etc/apt/sources.list.d/ubuntu.sources).
-          # Without Architectures: fields, apt tries to fetch arm64 from
-          # security.ubuntu.com and azure mirrors, which 404 for non-amd64.
-          # Replace the file with one that explicitly restricts amd64 sources
-          # and adds ports.ubuntu.com for arm64.
           sudo tee /etc/apt/sources.list.d/ubuntu.sources > /dev/null << 'EOF'
           Types: deb
           URIs: http://azure.archive.ubuntu.com/ubuntu/
@@ -140,8 +135,6 @@ jobs:
           EOF
 
           sudo apt-get update -qq
-          # gcc-aarch64-linux-gnu: GCC cross-compiler with its own sysroot/headers,
-          # avoids the glibc version mismatch that occurs with zig cc + system headers.
           sudo apt-get install -y libpcap-dev libpcap-dev:arm64 gcc-aarch64-linux-gnu
 
       - name: Build linux-x64
@@ -197,7 +190,7 @@ jobs:
           path: bin/
 
   # ── Electron: Windows installer + portable ──────────────────────────────────
-  release-windows:
+  build-windows:
     runs-on: windows-latest
     needs: [build-renderer, build-go-windows]
     steps:
@@ -227,17 +220,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Package & publish Windows
-        run: npx electron-builder --config electron-builder.config.js --win --publish always
+      - name: Build Windows (no publish)
+        run: npx electron-builder --config electron-builder.config.js --win --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
           POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
           POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}
           POSTHOG_UI_HOST: ${{ secrets.POSTHOG_UI_HOST }}
           INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
 
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-win
+          path: release/
+
   # ── Electron: Linux AppImage ─────────────────────────────────────────────────
-  release-linux:
+  build-linux:
     runs-on: ubuntu-latest
     needs: [build-renderer, build-go-linux]
     steps:
@@ -270,17 +268,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Package & publish Linux
-        run: npx electron-builder --config electron-builder.config.js --linux --publish always
+      - name: Build Linux (no publish)
+        run: npx electron-builder --config electron-builder.config.js --linux --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
           POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
           POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}
           POSTHOG_UI_HOST: ${{ secrets.POSTHOG_UI_HOST }}
           INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
 
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-linux
+          path: release/
+
   # ── Electron: macOS DMG + zip ────────────────────────────────────────────────
-  release-macos:
+  build-macos:
     runs-on: macos-latest
     needs: [build-renderer, build-go-macos]
     steps:
@@ -313,12 +316,91 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Package & publish macOS (unsigned)
-        run: npx electron-builder --config electron-builder.config.js --mac --publish always
+      - name: Build macOS (no publish)
+        run: npx electron-builder --config electron-builder.config.js --mac --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
           POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
           POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}
           POSTHOG_UI_HOST: ${{ secrets.POSTHOG_UI_HOST }}
           INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-macos
+          path: release/
+
+  # ── Publish: upload to R2 + create GitHub Release ────────────────────────────
+  # Runs after all three platform builds complete. Uploads binaries and update
+  # metadata (.yml files) to Cloudflare R2, then creates a GitHub Release
+  # containing only the changelog (no binary assets attached).
+  publish:
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-linux, build-macos]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Detect channel
+        id: channel
+        run: |
+          if [[ "${{ github.ref_name }}" == *"-canary"* ]]; then
+            echo "path=canary" >> $GITHUB_OUTPUT
+          else
+            echo "path=stable" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: release-*
+          path: release-all/
+          merge-multiple: true
+
+      - name: Upload to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          CHANNEL=${{ steps.channel.outputs.path }}
+
+          # Upload binaries (cached by filename — content-addressed by version in name)
+          aws s3 sync release-all/ s3://${{ env.R2_BUCKET }}/$CHANNEL/ \
+            --endpoint-url "${{ env.R2_ENDPOINT }}" \
+            --exclude "*.yml" \
+            --exclude "*.yaml" \
+            --no-progress
+
+          # Upload .yml metadata files with no-cache so clients always get the
+          # latest version info and never serve a stale "up to date" response.
+          for yml in release-all/*.yml; do
+            [ -f "$yml" ] || continue
+            aws s3 cp "$yml" s3://${{ env.R2_BUCKET }}/$CHANNEL/$(basename "$yml") \
+              --endpoint-url "${{ env.R2_ENDPOINT }}" \
+              --content-type "text/yaml" \
+              --cache-control "no-cache, max-age=0" \
+              --no-progress
+          done
+
+      # TRANSITIONAL: This step lets v1.x.x users auto-update to v2 via their
+      # existing GitHub provider. Their installed app checks GitHub Release assets
+      # for latest.yml — without this, they would never see v2.
+      #
+      # HOW TO USE: Change `if: false` to `if: true` when tagging the FIRST v2
+      # stable release (no -canary suffix), then revert it once that release has
+      # been live for ~2 weeks and most v1 users have updated.
+      - name: Upload to GitHub Release assets (v1 backwards compat — transitional)
+        if: false
+        run: |
+          gh release upload ${{ github.ref_name }} release-all/* --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release (changelog only)
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            ${{ contains(github.ref_name, '-canary') && '--prerelease' || '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

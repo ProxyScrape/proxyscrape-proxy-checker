@@ -69,7 +69,7 @@ const sectionLabelSx = {
 };
 
 const Info = memo(({ show, releases, toggleInfo }) => {
-    if (releases === undefined) return null;
+    const releaseList = releases || [];
 
     const shareUrl = encodeURIComponent(psUrl('/proxy-checker', 'social-share'));
 
@@ -161,8 +161,13 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                     Releases
                 </Typography>
                 <Box>
-                    {releases.map(release => (
-                        <Box key={release.tag_name} sx={{
+                    {releaseList.length === 0 && (
+                        <Typography variant="body2" sx={{ color: 'text.disabled', fontSize: '0.8rem' }}>
+                            No releases found.
+                        </Typography>
+                    )}
+                    {releaseList.map(release => (
+                        <Box key={release.tagName} sx={{
                             mb: 2,
                             pb: 2,
                             borderBottom: `1px solid ${FOOTER_BACKGROUND}`,
@@ -170,10 +175,10 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                         }}>
                             <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5 }}>
                                 <Typography variant="body2" sx={{ fontWeight: 700, color: blueBrand[300] }}>
-                                    {release.tag_name}
+                                    {release.tagName}
                                 </Typography>
                                 <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-                                    {new Date(release.published_at).toLocaleDateString()}
+                                    {new Date(release.publishedAt).toLocaleDateString()}
                                 </Typography>
                             </Box>
                             <Box sx={{
@@ -192,7 +197,10 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                                     color: 'text.primary',
                                 },
                             }}>
-                                <ReactMarkdown>{release.body}</ReactMarkdown>
+                                {release.body
+                                    ? <ReactMarkdown>{release.body}</ReactMarkdown>
+                                    : <Typography variant="body2" component="a" href={release.htmlUrl} onClick={openLink} sx={{ fontSize: '0.8rem', color: blueBrand[300] }}>View on GitHub</Typography>
+                                }
                             </Box>
                         </Box>
                     ))}

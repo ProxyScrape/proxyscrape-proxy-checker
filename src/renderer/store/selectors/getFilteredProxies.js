@@ -115,8 +115,16 @@ const filter = (items, protocols, anons, countries, search, isKeepAlive, inBlack
 
 const filterPorts = (proxyPort, inputPorts) => inputPorts.some(value => value == proxyPort);
 
+const STATUS_RANK = { working: 0, failed: 1, cancelled: 2 };
+
 const sortFilter = (items, sorting) => {
     switch (sorting.by) {
+        case 'status': {
+            const rank = item => STATUS_RANK[item.status] ?? 1;
+            return sorting.reverse
+                ? sort(items).by([{ desc: rank }, { asc: item => item.timeout }])
+                : sort(items).by([{ asc: rank }, { desc: item => item.timeout }]);
+        }
         case 'timeout':
             return sorting.reverse ? sort(items).desc(item => item.timeout) : sort(items).asc(item => item.timeout);
         case 'blacklist':

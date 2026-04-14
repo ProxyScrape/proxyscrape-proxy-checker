@@ -36,12 +36,18 @@ module.exports = {
     output: 'release',
   },
 
+  // Binaries and update metadata (.yml files) are hosted on Cloudflare R2,
+  // not as GitHub Release assets. GitHub Releases are created separately
+  // (see release.yml) and serve as the changelog/release notes only.
+  //
+  // Channel is derived from the version:
+  //   2.0.7         → stable  → https://updates.proxyscrape.com/stable/  → latest.yml
+  //   2.0.8-canary  → canary  → https://updates.proxyscrape.com/canary/  → canary.yml
   publish: [
     {
-      provider: 'github',
-      owner: 'ProxyScrape',
-      repo: 'proxyscrape-proxy-checker',
-      private: false,
+      provider: 'generic',
+      url: `${process.env.R2_PUBLIC_URL}/${isCanary ? 'canary' : 'stable'}`,
+      channel: isCanary ? 'canary' : 'latest',
     },
   ],
 
@@ -94,6 +100,7 @@ module.exports = {
     perMachine: true,
     allowToChangeInstallationDirectory: true,
     differentialPackage: true,
+    buildUniversalInstaller: false,
   },
 
   portable: {

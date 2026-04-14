@@ -3,6 +3,7 @@ package api
 import (
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -16,9 +17,14 @@ import (
 	"github.com/proxyscrape/checker-backend/internal/store"
 )
 
-// appVersion is injected at build time via -ldflags from package.json.
-// Default "dev" is used for local `go run` without the build script.
-var appVersion = "dev"
+// appVersion is injected at build time via -ldflags from package.json,
+// or at runtime via the APP_VERSION environment variable (used in dev mode).
+var appVersion = func() string {
+	if v := os.Getenv("APP_VERSION"); v != "" {
+		return v
+	}
+	return "dev"
+}()
 
 // server holds shared dependencies available to all route handlers.
 type server struct {
