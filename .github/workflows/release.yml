@@ -623,6 +623,6 @@ jobs:
           gh run download --name release-linux --dir release-all/ 2>/dev/null || true
           gh run download --name release-macos --dir release-all/ 2>/dev/null || true
           cp ymls/*.yml release-all/ 2>/dev/null || true
-          gh release upload "${{ github.ref_name }}" release-all/* --clobber
+          find release-all -maxdepth 1 -type f | xargs gh release upload "${{ github.ref_name }}" --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
