@@ -29,8 +29,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # fetch-depth 0 + fetch-tags false: we need branch history to verify
+          # the tagged commit is reachable from the correct branch (canary/master),
+          # but we don't need the full tag history here.
+          fetch-depth: 0
+          fetch-tags: false
 
-      - name: Check version consistency
+      - name: Check version consistency and branch alignment
         run: bash scripts/check-versions.sh "${{ github.ref_name }}"
 
   # ── JS bundle: built once, shared across all platform release jobs ────────────
