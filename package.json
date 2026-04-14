@@ -1,6 +1,6 @@
 {
     "name": "proxyscrape-proxy-checker",
-    "version": "2.0.12-canary",
+    "version": "2.0.13-canary",
     "main": "./dist/main/index.js",
     "license": "MIT AND Commons-Clause-1.0",
     "author": {
@@ -68,6 +68,7 @@
     "dependencies": {
         "@intercom/messenger-js-sdk": "^0.0.19",
         "@posthog/react": "^1.9.0",
+        "framer-motion": "^12.38.0",
         "posthog-js": "^1.367.0"
     }
 }
