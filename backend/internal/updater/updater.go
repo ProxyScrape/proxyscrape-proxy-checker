@@ -14,7 +14,7 @@ import (
 // releasesBaseURL is the base R2 URL. The channel path segment is appended at
 // runtime so each build only fetches its own channel's entries.
 // Override with UPDATES_URL env var for local testing (e.g. a mock server).
-const releasesBaseURL = "https://updates.proxyscrape.com"
+const releasesBaseURL = "https://software.cdn.proxyscrape.com"
 
 // Release holds the fields we expose from a single changelog entry.
 type Release struct {

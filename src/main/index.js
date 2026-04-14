@@ -413,14 +413,14 @@ app.whenReady().then(async () => {
     // same Electron security warning we're trying to silence.
     const productionCSP = [
         "default-src 'self'",
-        // n.proxyscrape.com is the PostHog reverse-proxy domain (routes PostHog
-        // traffic through our own domain to avoid ad-blockers).
-        // widget.intercom.io must be here so the Intercom chat widget JS can load.
-        "script-src 'self' https://n.proxyscrape.com https://widget.intercom.io",
+        // n.proxyscrape.com  — PostHog reverse-proxy (avoids ad-blockers)
+        // widget.intercom.io — Intercom widget bootstrap script
+        // js.intercomcdn.com — Intercom CDN where the actual runtime scripts live
+        "script-src 'self' https://n.proxyscrape.com https://widget.intercom.io https://js.intercomcdn.com",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: https:",
         // Local Go backend (any port) + analytics/chat services
-        "connect-src 'self' http://127.0.0.1:* https://n.proxyscrape.com https://app.posthog.com https://eu.posthog.com https://widget.intercom.io https://api-iam.intercom.io https://api.intercom.io wss://nexus-websocket-a.intercom.io wss://nexus-websocket-b.intercom.io https://github.com https://api.proxyscrape.com",
+        "connect-src 'self' http://127.0.0.1:* https://n.proxyscrape.com https://app.posthog.com https://eu.posthog.com https://widget.intercom.io https://js.intercomcdn.com https://api-iam.intercom.io https://api.intercom.io wss://nexus-websocket-a.intercom.io wss://nexus-websocket-b.intercom.io https://github.com https://api.proxyscrape.com",
         "font-src 'self' data:",
         "object-src 'none'",
         "base-uri 'self'",
