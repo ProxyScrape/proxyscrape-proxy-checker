@@ -72,6 +72,23 @@ git commit -m "chore: start 2.2.x-canary cycle"
 git push origin canary
 ```
 
+## IMPORTANT: Switching back to canary after a stable promotion
+
+Whenever the user asks to "switch to canary" or "go back to canary" or checks out the `canary` branch, **always check first**:
+
+1. Run `git log --oneline origin/master..origin/canary` — if the output is **empty**, canary and master are in sync, meaning a stable was just promoted.
+2. Check `package.json` version on canary — if it still ends in `-canary` with the **same X as the last stable tag**, the cycle bump has not been done yet.
+3. If both are true: **immediately bump canary to `2.(X+1).1-canary`** before doing anything else:
+
+```bash
+npm version 2.(X+1).1-canary --no-git-tag-version
+git add package.json package-lock.json
+git commit -m "chore: start 2.(X+1).x-canary cycle"
+git push origin canary
+```
+
+**Never leave canary at the same X as a released stable.** The bump must happen as part of switching back to canary — not later.
+
 ## Tags are immutable — never delete and recreate
 
 Once a tag is pushed, never delete or recreate it. Increment Y and push a new tag instead:
