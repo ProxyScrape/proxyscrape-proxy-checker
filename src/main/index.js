@@ -330,27 +330,6 @@ ipcMain.handle('write-file', async (_event, filePath, content) => {
 
 ipcMain.handle('getDownloadsPath', () => app.getPath('downloads'));
 
-let downloadsWatcher = null;
-ipcMain.on('watch-downloads', (event) => {
-    if (downloadsWatcher) return; // already watching
-    const folder = app.getPath('downloads');
-    downloadsWatcher = fs.watch(folder, { persistent: false }, (type, fileName) => {
-        if (type === 'change' && fileName && fileName.endsWith('.txt')) {
-            event.sender.send('downloads-changed', fileName);
-        }
-    });
-    downloadsWatcher.on('error', () => {
-        downloadsWatcher = null;
-    });
-});
-
-ipcMain.on('unwatch-downloads', () => {
-    if (downloadsWatcher) {
-        downloadsWatcher.close();
-        downloadsWatcher = null;
-    }
-});
-
 
 const preloadPath = path.join(__dirname, '../preload/index.js');
 
@@ -500,6 +479,9 @@ app.on('window-all-closed', async () => {
 // On canary builds the CanaryBanner + Go backend handles updates instead,
 // unless --enable-updater is passed for testing the auto-update flow.
 if (!IS_CANARY || enableUpdater) {
+    // Explicitly set so the behaviour is documented — when an update is downloaded
+    // but the user dismisses the toast, it installs silently on the next app quit.
+    autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.on('update-available', () => {
         if (window && !window.isDestroyed()) {
             window.webContents.send('update-available');

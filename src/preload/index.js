@@ -45,9 +45,6 @@ contextBridge.exposeInMainWorld('__ELECTRON__', {
     onUpdateReady: (cb) => ipcRenderer.on('update-ready', () => cb()),
     onWindowMaximize: (cb) => ipcRenderer.on('on-window-maximize', () => cb()),
     onWindowUnmaximize: (cb) => ipcRenderer.on('on-window-unmaximize', () => cb()),
-    watchDownloads: () => ipcRenderer.send('watch-downloads'),
-    unwatchDownloads: () => ipcRenderer.send('unwatch-downloads'),
-    onDownloadsChanged: (cb) => ipcRenderer.on('downloads-changed', (_e, fileName) => cb(fileName)),
 
     // Triggered by the renderer's "Restart now" button after update-ready fires.
     installUpdate: () => ipcRenderer.send('install-update'),

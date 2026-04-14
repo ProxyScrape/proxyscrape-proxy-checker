@@ -11,7 +11,6 @@ import Update from './Update';
 import Footer from '../components/Footer';
 import Info from '../components/Info';
 import LicenseModal from '../components/LicenseModal';
-import Notification from '../components/Notification';
 import ProtocolWarningDialog from '../components/ProtocolWarningDialog';
 import Result from './Result';
 import History from '../components/History';
@@ -31,12 +30,8 @@ class Main extends React.PureComponent {
         super(props);
         this.state = {
             showModal: false,
-            showNotify: false,
-            fileName: "",
-            disableNotify: false,
             tabIndex: 0
         };
-        this.DirectoryCheck = this.DirectoryCheck.bind(this);
     }
 
     toggleInfo = () => {
@@ -47,8 +42,6 @@ class Main extends React.PureComponent {
         }
     };
     toggleModal = () => this.setState({ showModal: !this.state.showModal });
-    toggleNotify = () => this.setState({ showNotify: !this.state.showNotify });
-    disable = () => this.setState({ disableNotify: !this.state.disableNotify });
     setTabIndex = (e, v) => {
         if (this.props.resultIsOpened) {
             this.props.closeResult();
@@ -56,18 +49,6 @@ class Main extends React.PureComponent {
         this.setState({ tabIndex: v });
         trackScreen(TAB_SCREENS[v] || 'Core');
     };
-
-    DirectoryCheck = () => {
-        if (!window.__ELECTRON__) return;
-        window.__ELECTRON__.watchDownloads();
-        window.__ELECTRON__.onDownloadsChanged((fileName) => {
-            if (this.state.disableNotify) {
-                window.__ELECTRON__.unwatchDownloads();
-                return;
-            }
-            this.setState({ showNotify: true, fileName });
-        });
-    }
 
     render = () => {
         const { releases, checkProxy } = this.props;
@@ -128,7 +109,6 @@ class Main extends React.PureComponent {
                     <Checking />
                     <Overlay />
                     <Update />
-                    <Notification fileName={this.state.fileName} show={this.state.showNotify} toggleNotify={this.toggleNotify} checkProxy={checkProxy} disable={this.disable}/>
                     <ProtocolWarningDialog />
                     <Footer toggleModal={this.toggleModal} closeDrawer={this.props.closeDrawer}/>
                 </Box>

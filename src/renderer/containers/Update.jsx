@@ -3,161 +3,169 @@ import { connect } from 'react-redux';
 import { checkAtAvailable } from '../actions/UpdateActions';
 import { openLink } from '../misc/other';
 import { isPortable, IS_CANARY } from '../../shared/AppConstants';
-import { ipcRenderer, enableUpdater } from 'electron';
+import { ipcRenderer } from 'electron';
+import Snackbar from '@mui/material/Snackbar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import LinearProgress from '@mui/material/LinearProgress';
-import { alpha } from '@mui/material/styles';
-import { PAGE_BACKGROUND, blueBrand } from '../theme/palette';
+import { blueBrand } from '../theme/palette';
+
+const CloseIcon = () => (
+    <svg viewBox="0 0 224.512 224.512" style={{ width: 12, height: 12, fill: 'currentColor' }}>
+        <polygon points="224.507,6.997 217.521,0 112.256,105.258 6.998,0 0.005,6.997 105.263,112.254 0.005,217.512 6.998,224.512 112.256,119.24 217.521,224.512 224.507,217.512 119.249,112.254" />
+    </svg>
+);
+
+const TOAST_SX = {
+    bgcolor: 'background.paper',
+    borderRadius: 3,
+    p: 2,
+    boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+    minWidth: 280,
+};
+
+const ANCHOR = { vertical: 'bottom', horizontal: 'right' };
 
 class Update extends React.PureComponent {
     constructor(props) {
         super(props);
         this.state = {
             percent: 0,
-            // Driven by IPC events from electron-updater (active on stable always,
-            // and on canary when --enable-updater is passed).
-            updaterAvailable: false,
-            updaterReady: false,
+            // 'downloading' when update-available fires, 'ready' when update-ready fires.
+            phase: null,
+            // True when the user dismisses the downloading toast.
+            // The download continues; the ready toast still appears when complete.
+            dismissed: false,
         };
     }
 
     componentDidMount() {
-        const { checkAtAvailable } = this.props;
-        checkAtAvailable();
+        this.props.checkAtAvailable();
 
-        ipcRenderer.on('download-progress', (_event, data) => {
+        ipcRenderer.on('update-available', () => {
+            this.setState({ phase: 'downloading', dismissed: false, percent: 0 });
+        });
+
+        ipcRenderer.on('download-progress', (_e, data) => {
             this.setState({ percent: data });
         });
 
-        ipcRenderer.on('update-available', () => {
-            this.setState({ updaterAvailable: true, updaterReady: false });
-        });
-
         ipcRenderer.on('update-ready', () => {
-            this.setState({ updaterReady: true });
+            this.setState({ phase: 'ready', dismissed: false });
         });
     }
+
+    handleDismissDownloading = () => {
+        // Hides the toast but does NOT cancel the download.
+        // autoInstallOnAppQuit = true ensures it still installs on next quit.
+        this.setState({ dismissed: true });
+    };
 
     handleInstall = () => {
         ipcRenderer.send('install-update');
     };
 
-    handleDismiss = () => {
-        this.setState({ updaterAvailable: false, updaterReady: false, percent: 0 });
-    };
-
     render() {
-        const { active, available, isChecking, portableAsset } = this.props;
-        const { percent, updaterAvailable, updaterReady } = this.state;
+        const { available, portableAsset } = this.props;
+        const { percent, phase, dismissed } = this.state;
 
-        // On canary: only show when electron-updater has fired (--enable-updater mode).
-        // On stable: always render (visibility is controlled by opacity/pointerEvents below).
-        const hasUpdaterActivity = updaterAvailable || updaterReady;
-        if (IS_CANARY && !hasUpdaterActivity) return null;
-
-        // Overlay visibility: stable uses Redux `active`, canary uses IPC-driven state.
-        const overlayActive = IS_CANARY ? hasUpdaterActivity : active;
-        const overlayOpacity = overlayActive ? (isChecking ? 0.6 : 1) : 0;
-
-        // What to show inside the overlay:
-        // - updaterReady → "Restart now / Later" prompt (IPC-driven, both channels)
-        // - available || updaterAvailable → "Downloading…" progress bar
-        const showRestartPrompt = updaterReady;
-        const showDownloading = !updaterReady && (available || updaterAvailable);
-
-        return (
-            <Box sx={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                bgcolor: alpha(PAGE_BACKGROUND, 0.95),
-                backdropFilter: 'blur(8px)',
-                zIndex: 1100,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: overlayOpacity,
-                pointerEvents: overlayActive ? 'auto' : 'none',
-                transition: 'opacity 0.3s ease',
-            }}>
-                {showRestartPrompt && (
-                    <Box sx={{ textAlign: 'center' }}>
-                        <Typography variant="body1" sx={{ mb: 1, fontWeight: 600 }}>
-                            Update ready to install
+        // Portable builds: electron-updater doesn't run; show a manual download link
+        // driven by Redux state (from the Go backend /api/version check).
+        if (isPortable) {
+            return (
+                <Snackbar open={!!available} anchorOrigin={ANCHOR}>
+                    <Box sx={TOAST_SX}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                            Update available
                         </Typography>
-                        <Typography variant="body2" sx={{ mb: 3, color: 'text.secondary' }}>
-                            The app will restart to apply the update.
+                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
+                            Download and replace your portable executable.
                         </Typography>
-                        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                            <Button
-                                variant="contained"
-                                size="small"
-                                onClick={this.handleInstall}
-                                sx={{ bgcolor: blueBrand[500], '&:hover': { bgcolor: blueBrand[600] } }}
-                            >
-                                Restart now
-                            </Button>
-                            <Button
-                                variant="outlined"
-                                size="small"
-                                onClick={this.handleDismiss}
-                                sx={{ borderColor: blueBrand[700], color: blueBrand[300] }}
-                            >
-                                Later
-                            </Button>
+                        <Box
+                            component="a"
+                            onClick={openLink}
+                            href={portableAsset?.browser_download_url}
+                            sx={{
+                                color: blueBrand[300],
+                                fontWeight: 600,
+                                fontSize: '0.875rem',
+                                textDecoration: 'none',
+                                '&:hover': { textDecoration: 'underline' },
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Download Update
                         </Box>
                     </Box>
-                )}
+                </Snackbar>
+            );
+        }
 
-                {showDownloading && (
-                    <Box sx={{ textAlign: 'center', width: '60%', maxWidth: 400 }}>
-                        {isPortable ? (
-                            <Box
-                                component="a"
-                                onClick={openLink}
-                                href={portableAsset?.browser_download_url}
-                                sx={{
-                                    color: blueBrand[300],
-                                    fontWeight: 600,
-                                    fontSize: '1.1rem',
-                                    textDecoration: 'none',
-                                    '&:hover': { textDecoration: 'underline' },
-                                }}
+        // Non-portable: IPC-driven toasts from electron-updater events.
+        // On canary, phase only becomes non-null when --enable-updater is passed
+        // (because main only calls checkForUpdates() in that case).
+        if (IS_CANARY && phase === null) return null;
+
+        return (
+            <>
+                {/* Downloading toast — dismissible, download continues in background */}
+                <Snackbar
+                    open={phase === 'downloading' && !dismissed}
+                    anchorOrigin={ANCHOR}
+                >
+                    <Box sx={TOAST_SX}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                Downloading update…
+                            </Typography>
+                            <IconButton
+                                onClick={this.handleDismissDownloading}
+                                size="small"
+                                sx={{ color: 'text.secondary', ml: 1, '&:hover': { color: 'text.primary' } }}
                             >
-                                Download Update
-                            </Box>
-                        ) : (
-                            <>
-                                <Typography variant="body1" sx={{ mb: 2, fontWeight: 500 }}>
-                                    Downloading update...
-                                </Typography>
-                                <LinearProgress
-                                    variant="determinate"
-                                    value={percent}
-                                    sx={{ height: 8, borderRadius: 4, mb: 1 }}
-                                />
-                                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                                    {`${percent}%`} complete
-                                </Typography>
-                            </>
-                        )}
+                                <CloseIcon />
+                            </IconButton>
+                        </Box>
+                        <LinearProgress variant="determinate" value={percent} sx={{ mb: 1 }} />
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            {percent}% complete
+                        </Typography>
                     </Box>
-                )}
-            </Box>
+                </Snackbar>
+
+                {/* Ready toast — stays until user acts or closes the app */}
+                <Snackbar open={phase === 'ready'} anchorOrigin={ANCHOR}>
+                    <Box sx={TOAST_SX}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                            Update ready
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
+                            It will install automatically when you close the app.
+                        </Typography>
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={this.handleInstall}
+                            fullWidth
+                        >
+                            Restart now
+                        </Button>
+                    </Box>
+                </Snackbar>
+            </>
         );
     }
 }
 
 const mapStateToProps = state => ({
-    ...state.update
+    available: state.update.available,
+    portableAsset: state.update.portableAsset,
 });
 
 const mapDispatchToProps = {
-    checkAtAvailable
+    checkAtAvailable,
 };
 
 export default connect(
