@@ -17,14 +17,19 @@ import (
 	"github.com/proxyscrape/checker-backend/internal/store"
 )
 
-// appVersion is injected at build time via -ldflags from package.json,
-// or at runtime via the APP_VERSION environment variable (used in dev mode).
-var appVersion = func() string {
+// appVersion is injected at build time via -ldflags -X (variable MUST have no
+// initializer for -X to work). Dev mode overrides it via APP_VERSION env var.
+var appVersion string
+
+func init() {
 	if v := os.Getenv("APP_VERSION"); v != "" {
-		return v
+		appVersion = v
+		return
 	}
-	return "dev"
-}()
+	if appVersion == "" {
+		appVersion = "dev"
+	}
+}
 
 // server holds shared dependencies available to all route handlers.
 type server struct {

@@ -54,6 +54,11 @@ export default defineConfig({
     },
     define: {
       '__IS_CANARY__': JSON.stringify(IS_CANARY),
+      // Bake NODE_ENV into the main bundle the same way the renderer does,
+      // so isDev (from AppConstants.js) is correct at runtime in packaged builds.
+      // Without this, process.env.NODE_ENV is undefined in the packaged main
+      // process, isDev evaluates to true, and DevTools opens on every launch.
+      'process.env.NODE_ENV': JSON.stringify(isBuild ? 'production' : 'development'),
     },
     resolve: {
       alias: {

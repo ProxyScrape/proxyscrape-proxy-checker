@@ -170,6 +170,9 @@ function startGoBackend() {
             cmd = binaryPath;
             args = ['serve', '--mode=desktop', '--data-dir', dataDir];
             opts = {
+                // Pass APP_VERSION so the backend's init() picks it up even if
+                // the -X linker flag injection somehow failed (belt-and-suspenders).
+                env: { ...process.env, APP_VERSION: app.getVersion() },
                 stdio: ['ignore', 'pipe', 'pipe'],
                 detached: process.platform !== 'win32',
             };
