@@ -17,6 +17,11 @@ env:
   # or rely on ProxyScrape's bucket.
   R2_BUCKET: ${{ secrets.R2_BUCKET }}
   R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+  # Zig version used for Windows cross-compilation. Promoted to workflow env so
+  # the GOCACHE key automatically invalidates when Zig is upgraded.
+  ZIG_VERSION: "0.15.2"
+  # Cap the Go build cache size so it never exhausts GitHub's 10 GB cache budget.
+  GOCACHELIMIT: 2g
 
 jobs:
   # ── Version consistency gate ──────────────────────────────────────────────────
@@ -68,9 +73,22 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
+      - name: Get GOCACHE path
+        id: gocache
+        shell: bash
+        run: echo "path=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+
+      - name: Restore Go build cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.gocache.outputs.path }}
+          # Key encodes the Zig version so a Zig upgrade triggers a correct
+          # cache miss rather than reusing stale CGO object files.
+          key: go-build-win-zig-${{ env.ZIG_VERSION }}-${{ hashFiles('backend/go.sum') }}
+          restore-keys: go-build-win-zig-${{ env.ZIG_VERSION }}-
+
       - name: Install Zig
         run: |
-          ZIG_VERSION="0.15.2"
           curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
             | tar -xJ -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/zig-x86_64-linux-${ZIG_VERSION}" >> "$GITHUB_PATH"
@@ -107,6 +125,21 @@ jobs:
           go-version-file: backend/go.mod
           cache: true
           cache-dependency-path: backend/go.sum
+
+      - name: Get GOCACHE path
+        id: gocache
+        shell: bash
+        run: echo "path=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+
+      - name: Restore Go build cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.gocache.outputs.path }}
+          # Both amd64 (native gcc) and arm64 (aarch64-linux-gnu-gcc) share this
+          # cache entry — both compilers are apt-installed and tied to the runner
+          # image, which rarely changes.
+          key: go-build-linux-${{ hashFiles('backend/go.sum') }}
+          restore-keys: go-build-linux-
 
       - name: Install libpcap headers + arm64 cross-compiler
         run: |
@@ -170,6 +203,19 @@ jobs:
           go-version-file: backend/go.mod
           cache: true
           cache-dependency-path: backend/go.sum
+
+      - name: Get GOCACHE path
+        id: gocache
+        shell: bash
+        run: echo "path=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+
+      - name: Restore Go build cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.gocache.outputs.path }}
+          # arm64 and x64 both use system clang — tied to the runner image.
+          key: go-build-macos-${{ hashFiles('backend/go.sum') }}
+          restore-keys: go-build-macos-
 
       - name: Build darwin-arm64
         run: |
