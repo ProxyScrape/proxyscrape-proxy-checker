@@ -18,7 +18,8 @@ import {
     RESULT_EXPORT_TOGGLE,
     RESULT_EXPORT_CHANGE_TYPE,
     RESULT_EXPORT_CHANGE_AUTH_TYPE,
-    RESULT_TOGGLE_HIDE_STATUS
+    RESULT_TOGGLE_HIDE_STATUS,
+    RESULT_SET_GEO_FILTER
 } from '../constants/ActionTypes';
 import { otherChanges } from './CheckingActions';
 import { wait } from '../misc/wait';
@@ -48,6 +49,7 @@ export const mapResultItem = item => ({
     keepAlive: item.keepAlive || false,
     traces: item.traces || null,
     fullData: item.fullData || null,
+    geoStatus: item.geoStatus || 'done',
 });
 
 const getProtocolPrefix = (protocols) => {
@@ -269,4 +271,10 @@ export const changeExportAuthType = e => ({
 export const toggleHideStatus = status => ({
     type: RESULT_TOGGLE_HIDE_STATUS,
     status,
+});
+
+/** Set the geo data filter: 'all' | 'has_geo' | 'pending' */
+export const setGeoFilter = filter => ({
+    type: RESULT_SET_GEO_FILTER,
+    filter,
 });

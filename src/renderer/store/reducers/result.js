@@ -17,6 +17,7 @@ import {
     RESULT_EXPORT_CHANGE_TYPE,
     RESULT_EXPORT_CHANGE_AUTH_TYPE,
     RESULT_TOGGLE_HIDE_STATUS,
+    RESULT_SET_GEO_FILTER,
     SETTINGS_LOAD
 } from '../../constants/ActionTypes';
 
@@ -58,6 +59,7 @@ const initialState = {
     },
     countOfResults: 25,
     search: '',
+    geoFilter: 'all',   // 'all' | 'has_geo' | 'pending'
     exporting: {
         active: false,
         authType: 1,
@@ -101,6 +103,8 @@ const result = (state = initialState, action) => {
                     : [...current, status],
             };
         }
+        case RESULT_SET_GEO_FILTER:
+            return { ...state, countOfResults: 25, geoFilter: action.filter };
         case RESULT_CHANGE_PORTS_INPUT:
             return {
                 ...state,

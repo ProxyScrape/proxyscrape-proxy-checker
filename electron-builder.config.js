@@ -26,6 +26,17 @@ module.exports = {
   // the renderer, main, and preload bundles are always included in the ASAR.
   // The Go binaries are handled separately via extraResources and are never
   // inside the ASAR, so they don't appear here.
+  // Register the app as the OS handler for proxychecker:// URLs.
+  // Used by the browser extension to open a specific proxy in the checker.
+  // A single scheme covers both stable and canary builds — whichever is
+  // installed last wins the OS registration, which is acceptable.
+  protocols: [
+    {
+      name: 'ProxyScrape Proxy Checker',
+      schemes: ['proxychecker'],
+    },
+  ],
+
   files: [
     'dist/**',
     'public/icons/**',

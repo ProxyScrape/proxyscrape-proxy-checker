@@ -8,6 +8,8 @@ import { connect } from 'react-redux';
 import Checking from './Checking';
 import Overlay from './Overlay';
 import Update from './Update';
+import GeoEnrichToast from './GeoEnrichToast';
+import ErrorToast from '../components/ErrorToast';
 import Footer from '../components/Footer';
 import Info from '../components/Info';
 import LicenseModal from '../components/LicenseModal';
@@ -17,10 +19,10 @@ import Result from './Result';
 import History from '../components/History';
 import Titlebar from './Titlebar';
 import Protocols from './Protocols';
-import { checkProxy } from '../actions/InputActions';
+import { checkProxy, importProxiesFromLines } from '../actions/InputActions';
 import { close as closeResult } from '../actions/ResultActions';
 import { openDrawer, closeDrawer } from '../actions/UIActions';
-import { trackScreen } from '../misc/analytics';
+import { trackScreen, trackAction } from '../misc/analytics';
 import { ipcRenderer } from 'electron';
 import { TITLEBAR_HEIGHT, FOOTER_HEIGHT, CANARY_BANNER_HEIGHT } from '../constants/Layout';
 import { IS_CANARY } from '../../shared/AppConstants';
@@ -35,6 +37,57 @@ class Main extends React.PureComponent {
             tabIndex: 0
         };
     }
+
+    componentDidMount() {
+        if (!window.__ELECTRON__?.onDeepLinkProxy) return;
+        this._removeDeepLinkListener = window.__ELECTRON__.onDeepLinkProxy((_e, url) => {
+            this.handleDeepLink(url);
+        });
+    }
+
+    componentWillUnmount() {
+        if (this._removeDeepLinkListener) {
+            this._removeDeepLinkListener();
+        }
+    }
+
+    handleDeepLink = (url) => {
+        try {
+            const parsed = new URL(url);
+            if (parsed.hostname !== 'check') return;
+
+            const source       = parsed.searchParams.get('source') || 'unknown';
+            const proxiesParam = parsed.searchParams.get('proxies'); // bulk: newline-separated
+            const proxyParam   = parsed.searchParams.get('proxy');   // single proxy (legacy)
+
+            // Build the raw string array — bulk import takes precedence.
+            let rawList;
+            if (proxiesParam) {
+                rawList = proxiesParam.split('\n').map(s => s.trim()).filter(Boolean);
+            } else if (proxyParam) {
+                rawList = [proxyParam];
+            } else {
+                return;
+            }
+
+            const browserLabel = source && source !== 'unknown' ? `${source} Extension` : 'Browser Extension';
+
+            // importProxiesFromLines owns dedup + parse + count + dispatch.
+            const payload = this.props.importProxiesFromLines(rawList, {
+                name: browserLabel,
+                sourceType: 'extension',
+            });
+            if (!payload) return;
+
+            trackAction('proxy_list_imported', { source, proxy_count: payload.list.length, unique_count: payload.unique, error_count: payload.errors.length });
+
+            if (this.props.resultIsOpened) {
+                this.props.closeResult();
+            }
+
+            this.setState({ tabIndex: 0 });
+        } catch { /* ignore malformed deep-link URLs */ }
+    };
 
     toggleInfo = () => {
         if (this.props.infoActive) {
@@ -112,8 +165,10 @@ class Main extends React.PureComponent {
                     <Checking />
                     <Overlay />
                     <Update />
+                    <GeoEnrichToast />
                     <ProtocolWarningDialog />
                     <MmdbErrorDialog />
+                    <ErrorToast />
                     <Footer toggleModal={this.toggleModal} closeDrawer={this.props.closeDrawer}/>
                 </Box>
             </>
@@ -132,6 +187,7 @@ const mapDispatchToProps = {
     closeResult,
     openDrawer,
     closeDrawer,
+    importProxiesFromLines,
 };
 
 export default connect(

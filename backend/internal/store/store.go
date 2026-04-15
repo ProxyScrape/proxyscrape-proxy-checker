@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -67,9 +68,12 @@ type CheckResult struct {
 	KeepAlive   bool
 	TracesJSON   string // JSON-serialized map[protocol][]TraceEvent, empty when no trace
 	FullDataJSON string // JSON-serialized map[protocol]ProtoFullData, empty when not captured
+	GeoStatus    string // 'done' or 'pending' (pending = MMDB unavailable at check time)
 }
 
-const schema = `
+// baseSchema creates the initial tables if they don't exist.
+// This is applied before any migrations run.
+const baseSchema = `
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
@@ -118,6 +122,83 @@ CREATE TABLE IF NOT EXISTS check_results (
 );
 `
 
+// migration describes a schema change. down may be nil for migrations that
+// cannot be safely reversed (e.g. those that transform data).
+type migration struct {
+	up   func(tx *sql.Tx) error
+	down func(tx *sql.Tx) error // nil = no safe rollback
+}
+
+// migrations is the ordered list of schema changes applied after baseSchema.
+// NEVER modify existing entries — only append new ones.
+// Each migration runs inside a transaction; user_version is updated atomically.
+var migrations = []migration{
+	{
+		// v1: add geo_status to distinguish enrichment state.
+		// 'done'    = geo lookup was attempted (country_code may be empty if IP not in DB)
+		// 'pending' = MMDB was unavailable at check time; needs enrichment
+		//
+		// Existing rows default to 'done'. The retroactive backfill that marks
+		// empty-country rows as 'pending' runs after Open() returns via
+		// backfillGeoStatus — batched and outside this transaction so the write
+		// lock is never held for an unbounded duration.
+		up: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`ALTER TABLE check_results ADD COLUMN geo_status TEXT NOT NULL DEFAULT 'done'`)
+			return err
+		},
+		down: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`ALTER TABLE check_results DROP COLUMN geo_status`)
+			return err
+		},
+	},
+	{
+		// v2: index geo_status so the enrichment worker's batch queries
+		// (WHERE geo_status = 'pending' LIMIT 100) and COUNT(*) are O(log n + k)
+		// instead of a full table scan on every batch.
+		up: func(tx *sql.Tx) error {
+			_, err := tx.Exec(
+				`CREATE INDEX IF NOT EXISTS idx_check_results_geo_status
+				 ON check_results (geo_status)`,
+			)
+			return err
+		},
+		down: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`DROP INDEX IF EXISTS idx_check_results_geo_status`)
+			return err
+		},
+	},
+}
+
+// backfillGeoStatus marks pre-MMDB rows (country_code = '', geo_status = 'done')
+// as 'pending' so the geo enrichment worker picks them up.
+//
+// Runs in 10 000-row batches using UPDATE...FROM so each iteration is a short
+// independent transaction and the write lock is never held for an unbounded
+// duration. UPDATE...FROM avoids the temp-table materialisation of the
+// equivalent IN-subquery form (confirmed by SQLite's query planner; requires
+// SQLite ≥ 3.33 — our driver bundles 3.49.1).
+//
+// Note: UPDATE...LIMIT is NOT supported by mattn/go-sqlite3 (requires
+// SQLITE_ENABLE_UPDATE_DELETE_LIMIT, which the driver does not compile with).
+func backfillGeoStatus(db *sql.DB) error {
+	for {
+		res, err := db.Exec(`
+			UPDATE check_results
+			SET    geo_status = 'pending'
+			FROM   (SELECT id FROM check_results
+			        WHERE  geo_status = 'done' AND country_code = ''
+			        LIMIT  10000) AS sub
+			WHERE  check_results.id = sub.id`)
+		if err != nil {
+			return fmt.Errorf("store: backfill geo_status: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return nil
+		}
+	}
+}
+
 // Open opens (or creates) the SQLite database at <dataDir>/checker.db.
 func Open(dataDir string) (*Store, error) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
@@ -129,6 +210,12 @@ func Open(dataDir string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if err := backfillGeoStatus(db); err != nil {
+		log.Printf("store: geo_status backfill: %v", err)
+		// Non-fatal: the enrichment worker will handle any remaining rows.
+	}
+
 	return &Store{db: db, dbPath: dbPath}, nil
 }
 
@@ -137,17 +224,57 @@ func openDB(dbPath string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: open: %w", err)
 	}
-	if _, err := db.Exec(schema); err != nil {
+	if err := initDB(db); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("store: apply schema: %w", err)
+		return nil, err
 	}
 	return db, nil
 }
 
+// initDB applies the base schema and runs any pending migrations.
+func initDB(db *sql.DB) error {
+	// Apply base schema (idempotent CREATE TABLE IF NOT EXISTS).
+	if _, err := db.Exec(baseSchema); err != nil {
+		return fmt.Errorf("store: apply base schema: %w", err)
+	}
+
+	// Read current schema version.
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("store: read user_version: %w", err)
+	}
+
+	// Apply any pending migrations in order.
+	for i := version; i < len(migrations); i++ {
+		newVersion := i + 1
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("store: migration v%d: begin tx: %w", newVersion, err)
+		}
+		if err := migrations[i].up(tx); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("store: migration v%d: %w", newVersion, err)
+		}
+		if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, newVersion)); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("store: migration v%d: set user_version: %w", newVersion, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("store: migration v%d: commit: %w", newVersion, err)
+		}
+		log.Printf("store: applied migration v%d", newVersion)
+	}
+	return nil
+}
 
 // Close shuts down the database connection.
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// DB returns the underlying *sql.DB for direct queries (used by geo enrichment).
+func (s *Store) DB() *sql.DB {
+	return s.db
 }
 
 // --- helpers ---
@@ -372,8 +499,8 @@ func (s *Store) SaveCheckResults(ctx context.Context, results []CheckResult) err
 	stmt, err := tx.PrepareContext(ctx,
 		`INSERT INTO check_results
 		 (id, check_id, host, port, auth, status, protocols, anon, timeout_ms,
-		  country_code, country_name, country_flag, city, blacklists, errors, server, keep_alive, traces, full_data)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  country_code, country_name, country_flag, city, blacklists, errors, server, keep_alive, traces, full_data, geo_status)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	)
 	if err != nil {
 		return fmt.Errorf("store: prepare stmt: %w", err)
@@ -413,7 +540,7 @@ func (s *Store) SaveCheckResults(ctx context.Context, results []CheckResult) err
 			r.ID, r.CheckID, r.Host, r.Port, r.Auth, r.Status,
 			protocols, r.Anon, r.TimeoutMs,
 			r.CountryCode, r.CountryName, r.CountryFlag, r.City,
-			blacklists, errorsJSON, r.Server, boolToInt(r.KeepAlive), tracesVal, fullDataVal,
+			blacklists, errorsJSON, r.Server, boolToInt(r.KeepAlive), tracesVal, fullDataVal, r.GeoStatus,
 		); err != nil {
 			return fmt.Errorf("store: insert check result: %w", err)
 		}
@@ -466,7 +593,7 @@ func (s *Store) GetCheckResults(ctx context.Context, checkID string, page, limit
 	offset := (page - 1) * limit
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, check_id, host, port, auth, status, protocols, anon, timeout_ms,
-		        country_code, country_name, country_flag, city, blacklists, errors, server, keep_alive, traces, full_data
+		        country_code, country_name, country_flag, city, blacklists, errors, server, keep_alive, traces, full_data, geo_status
 		 FROM check_results WHERE check_id = ?
 		 ORDER BY id LIMIT ? OFFSET ?`,
 		checkID, limit, offset,
@@ -486,7 +613,7 @@ func (s *Store) GetCheckResults(ctx context.Context, checkID string, page, limit
 			&r.ID, &r.CheckID, &r.Host, &r.Port, &r.Auth, &r.Status,
 			&protocols, &r.Anon, &r.TimeoutMs,
 			&r.CountryCode, &r.CountryName, &r.CountryFlag, &r.City,
-			&blacklists, &errorsJSON, &r.Server, &keepAlive, &tracesJSON, &fullDataJSON,
+			&blacklists, &errorsJSON, &r.Server, &keepAlive, &tracesJSON, &fullDataJSON, &r.GeoStatus,
 		); err != nil {
 			return nil, 0, fmt.Errorf("store: scan result: %w", err)
 		}

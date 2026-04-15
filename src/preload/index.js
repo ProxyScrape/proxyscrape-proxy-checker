@@ -61,11 +61,45 @@ contextBridge.exposeInMainWorld('__ELECTRON__', {
     // Abort an in-progress MMDB download.
     cancelMMDB: () => ipcRenderer.invoke('mmdb:cancel'),
 
-    // Subscribe to download progress events { pct: 0-100, totalBytes: number }.
-    // Returns a cleanup function — call it when the subscription is no longer needed.
+    // Check whether the local MMDB file exists (does NOT download).
+    // Resolves with { available: boolean }.
+    mmdbAvailable: () => ipcRenderer.invoke('mmdb:available'),
+
+    // Subscribe to MMDB download/decompress progress events.
+    // Events: { phase: 'download'|'decompress', pct: 0-100|-1, totalBytes?: number }
+    //   pct = -1 means indeterminate (decompression running).
+    // Returns a cleanup function.
     onMMDBProgress: (cb) => {
         const handler = (_e, data) => cb(null, data);
         ipcRenderer.on('mmdb-progress', handler);
         return () => ipcRenderer.removeListener('mmdb-progress', handler);
+    },
+
+    // Background geo enrichment — trigger / cancel enrichment of pending rows.
+    geoEnrichStart: () => ipcRenderer.invoke('geo:enrich:start'),
+    geoEnrichCancel: () => ipcRenderer.invoke('geo:enrich:cancel'),
+
+    // Subscribe to geo enrichment progress events pushed from the main process.
+    // Events: { running: bool, total: number, done: number }
+    // Returns a cleanup function.
+    onGeoEnrichProgress: (cb) => {
+        const handler = (_e, data) => cb(null, data);
+        ipcRenderer.on('geo-enrich-progress', handler);
+        return () => ipcRenderer.removeListener('geo-enrich-progress', handler);
+    },
+
+    // Clipboard — clipboard.readText() must be called from the main process.
+    // Accessing it from the renderer/preload context is deprecated in Electron
+    // and will be removed. The main process handles 'clipboard:read' and returns
+    // the text over IPC, so this returns a Promise<string>.
+    readClipboard: () => ipcRenderer.invoke('clipboard:read'),
+
+    // Deep-link from the browser extension via the proxychecker:// protocol.
+    // The raw URL string is forwarded; the renderer parses it.
+    // Returns a cleanup function.
+    onDeepLinkProxy: (cb) => {
+        const handler = (_e, url) => cb(null, url);
+        ipcRenderer.on('deep-link-proxy', handler);
+        return () => ipcRenderer.removeListener('deep-link-proxy', handler);
     },
 });

@@ -116,7 +116,7 @@ const ClearIcon = () => (
     </svg>
 );
 
-const Input = ({ loaded, total, errors, unique, name, size, loadFromTxt, onFileDrop, overrideEventDefaults, pasteFromClipboard, clearInput, shuffle, toggleOption }) => {
+const Input = ({ loaded, total, errors, unique, name, size, sourceType, loadFromTxt, onFileDrop, overrideEventDefaults, pasteFromClipboard, clearInput, shuffle, toggleOption }) => {
     const [errorsExpanded, setErrorsExpanded] = useState(false);
 
     // Both inner panels share the same fixed height so the card doesn't
@@ -201,7 +201,11 @@ const Input = ({ loaded, total, errors, unique, name, size, loadFromTxt, onFileD
                                 <Typography variant="body2" sx={{ fontWeight: 600 }}>{splitByKK(unique)}</Typography>
                             </Box>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <Typography variant="body2" sx={{ color: 'text.secondary' }}>File Names</Typography>
+                                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                                    {(sourceType === 'file' || sourceType === 'drag_drop')
+                                        ? (name.includes(', ') ? 'Files' : 'File')
+                                        : 'Source'}
+                                </Typography>
                                 <Typography variant="body2" sx={{ fontWeight: 600, maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'right' }}>{name}</Typography>
                             </Box>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

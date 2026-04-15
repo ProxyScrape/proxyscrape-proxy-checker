@@ -6,7 +6,7 @@ import { pipeline, Transform } from 'stream';
 import { promisify } from 'util';
 import readline from 'readline';
 import { spawn, execSync } from 'child_process';
-import { BrowserWindow, app, ipcMain, dialog, session } from 'electron';
+import { BrowserWindow, app, ipcMain, dialog, session, clipboard } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { isDev, isPortable, IS_CANARY } from '../shared/AppConstants';
 
@@ -26,6 +26,14 @@ let goProcess = null;
 let checkerPort = null;
 let checkerToken = null;
 let isQuitting = false;
+
+// Buffered deep-link URL that arrived before the renderer window was ready.
+let pendingDeepLink = null;
+
+// True while a geo-enrich SSE connection is open. Prevents duplicate streams
+// from being created if listenGeoEnrichSSE() is called multiple times (e.g.
+// once at startup and again after an MMDB download completes).
+let geoEnrichListening = false;
 
 const isMac = process.platform === 'darwin';
 
@@ -62,6 +70,19 @@ function killGoProcess(proc) {
         }
     } catch {
         try { proc.kill(); } catch { /* already dead */ }
+    }
+}
+
+/**
+ * Route an incoming proxychecker:// deep-link URL to the renderer.
+ * If the window is not yet ready the URL is buffered and flushed after load.
+ */
+function handleDeepLink(url) {
+    if (!url || !url.startsWith('proxychecker://')) return;
+    if (window && !window.isDestroyed()) {
+        window.webContents.send('deep-link-proxy', url);
+    } else {
+        pendingDeepLink = url;
     }
 }
 
@@ -334,6 +355,12 @@ ipcMain.handle('write-file', async (_event, filePath, content) => {
 
 ipcMain.handle('getDownloadsPath', () => app.getPath('downloads'));
 
+// Clipboard — accessed from the main process to avoid the renderer-side
+// deprecation warning ("Accessing clipboard.readText from the renderer process
+// is deprecated"). The renderer calls window.__ELECTRON__.readClipboard() which
+// invokes this handler via IPC.
+ipcMain.handle('clipboard:read', () => clipboard.readText());
+
 
 const preloadPath = path.join(__dirname, '../preload/index.js');
 
@@ -394,6 +421,24 @@ const createWindow = () => {
     });
 };
 
+// Register as the default OS handler for proxychecker:// deep links (browser extension).
+// On Windows in dev mode Electron is not the executable itself, so the main
+// script path must be passed as an extra argument — see Electron deep-link docs.
+if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('proxychecker', process.execPath, [
+        path.resolve(process.argv[1]),
+    ]);
+} else {
+    app.setAsDefaultProtocolClient('proxychecker');
+}
+
+// macOS fires open-url when a proxychecker:// link is clicked in the browser.
+// Register early so links that arrive before whenReady() are not lost.
+app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleDeepLink(url);
+});
+
 // Enforce a single running instance. A second launch focuses the existing window
 // instead of opening a duplicate. This also prevents the Chromium service-worker
 // storage error caused by two processes sharing the same user-data directory.
@@ -401,11 +446,15 @@ if (!app.requestSingleInstanceLock()) {
     app.quit();
 }
 
-app.on('second-instance', () => {
+// Windows / Linux: a second instance is spawned when a proxychecker:// link is
+// clicked. The URL arrives in commandLine; we focus the existing window and route it.
+app.on('second-instance', (event, commandLine) => {
     if (window) {
         if (window.isMinimized()) window.restore();
         window.focus();
     }
+    const url = commandLine.find(arg => arg.startsWith('proxychecker://'));
+    if (url) handleDeepLink(url);
 });
 
 app.whenReady().then(async () => {
@@ -456,9 +505,33 @@ app.whenReady().then(async () => {
     }
 
     createWindow();
+
+    // Windows / Linux cold launch: if the app was started directly by the OS
+    // protocol handler (first instance), the URL lands in process.argv.
+    if (process.platform !== 'darwin') {
+        const coldUrl = process.argv.find(arg => arg.startsWith('proxychecker://'));
+        if (coldUrl) pendingDeepLink = coldUrl;
+    }
+
+    // Flush any deep-link that arrived before the renderer was ready.
+    if (pendingDeepLink) {
+        const urlToSend = pendingDeepLink;
+        pendingDeepLink = null;
+        window.webContents.once('did-finish-load', () => {
+            window.webContents.send('deep-link-proxy', urlToSend);
+        });
+    }
+
     if ((!IS_CANARY || enableUpdater) && app.isPackaged && !isPortable) {
         autoUpdater.checkForUpdates();
     }
+
+    // On startup, trigger geo enrichment for any proxies checked without MMDB.
+    // The Go backend returns immediately if there's nothing to enrich.
+    signalGoGeoEnrich();
+
+    // Connect to the geo enrichment SSE stream and forward progress to the renderer.
+    listenGeoEnrichSSE();
 });
 
 app.on('activate', () => {
@@ -540,6 +613,66 @@ ipcMain.on('window-close', () => {
         window.close();
     }
 });
+
+// =============================================================================
+// Geo enrichment SSE — forward progress events to the renderer window
+// =============================================================================
+
+/**
+ * Connect to the Go geo enrichment SSE stream and forward progress events to
+ * the renderer via 'geo-enrich-progress'. Stops once the backend reports
+ * running=false or the stream closes naturally.
+ */
+function listenGeoEnrichSSE() {
+    if (!checkerPort || !checkerToken) return;
+    // Singleton guard — only one SSE connection at a time. If a connection is
+    // already open (e.g. from startup), skip rather than opening a duplicate
+    // that would send every progress event twice to the renderer.
+    if (geoEnrichListening) return;
+
+    geoEnrichListening = true;
+
+    const req = http.request({
+        hostname: '127.0.0.1',
+        port: checkerPort,
+        path: '/api/geo/enrich/events',
+        method: 'GET',
+        headers: { Authorization: `Bearer ${checkerToken}` },
+    }, (res) => {
+        let buf = '';
+        res.on('data', chunk => {
+            buf += chunk.toString();
+            const lines = buf.split('\n');
+            buf = lines.pop(); // keep incomplete line for next chunk
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const payload = JSON.parse(line.slice(6));
+                    if (window && !window.isDestroyed()) {
+                        window.webContents.send('geo-enrich-progress', payload);
+                    }
+                    // Stop listening when enrichment is done.
+                    if (!payload.running) {
+                        res.destroy();
+                        geoEnrichListening = false;
+                        return;
+                    }
+                } catch { /* ignore malformed frames */ }
+            }
+        });
+        res.on('end', () => {
+            geoEnrichListening = false;
+        });
+        res.on('error', () => {
+            geoEnrichListening = false;
+        });
+    });
+    req.on('error', () => {
+        geoEnrichListening = false;
+    });
+    req.end();
+}
 
 // =============================================================================
 // MMDB — GeoIP database download
@@ -659,15 +792,53 @@ async function downloadFile(url, destPath, onProgress, signal) {
 }
 
 /**
- * Tell the Go backend to reload the GeoIP database from disk.
- * Fire-and-forget — non-fatal if the backend is unavailable.
+ * Signal the Go backend to decompress a downloaded .zst file and hot-reload.
+ * Returns a Promise that resolves when decompression is complete.
  */
-function signalGoMMDBReload() {
+function signalGoMMDBDecompress(srcPath) {
+    return new Promise((resolve, reject) => {
+        if (!checkerPort || !checkerToken) {
+            reject(new Error('Go backend not ready'));
+            return;
+        }
+        const body = JSON.stringify({ src: srcPath });
+        const req = http.request({
+            hostname: '127.0.0.1',
+            port: checkerPort,
+            path: '/api/mmdb/decompress',
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${checkerToken}`,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(body),
+            },
+        }, (res) => {
+            let raw = '';
+            res.on('data', chunk => { raw += chunk; });
+            res.on('end', () => {
+                if (res.statusCode === 200) {
+                    resolve();
+                } else {
+                    reject(new Error(`MMDB decompress failed: HTTP ${res.statusCode} — ${raw}`));
+                }
+            });
+        });
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+    });
+}
+
+/**
+ * Signal the Go backend to start background geo enrichment.
+ * Fire-and-forget — non-fatal if unavailable or already running.
+ */
+function signalGoGeoEnrich() {
     if (!checkerPort || !checkerToken) return;
     const req = http.request({
         hostname: '127.0.0.1',
         port: checkerPort,
-        path: '/api/mmdb/reload',
+        path: '/api/geo/enrich',
         method: 'POST',
         headers: { Authorization: `Bearer ${checkerToken}` },
     }, (res) => { res.resume(); });
@@ -676,8 +847,22 @@ function signalGoMMDBReload() {
 }
 
 /**
+ * Fetch the remote metadata.json. Returns parsed JSON or throws.
+ * Uses cache-busting query param to bypass CDN caches.
+ */
+async function fetchMetadata() {
+    const text = await fetchText(`${MMDB_BASE_URL}/metadata.json?t=${Date.now()}`);
+    return JSON.parse(text);
+}
+
+/**
  * mmdb:ensure — verify the local GeoIP database is current; download if not.
- * Progress events { pct, totalBytes } are pushed to the renderer via 'mmdb-progress'.
+ *
+ * Two-phase progress events are pushed via 'mmdb-progress':
+ *   { phase: 'download', pct: 0-100, totalBytes: number }
+ *   { phase: 'decompress', pct: -1 }   (indeterminate while Go decompresses)
+ *   { phase: 'decompress', pct: 100 }  (complete)
+ *
  * Returns { status: 'ready' | 'cancelled' }.
  */
 ipcMain.handle('mmdb:ensure', async () => {
@@ -686,15 +871,17 @@ ipcMain.handle('mmdb:ensure', async () => {
     const mmdbPath = path.join(mmdbDir, 'geoip.mmdb');
     const checksumPath = path.join(mmdbDir, 'checksum.txt');
 
-    // Fetch the remote checksum (cache-busted). If unreachable and a local copy
+    // Fetch remote metadata (checksum + sizes). If unreachable and a local copy
     // exists, silently proceed with what we have.
-    let remoteChecksum;
+    let metadata;
     try {
-        remoteChecksum = await fetchText(`${MMDB_BASE_URL}/checksum.txt?t=${Date.now()}`);
+        metadata = await fetchMetadata();
     } catch {
         if (fs.existsSync(mmdbPath)) return { status: 'ready' };
         throw Object.assign(new Error('GeoIP database unavailable and no local copy found.'), { code: 'MMDB_UNAVAILABLE' });
     }
+
+    const remoteChecksum = metadata.checksum;
 
     // Compare with the locally stored checksum.
     let localChecksum = null;
@@ -703,10 +890,9 @@ ipcMain.handle('mmdb:ensure', async () => {
     }
 
     if (localChecksum === remoteChecksum && fs.existsSync(mmdbPath)) {
-        return { status: 'ready' }; // already up to date — no download needed
+        return { status: 'ready' }; // already up to date
     }
 
-    // Need to download.
     await fs.promises.mkdir(mmdbDir, { recursive: true });
 
     const ac = new AbortController();
@@ -718,22 +904,44 @@ ipcMain.handle('mmdb:ensure', async () => {
         }
     };
 
-    sendProgress({ pct: 0, totalBytes: 0 });
+    // — Phase 1: Download the compressed file —
+    // downloadFile writes atomically via <destPath>.download then renames to <destPath>.
+    const zstPath = path.join(mmdbDir, 'geoip.mmdb.zst');
+    sendProgress({ phase: 'download', pct: 0, totalBytes: metadata.compressed_size || 0 });
 
     try {
-        await downloadFile(`${MMDB_BASE_URL}/geoip.mmdb`, mmdbPath, sendProgress, ac.signal);
+        await downloadFile(
+            `${MMDB_BASE_URL}/geoip.mmdb.zst`,
+            zstPath,
+            ({ pct, totalBytes }) => sendProgress({ phase: 'download', pct, totalBytes }),
+            ac.signal,
+        );
     } catch (err) {
+        await fs.promises.unlink(zstPath).catch(() => {});
         if (err.code === 'MMDB_CANCELLED') return { status: 'cancelled' };
         throw err;
     } finally {
         activeMMDBAbort = null;
     }
 
-    sendProgress({ pct: 100, totalBytes: 0 });
+    // — Phase 2: Decompress via Go backend —
+    sendProgress({ phase: 'decompress', pct: -1 }); // indeterminate
 
+    try {
+        await signalGoMMDBDecompress(zstPath);
+    } finally {
+        await fs.promises.unlink(zstPath).catch(() => {});
+    }
+
+    sendProgress({ phase: 'decompress', pct: 100 });
+
+    // Persist the checksum of the newly installed file.
     try { fs.writeFileSync(checksumPath, remoteChecksum, 'utf8'); } catch { /* ignore */ }
 
-    signalGoMMDBReload();
+    // Kick off background geo enrichment for proxies checked without MMDB,
+    // and open the SSE stream so the renderer receives progress events.
+    signalGoGeoEnrich();
+    listenGeoEnrichSSE();
 
     return { status: 'ready' };
 });
@@ -744,4 +952,40 @@ ipcMain.handle('mmdb:cancel', async () => {
         activeMMDBAbort.abort();
         activeMMDBAbort = null;
     }
+});
+
+/**
+ * mmdb:available — check whether the local GeoIP database file exists.
+ * Returns { available: boolean }. Does NOT trigger a download.
+ */
+ipcMain.handle('mmdb:available', () => {
+    const dataDir = getDataDir();
+    const mmdbPath = path.join(dataDir, 'mmdb', 'geoip.mmdb');
+    return { available: fs.existsSync(mmdbPath) };
+});
+
+/**
+ * geo:enrich:start — trigger background geo enrichment for pending rows and
+ * open the SSE stream so the renderer receives progress events.
+ * Idempotent: safe to call even if enrichment is already running.
+ */
+ipcMain.handle('geo:enrich:start', () => {
+    signalGoGeoEnrich();
+    listenGeoEnrichSSE();
+});
+
+/**
+ * geo:enrich:cancel — cancel any running geo enrichment job.
+ */
+ipcMain.handle('geo:enrich:cancel', () => {
+    if (!checkerPort || !checkerToken) return;
+    const req = http.request({
+        hostname: '127.0.0.1',
+        port: checkerPort,
+        path: '/api/geo/enrich',
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${checkerToken}` },
+    }, (res) => { res.resume(); });
+    req.on('error', () => { /* non-fatal */ });
+    req.end();
 });

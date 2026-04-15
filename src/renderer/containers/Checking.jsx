@@ -7,6 +7,7 @@ import { stop, cancelMMDBDownload } from '../actions/CheckingActions';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
+import LinearProgress from '@mui/material/LinearProgress';
 
 /** Format bytes as a human-readable string, e.g. 64.2 MB. */
 function formatBytes(bytes) {
@@ -16,8 +17,9 @@ function formatBytes(bytes) {
 }
 
 const Checking = ({ state, stop, cancelMMDBDownload }) => {
-    const { opened, preparing, mmdbDownloading, mmdbProgress, mmdbTotalBytes } = state;
+    const { opened, preparing, mmdbDownloading, mmdbPhase, mmdbProgress, mmdbTotalBytes } = state;
     const visible = opened || mmdbDownloading;
+    const isDecompressing = mmdbDownloading && mmdbPhase === 'decompress';
 
     return (
         <FullScreenOverlay isActive={visible}>
@@ -25,24 +27,36 @@ const Checking = ({ state, stop, cancelMMDBDownload }) => {
                 {mmdbDownloading ? (
                     <>
                         <Typography variant="body1" sx={{ mb: 0.5, fontWeight: 500 }}>
-                            Downloading GeoIP database
+                            {isDecompressing ? 'Unpacking GeoIP database' : 'Downloading GeoIP database'}
                         </Typography>
                         <Typography variant="body2" sx={{ mb: 2.5, color: 'text.secondary' }}>
-                            One-time setup
-                            {mmdbTotalBytes > 0 && ` · ${formatBytes(mmdbTotalBytes)}`}
+                            {isDecompressing
+                                ? 'This may take a moment\u2026'
+                                : `One-time setup${mmdbTotalBytes > 0 ? ` \xb7 ${formatBytes(mmdbTotalBytes)}` : ''}`
+                            }
                         </Typography>
-                        <ProgressBar value={mmdbProgress} sx={{ mb: 1 }} />
-                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                            {mmdbProgress}%
-                        </Typography>
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            onClick={cancelMMDBDownload}
-                            sx={{ mt: 3 }}
-                        >
-                            Cancel
-                        </Button>
+
+                        {isDecompressing ? (
+                            <LinearProgress sx={{ mb: 1, borderRadius: 1 }} />
+                        ) : (
+                            <>
+                                <ProgressBar value={mmdbProgress} sx={{ mb: 1 }} />
+                                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                                    {mmdbProgress}%
+                                </Typography>
+                            </>
+                        )}
+
+                        {!isDecompressing && (
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={cancelMMDBDownload}
+                                sx={{ mt: 3 }}
+                            >
+                                Cancel
+                            </Button>
+                        )}
                     </>
                 ) : (
                     <>

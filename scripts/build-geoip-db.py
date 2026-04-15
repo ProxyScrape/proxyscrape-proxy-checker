@@ -15,8 +15,10 @@ Exit codes:
 """
 
 import csv
+import hashlib
 import io
 import ipaddress
+import json
 import os
 import subprocess
 import sys
@@ -181,6 +183,30 @@ def fetch_geofeed(url: str) -> list[str]:
     return out
 
 
+def compress_zstd(src_path: str, dst_path: str, level: int = 19) -> None:
+    """Compress src_path with zstd at the given level, writing to dst_path."""
+    result = subprocess.run(
+        ["zstd", f"-{level}", "--no-progress", "-f", "-o", dst_path, src_path],
+        capture_output=False,
+    )
+    if result.returncode != 0:
+        fail(f"zstd compression failed with code {result.returncode}")
+
+
+def sha256_file(path: str) -> str:
+    """Compute SHA-256 hex digest of a file."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def file_size(path: str) -> int:
+    """Return file size in bytes."""
+    return os.path.getsize(path)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -238,6 +264,29 @@ def main() -> None:
         fail(f"mmdbctl exited with code {result.returncode}")
 
     log(f"Done → {MMDB_OUT}")
+
+    # --- Compress with zstd ---
+    compressed_out = MMDB_OUT + ".zst"
+    log(f"Compressing → {compressed_out} …")
+    compress_zstd(MMDB_OUT, compressed_out, level=19)
+
+    uncompressed_size = file_size(MMDB_OUT)
+    compressed_size = file_size(compressed_out)
+    checksum = sha256_file(MMDB_OUT)  # checksum of the RAW (uncompressed) file
+
+    ratio = (1 - compressed_size / uncompressed_size) * 100 if uncompressed_size > 0 else 0
+    log(f"  {uncompressed_size:,} bytes → {compressed_size:,} bytes ({ratio:.1f}% reduction)")
+
+    # --- Write metadata.json ---
+    metadata_out = os.environ.get("METADATA_OUT", "metadata.json")
+    metadata = {
+        "checksum": checksum,
+        "uncompressed_size": uncompressed_size,
+        "compressed_size": compressed_size,
+    }
+    with open(metadata_out, "w", encoding="utf-8") as f:
+        json.dump(metadata, f)
+    log(f"Metadata written → {metadata_out}")
 
 
 if __name__ == "__main__":

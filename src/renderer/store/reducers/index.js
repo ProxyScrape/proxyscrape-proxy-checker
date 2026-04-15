@@ -11,6 +11,7 @@ import blacklist from './blacklist';
 import main from './main';
 import history from './history';
 import ui from './ui';
+import app from './app';
 
 const mainReducer = combineReducers({
     checking,
@@ -25,6 +26,7 @@ const mainReducer = combineReducers({
     main,
     history,
     ui,
+    app,
 });
 
 export default mainReducer;

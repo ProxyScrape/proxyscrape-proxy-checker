@@ -340,6 +340,16 @@ type apiResult struct {
 	KeepAlive bool                             `json:"keepAlive,omitempty"`
 	Traces    map[string][]checker.TraceEvent  `json:"traces,omitempty"`
 	FullData  map[string]checker.ProtoFullData `json:"fullData,omitempty"`
+	GeoStatus string                           `json:"geoStatus,omitempty"`
+}
+
+// geoStatusFor returns "pending" when the country code is empty (MMDB was
+// unavailable at check time) and "done" otherwise.
+func geoStatusFor(code string) string {
+	if code == "" {
+		return "pending"
+	}
+	return "done"
 }
 
 // storeResultToAPI converts a flat store.CheckResult to the nested apiResult shape.
@@ -378,6 +388,7 @@ func storeResultToAPI(r store.CheckResult) apiResult {
 		KeepAlive: r.KeepAlive,
 		Traces:    traces,
 		FullData:  fullData,
+		GeoStatus: r.GeoStatus,
 	}
 }
 
@@ -409,6 +420,7 @@ func resultToAPI(r checker.Result) apiResult {
 		KeepAlive: r.KeepAlive,
 		Traces:    r.Traces,
 		FullData:  r.FullData,
+		GeoStatus: geoStatusFor(r.Country.Code),
 	}
 }
 
@@ -423,25 +435,26 @@ func resultToStore(checkID string, r checker.Result) store.CheckResult {
 		blists = []string{}
 	}
 	return store.CheckResult{
-		ID:          uuid.New().String(),
-		CheckID:     checkID,
-		Host:        r.Proxy.Host,
-		Port:        r.Proxy.Port,
-		Auth:        r.Proxy.Auth,
-		Status:      r.Status,
-		Protocols:   protocols,
-		Anon:        r.Anon,
-		TimeoutMs:   r.TimeoutMs,
-		CountryCode: r.Country.Code,
-		CountryName: r.Country.Name,
-		CountryFlag: r.Country.Flag,
-		City:        r.City,
-		Blacklists:  blists,
-		Errors:      r.Errors,
+		ID:           uuid.New().String(),
+		CheckID:      checkID,
+		Host:         r.Proxy.Host,
+		Port:         r.Proxy.Port,
+		Auth:         r.Proxy.Auth,
+		Status:       r.Status,
+		Protocols:    protocols,
+		Anon:         r.Anon,
+		TimeoutMs:    r.TimeoutMs,
+		CountryCode:  r.Country.Code,
+		CountryName:  r.Country.Name,
+		CountryFlag:  r.Country.Flag,
+		City:         r.City,
+		Blacklists:   blists,
+		Errors:       r.Errors,
 		Server:       r.Server,
 		KeepAlive:    r.KeepAlive,
 		TracesJSON:   marshalJSON(r.Traces),
 		FullDataJSON: marshalJSON(r.FullData),
+		GeoStatus:    geoStatusFor(r.Country.Code),
 	}
 }
 
@@ -805,6 +818,30 @@ func (s *server) handleMMDBReload(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
+	writeJSON(w, map[string]interface{}{"status": "ok"})
+}
+
+// handleMMDBDecompress decompresses a zstd-compressed MMDB file downloaded by
+// Electron. Electron downloads geoip.mmdb.zst to a temp path, then calls this
+// endpoint. Go decompresses it to the final geoip.mmdb path and hot-reloads.
+//
+// Request body (JSON): { "src": "/tmp/geoip.mmdb.zst" }
+// The destination path is always dataDir/mmdb/geoip.mmdb (known to the server).
+func (s *server) handleMMDBDecompress(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Src string `json:"src"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Src == "" {
+		jsonError(w, http.StatusBadRequest, "missing src path")
+		return
+	}
+
+	if err := s.geoDB.DecompressAndReload(req.Src); err != nil {
+		log.Printf("mmdb decompress: %v", err)
+		jsonError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
 	writeJSON(w, map[string]interface{}{"status": "ok"})
 }
 

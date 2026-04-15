@@ -100,6 +100,12 @@ func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, g
 			r.Get("/trace/status", s.handleTraceStatus)
 
 			r.Post("/mmdb/reload", s.handleMMDBReload)
+			r.Post("/mmdb/decompress", s.handleMMDBDecompress)
+
+			r.Post("/geo/enrich", s.handleGeoEnrichStart)
+			r.Delete("/geo/enrich", s.handleGeoEnrichCancel)
+			r.Get("/geo/enrich", s.handleGeoEnrichStatus)
+			r.Get("/geo/enrich/events", s.handleGeoEnrichEvents)
 		})
 	})
 

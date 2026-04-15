@@ -38,14 +38,15 @@ jobs:
           chmod +x "$RUNNER_TEMP/mmdbctl"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
+      - name: Install zstd
+        run: sudo apt-get install -y zstd
+
       - name: Build geoip.mmdb
         env:
           GEOFEED_URL: ${{ secrets.GEOFEED_URL }}
           MMDB_OUT: geoip.mmdb
+          METADATA_OUT: metadata.json
         run: python3 scripts/build-geoip-db.py
-
-      - name: Compute SHA-256 checksum
-        run: sha256sum geoip.mmdb | awk '{print $1}' > checksum.txt
 
       - name: Upload to R2
         env:
@@ -53,32 +54,30 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          LOCAL_CHECKSUM=$(cat checksum.txt)
+          LOCAL_CHECKSUM=$(python3 -c "import json,sys; print(json.load(open('metadata.json'))['checksum'])")
           FORCE="${{ github.event.inputs.force }}"
 
           # Skip upload if remote already has the same build (unless forced).
-          REMOTE_CHECKSUM=$(aws s3 cp "s3://$R2_BUCKET/mmdb/checksum.txt" - \
-            --endpoint-url "$R2_ENDPOINT" 2>/dev/null || true)
+          REMOTE_CHECKSUM=$(aws s3 cp "s3://$R2_BUCKET/mmdb/metadata.json" - \
+            --endpoint-url "$R2_ENDPOINT" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('checksum',''))" 2>/dev/null || true)
 
           if [ "$LOCAL_CHECKSUM" = "$REMOTE_CHECKSUM" ] && [ "$FORCE" != "true" ]; then
             echo "GeoIP database is already up-to-date — skipping upload."
             exit 0
           fi
 
-          echo "Uploading geoip.mmdb (checksum: $LOCAL_CHECKSUM)…"
+          echo "Uploading geoip.mmdb.zst (checksum: $LOCAL_CHECKSUM)…"
 
-          # Upload the MMDB first so clients always have a valid file, then
-          # atomically flip the checksum so Electron knows to re-download.
-          aws s3 cp geoip.mmdb "s3://$R2_BUCKET/mmdb/geoip.mmdb" \
+          aws s3 cp geoip.mmdb.zst "s3://$R2_BUCKET/mmdb/geoip.mmdb.zst" \
             --endpoint-url "$R2_ENDPOINT" \
             --content-type "application/octet-stream" \
-            --cache-control "public, max-age=86400" \
+            --cache-control "public, max-age=31536000, immutable" \
             --no-progress
 
-          echo -n "$LOCAL_CHECKSUM" | aws s3 cp - "s3://$R2_BUCKET/mmdb/checksum.txt" \
+          aws s3 cp metadata.json "s3://$R2_BUCKET/mmdb/metadata.json" \
             --endpoint-url "$R2_ENDPOINT" \
-            --content-type "text/plain" \
+            --content-type "application/json" \
             --cache-control "no-cache, max-age=0" \
             --no-progress
 
-          echo "Done — geoip.mmdb updated on R2."
+          echo "Done — geoip.mmdb.zst updated on R2."

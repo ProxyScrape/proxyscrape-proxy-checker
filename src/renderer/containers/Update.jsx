@@ -7,31 +7,11 @@ import { isPortable, IS_CANARY, isDev } from '../../shared/AppConstants';
 import { ipcRenderer } from 'electron';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import LinearProgress from '@mui/material/LinearProgress';
-import { alpha } from '@mui/material/styles';
 import { blueBrand } from '../theme/palette';
 import { FOOTER_HEIGHT, CANARY_BANNER_HEIGHT } from '../constants/Layout';
-
-// ─── Animation variants ────────────────────────────────────────────────────────
-
-const CARD_VARIANTS = {
-    hidden:  { y: 80, opacity: 0, scale: 0.92 },
-    visible: {
-        y: 0, opacity: 1, scale: 1,
-        transition: {
-            y:       { type: 'spring', stiffness: 380, damping: 28, mass: 0.9 },
-            opacity: { duration: 0.25, ease: 'easeOut' },
-            scale:   { duration: 0.25, ease: 'easeOut' },
-        },
-    },
-    exit: {
-        opacity: 0,
-        scale: 0.96,
-        transition: { duration: 0.18, ease: 'easeIn' },
-    },
-};
+import { CARD_VARIANTS, ToastCard, ToastDismissButton } from '../components/ui/ToastBase';
 
 // Content panes: old drifts upward out, new rises up into place.
 const CONTENT_VARIANTS = {
@@ -39,48 +19,6 @@ const CONTENT_VARIANTS = {
     visible: { opacity: 1, y: 0, transition: { duration: 0.15, ease: [0.25, 0.46, 0.45, 0.94] } },
     exit:    { opacity: 0, y: -8, transition: { duration: 0.12, ease: [0.55, 0, 1, 0.45] } },
 };
-
-// ─── Sub-components ────────────────────────────────────────────────────────────
-
-const CloseIcon = () => (
-    <svg viewBox="0 0 224.512 224.512" style={{ width: 10, height: 10, fill: 'currentColor' }}>
-        <polygon points="224.507,6.997 217.521,0 112.256,105.258 6.998,0 0.005,6.997 105.263,112.254 0.005,217.512 6.998,224.512 112.256,119.24 217.521,224.512 224.507,217.512 119.249,112.254" />
-    </svg>
-);
-
-const DismissButton = ({ onClick }) => (
-    <IconButton
-        onClick={onClick}
-        size="small"
-        sx={{
-            color: alpha('#fff', 0.5),
-            flexShrink: 0,
-            ml: 0.5,
-            mt: -0.25,
-            '&:hover': { color: alpha('#fff', 0.9), bgcolor: alpha('#fff', 0.06) },
-        }}
-    >
-        <CloseIcon />
-    </IconButton>
-);
-
-// Shared card wrapper with a coloured top-border accent to signal state.
-const ToastCard = ({ accentColor, children }) => (
-    <Box sx={{
-        bgcolor: 'background.paper',
-        borderRadius: 3,
-        overflow: 'hidden',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.45)',
-        border: '1px solid rgba(255,255,255,0.06)',
-        borderTop: `2px solid ${accentColor}`,
-    }}>
-        <Box sx={{ p: '14px 16px 16px' }}>
-            {children}
-        </Box>
-    </Box>
-);
-
-// ─── Component ─────────────────────────────────────────────────────────────────
 
 class Update extends React.PureComponent {
     constructor(props) {
@@ -177,7 +115,7 @@ class Update extends React.PureComponent {
                                     <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary' }}>
                                         Update available
                                     </Typography>
-                                    <DismissButton onClick={() => this.setState({ phase: null })} />
+                                    <ToastDismissButton onClick={() => this.setState({ phase: null })} />
                                 </Box>
                                 <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5, lineHeight: 1.5 }}>
                                     Download and replace your portable executable.
@@ -225,7 +163,7 @@ class Update extends React.PureComponent {
                                             }}>
                                                 {percent}%
                                             </Typography>
-                                            <DismissButton onClick={this.handleDismiss} />
+                                            <ToastDismissButton onClick={this.handleDismiss} />
                                         </Box>
 
                                         {/* Progress bar */}
@@ -256,7 +194,7 @@ class Update extends React.PureComponent {
                                             <Typography variant="body2" sx={{ fontWeight: 600, flexGrow: 1 }}>
                                                 Update ready
                                             </Typography>
-                                            <DismissButton onClick={this.handleDismissReady} />
+                                            <ToastDismissButton onClick={this.handleDismissReady} />
                                         </Box>
 
                                         <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5, lineHeight: 1.5 }}>

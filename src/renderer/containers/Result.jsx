@@ -27,7 +27,8 @@ import {
     toggleExport,
     changeExportType,
     changeExportAuthType,
-    toggleHideStatus
+    toggleHideStatus,
+    setGeoFilter
 } from '../actions/ResultActions';
 import { openDrawer, closeDrawer, openDetails, closeDetails } from '../actions/UIActions';
 import { loadFromTxt } from '../actions/InputActions';
@@ -83,7 +84,7 @@ class Result extends React.PureComponent {
 
     render = () => {
         const {
-            state: { isOpened, anons, protocols, misc, search, countries, items, countOfResults, inBlacklists, timeout, ports, sorting, exporting, hiddenStatuses = ['cancelled'] },
+            state: { isOpened, anons, protocols, misc, search, countries, items, countOfResults, inBlacklists, timeout, ports, sorting, exporting, hiddenStatuses = ['cancelled'], geoFilter = 'all' },
             captureServer,
             keepAlive,
             close,
@@ -108,6 +109,7 @@ class Result extends React.PureComponent {
             changeExportType,
             changeExportAuthType,
             toggleHideStatus,
+            setGeoFilter,
             countriesDrawerOpen,
             activeDetails,
             openDrawer,
@@ -264,6 +266,38 @@ class Result extends React.PureComponent {
                                         )}
                                         sx={{ m: 0, alignItems: 'flex-start' }}
                                     />
+                                </Box>
+                            </Box>
+                            <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2, flex: '0 1 auto' }}>
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>
+                                    Location data
+                                    <InfoIcon title="Filter by geo enrichment status." />
+                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                    {[
+                                        { value: 'all', label: 'All' },
+                                        { value: 'has_geo', label: 'Has geo' },
+                                        { value: 'pending', label: 'Pending' },
+                                    ].map(({ value, label }) => (
+                                        <Typography
+                                            key={value}
+                                            variant="caption"
+                                            onClick={() => setGeoFilter(value)}
+                                            sx={{
+                                                cursor: 'pointer',
+                                                px: 1,
+                                                py: 0.25,
+                                                borderRadius: 1,
+                                                bgcolor: geoFilter === value ? 'primary.main' : 'transparent',
+                                                color: geoFilter === value ? '#fff' : 'text.secondary',
+                                                fontWeight: 600,
+                                                fontSize: '0.7rem',
+                                                '&:hover': { bgcolor: geoFilter === value ? 'primary.main' : alpha('#fff', 0.06) },
+                                            }}
+                                        >
+                                            {label}
+                                        </Typography>
+                                    ))}
                                 </Box>
                             </Box>
                         </Box>
@@ -490,6 +524,7 @@ const mapDispatchToProps = {
     changeExportType,
     changeExportAuthType,
     toggleHideStatus,
+    setGeoFilter,
     openDrawer,
     closeDrawer,
     openDetails,

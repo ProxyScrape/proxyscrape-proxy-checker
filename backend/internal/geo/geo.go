@@ -1,10 +1,14 @@
 package geo
 
 import (
+	"fmt"
+	"io"
 	"net"
+	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/oschwald/maxminddb-golang"
 )
 
@@ -391,6 +395,53 @@ var defaultDB *DB
 // SetDefault registers the package-level DB used by the top-level Lookup
 // function.  Call this once from main before starting the HTTP server.
 func SetDefault(g *DB) { defaultDB = g }
+
+// DecompressAndReload decompresses a zstd-compressed MMDB file at srcPath into
+// the standard mmdb/geoip.mmdb location, then hot-reloads the database.
+// Uses an atomic rename so the existing file stays valid until the new one is ready.
+func (g *DB) DecompressAndReload(srcPath string) error {
+	destPath := g.path()
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o700); err != nil {
+		return fmt.Errorf("geo: create mmdb dir: %w", err)
+	}
+
+	in, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("geo: open compressed file: %w", err)
+	}
+	defer in.Close()
+
+	dec, err := zstd.NewReader(in)
+	if err != nil {
+		return fmt.Errorf("geo: create zstd reader: %w", err)
+	}
+	defer dec.Close()
+
+	tmp := destPath + ".decompress"
+	out, err := os.Create(tmp)
+	if err != nil {
+		return fmt.Errorf("geo: create tmp file: %w", err)
+	}
+
+	if _, err := io.Copy(out, dec); err != nil {
+		out.Close()
+		os.Remove(tmp)
+		return fmt.Errorf("geo: decompress: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("geo: close tmp file: %w", err)
+	}
+
+	// Atomic rename.
+	if err := os.Rename(tmp, destPath); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("geo: rename: %w", err)
+	}
+
+	// Hot-reload.
+	return g.Reload()
+}
 
 // Lookup is a package-level convenience that delegates to the default DB.
 // Existing call sites (e.g. the checker package) use this without needing to

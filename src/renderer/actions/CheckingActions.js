@@ -3,6 +3,7 @@ import { wait } from '../misc/wait';
 import { isIP } from '../misc/regexes';
 import { trackAction } from '../misc/analytics';
 import { CHECKING_UP_COUNTER_STATUS, CHECKING_OPEN, CHECKING_OTHER_CHANGES, CORE_SET_PROTOCOL_WARNING } from '../constants/ActionTypes';
+import { showError } from '../store/reducers/app';
 import { showResult, mapResultItem } from './ResultActions';
 import { pingJudgesWithOverlay } from './OverlayJudgesActions';
 
@@ -128,8 +129,13 @@ export const start = () => async (dispatch, getState) => {
             while (!mmdbReady) {
                 let removeProgressListener = null;
                 try {
-                    removeProgressListener = window.__ELECTRON__.onMMDBProgress((_, { pct, totalBytes }) => {
-                        dispatch(otherChanges({ mmdbDownloading: true, mmdbProgress: pct, mmdbTotalBytes: totalBytes }));
+                    removeProgressListener = window.__ELECTRON__.onMMDBProgress((_, { phase, pct, totalBytes }) => {
+                        dispatch(otherChanges({
+                            mmdbDownloading: true,
+                            mmdbPhase: phase || 'download',
+                            mmdbProgress: pct >= 0 ? pct : 0,
+                            mmdbTotalBytes: totalBytes || 0,
+                        }));
                     });
                     const result = await window.__ELECTRON__.ensureMMDB();
                     if (result && result.status === 'cancelled') return;
@@ -255,7 +261,7 @@ export const start = () => async (dispatch, getState) => {
             onBackendError: displayResults,
         });
     } catch (error) {
-        alert(error);
+        dispatch(showError(error.message));
     }
 };
 

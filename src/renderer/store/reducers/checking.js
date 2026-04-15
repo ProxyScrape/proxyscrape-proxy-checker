@@ -4,6 +4,7 @@ const initialState = {
     opened: false,
     preparing: false,
     mmdbDownloading: false,
+    mmdbPhase: 'download',   // 'download' | 'decompress'
     mmdbProgress: 0,
     mmdbTotalBytes: 0,
     mmdbError: false,
