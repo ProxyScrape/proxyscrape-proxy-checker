@@ -30,6 +30,8 @@ X only bumps when starting the *next* canary cycle after a stable promotion.
 
 ## Cutting a canary release
 
+`package.json` **must be updated and committed before `git tag`**. The CI version gate compares `package.json` against the tag and blocks all builds if they differ.
+
 ```bash
 npm version 2.X.Y-canary --no-git-tag-version
 git add package.json package-lock.json
@@ -37,6 +39,8 @@ git commit -m "chore: bump version to 2.X.Y-canary"
 git tag v2.X.Y-canary
 git push origin canary && git push origin v2.X.Y-canary
 ```
+
+If you forget to bump `package.json` and push the tag anyway, **do not delete the tag**. Cut a new Y instead (see "Tags are immutable" below).
 
 ## Promoting canary to stable
 
@@ -91,12 +95,14 @@ git push origin canary
 
 ## Tags are immutable — never delete and recreate
 
-Once a tag is pushed, never delete or recreate it. Increment Y and push a new tag instead:
+Once a tag is pushed, never delete or recreate it — even if CI failed. Increment Y and push a new tag instead:
 
 ```
-v2.1.1-canary  →  v2.1.2-canary   ✅
-git tag -d v2.1.1-canary           ❌ never do this
+v2.1.1-canary  →  v2.1.2-canary   ✅  (CI failed on .1? just cut .2)
+git tag -d v2.1.1-canary           ❌  never do this
 ```
+
+Deleting a pushed tag rewrites history that other systems (GitHub Actions runs, R2 artifacts, Dependabot) may have already observed. A failed CI run produces no user-facing release, so there is no reason to recycle the tag — the Y increment costs nothing.
 
 ## Sources of truth — only `package.json` needs manual edits
 
