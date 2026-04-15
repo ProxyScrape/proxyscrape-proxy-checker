@@ -1,14 +1,19 @@
 package geo
 
 import (
-	_ "embed"
 	"net"
+	"path/filepath"
+	"sync"
 
-	"github.com/oschwald/geoip2-golang"
+	"github.com/oschwald/maxminddb-golang"
 )
 
-//go:embed GeoLite2-City.mmdb
-var mmdbData []byte
+// mmdbRecord maps the fields produced by build-geoip-db.py / mmdbctl import.
+// Field names match the CSV column names written by the build script.
+type mmdbRecord struct {
+	CountryCode string `maxminddb:"country_code"`
+	City        string `maxminddb:"city"`
+}
 
 // Country holds the result of a GeoIP lookup.
 type Country struct {
@@ -285,21 +290,72 @@ var codes = map[string]countryInfo{
 
 var unknown = Country{Code: "ZZ", Name: "Unknown", Flag: "unknown"}
 
-var db *geoip2.Reader
-
-func init() {
-	var err error
-	db, err = geoip2.FromBytes(mmdbData)
-	if err != nil {
-		// db remains nil; Lookup will return Unknown
-	}
+// DB is a goroutine-safe GeoIP database that can be hot-reloaded.
+// Create one with NewDB; the package-level Lookup function delegates to the
+// default instance set via SetDefault (following the same pattern as log,
+// http.DefaultClient, rand, etc. in the standard library).
+type DB struct {
+	mu  sync.RWMutex
+	db  *maxminddb.Reader
+	dir string
 }
 
-// Lookup returns geo information for the given IPv4 address.
+// NewDB opens the GeoIP database in dataDir/mmdb/geoip.mmdb.
+// If the file does not yet exist, lookups return Unknown until Reload is called
+// after the Electron main process downloads it.
+func NewDB(dataDir string) *DB {
+	g := &DB{dir: dataDir}
+	if r, err := maxminddb.Open(g.path()); err == nil {
+		g.db = r
+	}
+	return g
+}
+
+// path returns the canonical location of the MMDB file for this instance.
+func (g *DB) path() string {
+	return filepath.Join(g.dir, "mmdb", "geoip.mmdb")
+}
+
+// MMDBPath returns the canonical file path for the cached MMDB in dataDir.
+// Exported so callers (e.g. the Electron main process) can verify the path
+// without creating a full DB instance.
+func MMDBPath(dataDir string) string {
+	return filepath.Join(dataDir, "mmdb", "geoip.mmdb")
+}
+
+// Reload re-reads the MMDB from disk.
+// Called by the /api/mmdb/reload endpoint after the Electron main process
+// downloads a fresh copy.  The write-lock ensures all in-flight Lookup calls
+// finish before the old reader is closed.
+func (g *DB) Reload() error {
+	r, err := maxminddb.Open(g.path())
+	if err != nil {
+		return err
+	}
+	g.mu.Lock()
+	old := g.db
+	g.db = r
+	g.mu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
+	return nil
+}
+
+// Lookup returns geo information for the given IP address.
 // The second return value is the city name (empty string if not found).
-// Returns Country with code "ZZ" (Unknown) if the IP cannot be resolved.
-func Lookup(ip string) (Country, string) {
-	if db == nil {
+// Returns Country with code "ZZ" (Unknown) if the IP cannot be resolved or the
+// database has not yet been loaded.
+//
+// The read-lock is held for the entire call so that a concurrent Reload cannot
+// close the reader while it is still being used.  maxminddb.Reader is
+// goroutine-safe for concurrent reads, so multiple Lookup calls holding RLock
+// simultaneously is correct.
+func (g *DB) Lookup(ip string) (Country, string) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.db == nil {
 		return unknown, ""
 	}
 
@@ -308,25 +364,40 @@ func Lookup(ip string) (Country, string) {
 		return unknown, ""
 	}
 
-	record, err := db.City(parsed)
-	if err != nil {
+	var record mmdbRecord
+	if err := g.db.Lookup(parsed, &record); err != nil {
 		return unknown, ""
 	}
 
-	code := record.Country.IsoCode
-	info, ok := codes[code]
+	info, ok := codes[record.CountryCode]
 	if !ok {
 		return unknown, ""
 	}
 
-	city := ""
-	if record.City.Names != nil {
-		city = record.City.Names["en"]
-	}
-
 	return Country{
-		Code: code,
+		Code: record.CountryCode,
 		Name: info.name,
 		Flag: info.flag,
-	}, city
+	}, record.City
+}
+
+// =============================================================================
+// Package-level default instance — mirrors the standard library pattern used
+// by log.Println, http.Get, rand.Intn, etc.
+// =============================================================================
+
+var defaultDB *DB
+
+// SetDefault registers the package-level DB used by the top-level Lookup
+// function.  Call this once from main before starting the HTTP server.
+func SetDefault(g *DB) { defaultDB = g }
+
+// Lookup is a package-level convenience that delegates to the default DB.
+// Existing call sites (e.g. the checker package) use this without needing to
+// own a *DB instance directly.
+func Lookup(ip string) (Country, string) {
+	if defaultDB == nil {
+		return unknown, ""
+	}
+	return defaultDB.Lookup(ip)
 }

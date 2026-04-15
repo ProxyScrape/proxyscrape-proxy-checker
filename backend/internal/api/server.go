@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/proxyscrape/checker-backend/internal/blacklist"
+	"github.com/proxyscrape/checker-backend/internal/geo"
 	"github.com/proxyscrape/checker-backend/internal/judges"
 	"github.com/proxyscrape/checker-backend/internal/settings"
 	"github.com/proxyscrape/checker-backend/internal/store"
@@ -40,16 +41,18 @@ type server struct {
 	mu       sync.RWMutex
 	judges   *judges.Judges
 	blists   *blacklist.Blacklist
+	geoDB    *geo.DB
 }
 
 // NewServer builds the HTTP API router. POST /api/login is unauthenticated and rate-limited;
 // GET /api/check/{id}/events validates its token inside the handler;
 // all other /api routes go through the auth middleware.
-func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager) http.Handler {
+func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, geoDB *geo.DB) http.Handler {
 	s := &server{
 		store:    db,
 		settings: mgr,
 		verify:   verifier,
+		geoDB:    geoDB,
 	}
 
 	r := chi.NewRouter()
@@ -95,6 +98,8 @@ func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager) h
 			r.Get("/ip", s.handleGetIP)
 			r.Get("/version", s.handleGetVersion)
 			r.Get("/trace/status", s.handleTraceStatus)
+
+			r.Post("/mmdb/reload", s.handleMMDBReload)
 		})
 	})
 

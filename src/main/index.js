@@ -1,5 +1,9 @@
 import path from 'path';
 import fs from 'fs';
+import http from 'http';
+import https from 'https';
+import { pipeline, Transform } from 'stream';
+import { promisify } from 'util';
 import readline from 'readline';
 import { spawn, execSync } from 'child_process';
 import { BrowserWindow, app, ipcMain, dialog, session } from 'electron';
@@ -534,5 +538,210 @@ ipcMain.on('window-unmaximize', () => {
 ipcMain.on('window-close', () => {
     if (window && !window.isDestroyed()) {
         window.close();
+    }
+});
+
+// =============================================================================
+// MMDB — GeoIP database download
+// =============================================================================
+
+const MMDB_BASE_URL = 'https://software.cdn.proxyscrape.com/mmdb';
+const pipelineAsync = promisify(pipeline);
+
+/** Active AbortController while a download is in progress; null otherwise. */
+let activeMMDBAbort = null;
+
+/**
+ * Fetch text from a URL, following one redirect level.
+ * Times out after 10 s and destroys the socket on timeout.
+ */
+function fetchText(url) {
+    return new Promise((resolve, reject) => {
+        const mod = url.startsWith('https') ? https : http;
+        const req = mod.get(url, { timeout: 10000 }, (res) => {
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                fetchText(res.headers.location).then(resolve).catch(reject);
+                res.resume();
+                return;
+            }
+            if (res.statusCode !== 200) {
+                res.resume();
+                reject(new Error(`HTTP ${res.statusCode} fetching ${url}`));
+                return;
+            }
+            let data = '';
+            res.on('data', chunk => { data += chunk; });
+            res.on('end', () => resolve(data.trim()));
+            res.on('error', reject);
+        });
+        req.on('error', reject);
+        // timeout only emits an event — must explicitly destroy to abort.
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
+    });
+}
+
+/**
+ * Download a file from url to destPath with progress callbacks.
+ * Uses stream.pipeline for correct backpressure handling on large files and
+ * automatic stream cleanup on error. Writes atomically via a .download temp
+ * file so a partial download never replaces a valid existing file.
+ *
+ * onProgress receives { pct: 0-100, totalBytes: number }.
+ * Supports AbortSignal for user-initiated cancellation.
+ */
+async function downloadFile(url, destPath, onProgress, signal) {
+    // Resolve any redirect before starting the download so we can get the
+    // content-length from the final URL without double-streaming.
+    const res = await new Promise((resolve, reject) => {
+        const mod = url.startsWith('https') ? https : http;
+        const req = mod.get(url, { timeout: 120000 }, (r) => {
+            if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) {
+                r.resume();
+                // Re-enter for the redirect target (one hop only).
+                downloadFile(r.headers.location, destPath, onProgress, signal)
+                    .then(() => resolve(null))
+                    .catch(reject);
+                return;
+            }
+            if (r.statusCode !== 200) {
+                r.resume();
+                reject(new Error(`HTTP ${r.statusCode} downloading MMDB`));
+                return;
+            }
+            resolve(r);
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('MMDB download timed out')); });
+
+        if (signal) {
+            signal.addEventListener('abort', () => req.destroy(), { once: true });
+        }
+    });
+
+    // redirect was handled recursively — nothing left to do.
+    if (res === null) return;
+
+    if (signal?.aborted) throw Object.assign(new Error('MMDB download cancelled'), { code: 'MMDB_CANCELLED' });
+
+    const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
+    let downloaded = 0;
+    const tmp = `${destPath}.download`;
+
+    // Transform stream to track progress bytes without breaking the pipeline.
+    const tracker = new Transform({
+        transform(chunk, _, cb) {
+            downloaded += chunk.length;
+            if (onProgress) {
+                onProgress({
+                    pct: totalBytes > 0 ? Math.min(99, Math.floor((downloaded / totalBytes) * 100)) : 0,
+                    totalBytes,
+                });
+            }
+            cb(null, chunk);
+        },
+    });
+
+    const out = fs.createWriteStream(tmp);
+
+    try {
+        await pipelineAsync(res, tracker, out);
+    } catch (err) {
+        // Clean up the partial temp file on any error (including abort).
+        await fs.promises.unlink(tmp).catch(() => {});
+        if (signal?.aborted) {
+            throw Object.assign(new Error('MMDB download cancelled'), { code: 'MMDB_CANCELLED' });
+        }
+        throw err;
+    }
+
+    // Atomic rename: the old file stays fully available until the new one is in place.
+    await fs.promises.rename(tmp, destPath);
+}
+
+/**
+ * Tell the Go backend to reload the GeoIP database from disk.
+ * Fire-and-forget — non-fatal if the backend is unavailable.
+ */
+function signalGoMMDBReload() {
+    if (!checkerPort || !checkerToken) return;
+    const req = http.request({
+        hostname: '127.0.0.1',
+        port: checkerPort,
+        path: '/api/mmdb/reload',
+        method: 'POST',
+        headers: { Authorization: `Bearer ${checkerToken}` },
+    }, (res) => { res.resume(); });
+    req.on('error', () => { /* non-fatal */ });
+    req.end();
+}
+
+/**
+ * mmdb:ensure — verify the local GeoIP database is current; download if not.
+ * Progress events { pct, totalBytes } are pushed to the renderer via 'mmdb-progress'.
+ * Returns { status: 'ready' | 'cancelled' }.
+ */
+ipcMain.handle('mmdb:ensure', async () => {
+    const dataDir = getDataDir();
+    const mmdbDir = path.join(dataDir, 'mmdb');
+    const mmdbPath = path.join(mmdbDir, 'geoip.mmdb');
+    const checksumPath = path.join(mmdbDir, 'checksum.txt');
+
+    // Fetch the remote checksum (cache-busted). If unreachable and a local copy
+    // exists, silently proceed with what we have.
+    let remoteChecksum;
+    try {
+        remoteChecksum = await fetchText(`${MMDB_BASE_URL}/checksum.txt?t=${Date.now()}`);
+    } catch {
+        if (fs.existsSync(mmdbPath)) return { status: 'ready' };
+        throw Object.assign(new Error('GeoIP database unavailable and no local copy found.'), { code: 'MMDB_UNAVAILABLE' });
+    }
+
+    // Compare with the locally stored checksum.
+    let localChecksum = null;
+    if (fs.existsSync(checksumPath)) {
+        try { localChecksum = fs.readFileSync(checksumPath, 'utf8').trim(); } catch { /* ignore */ }
+    }
+
+    if (localChecksum === remoteChecksum && fs.existsSync(mmdbPath)) {
+        return { status: 'ready' }; // already up to date — no download needed
+    }
+
+    // Need to download.
+    await fs.promises.mkdir(mmdbDir, { recursive: true });
+
+    const ac = new AbortController();
+    activeMMDBAbort = ac;
+
+    const sendProgress = (data) => {
+        if (window && !window.isDestroyed()) {
+            window.webContents.send('mmdb-progress', data);
+        }
+    };
+
+    sendProgress({ pct: 0, totalBytes: 0 });
+
+    try {
+        await downloadFile(`${MMDB_BASE_URL}/geoip.mmdb`, mmdbPath, sendProgress, ac.signal);
+    } catch (err) {
+        if (err.code === 'MMDB_CANCELLED') return { status: 'cancelled' };
+        throw err;
+    } finally {
+        activeMMDBAbort = null;
+    }
+
+    sendProgress({ pct: 100, totalBytes: 0 });
+
+    try { fs.writeFileSync(checksumPath, remoteChecksum, 'utf8'); } catch { /* ignore */ }
+
+    signalGoMMDBReload();
+
+    return { status: 'ready' };
+});
+
+/** mmdb:cancel — abort an in-progress MMDB download. */
+ipcMain.handle('mmdb:cancel', async () => {
+    if (activeMMDBAbort) {
+        activeMMDBAbort.abort();
+        activeMMDBAbort = null;
     }
 });

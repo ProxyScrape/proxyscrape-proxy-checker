@@ -94,7 +94,7 @@ Password requirements: minimum 12 characters, at least one uppercase, one lowerc
 | `internal/checker` | Concurrent proxy checking engine. Goroutine pool — pool size = `settings.threads`. Results sent via channel. |
 | `internal/judges` | Judge server management: ping, classify (SSL/usual), validate responses, round-robin getters |
 | `internal/blacklist` | Load blacklists from URLs or files, parse IPs and CIDR ranges, `Check(ip)` method |
-| `internal/geo` | MaxMind GeoIP2 lookups. The `.mmdb` file is embedded in the binary at compile time via `go:embed` |
+| `internal/geo` | GeoIP lookups via `maxminddb-golang`. The `geoip.mmdb` file is downloaded from R2 at runtime and hot-reloaded without restart |
 | `internal/store` | SQLite persistence using `modernc.org/sqlite` (pure Go — no CGo, no native rebuild required). Schema: `checks`, `check_results`, `users` (bcrypt hashes), `sessions` (session tokens with expiry) |
 | `internal/settings` | Read/write settings JSON file. Version migration. Thread-safe access. |
 | `internal/ip` | Fetch caller's public IP address |
@@ -104,7 +104,7 @@ Password requirements: minimum 12 characters, at least one uppercase, one lowerc
 
 When a check is started, the checker spawns a goroutine pool of size `settings.threads`. Each goroutine pulls proxies from a shared channel, tests them (potentially across multiple protocols concurrently), and sends results to a results channel. The API handler for `GET /api/check/{id}/events` consumes this results channel and writes SSE events to the HTTP response as they arrive.
 
-The `GeoLite2-City.mmdb` is loaded once at startup and is safe for concurrent reads.
+The `geoip.mmdb` is downloaded from R2 at first launch, cached in the user data directory, and hot-reloaded via the `/api/mmdb/reload` endpoint without restarting the backend. It is safe for concurrent reads.
 
 SQLite uses WAL mode and a single-writer connection pool to avoid contention.
 

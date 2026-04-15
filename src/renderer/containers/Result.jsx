@@ -116,6 +116,25 @@ class Result extends React.PureComponent {
             closeDetails,
         } = this.props;
 
+        const gridTemplate = [
+            '40px',
+            'minmax(120px, 2fr)',
+            '55px',
+            'minmax(110px, 1.5fr)',
+            'minmax(75px, 1fr)',
+            'minmax(110px, 1.5fr)',
+            '30px',
+            keepAlive     ? '30px'              : null,
+            captureServer ? 'minmax(75px, 1fr)' : null,
+            '70px',
+            '58px',
+        ].filter(Boolean).join(' ');
+
+        const minTableWidth = 40 + 120 + 55 + 110 + 75 + 110 + 30
+            + (keepAlive     ? 30 : 0)
+            + (captureServer ? 75 : 0)
+            + 70 + 58;
+
         const handleToggleCountries = () => {
             if (countriesDrawerOpen) closeDrawer();
             else openDrawer('countries');
@@ -360,25 +379,19 @@ class Result extends React.PureComponent {
                         overflowY: 'auto',
                         px: 3,
                         pb: 2,
-                        '&::-webkit-scrollbar': { height: 6, width: 6 },
-                        '&::-webkit-scrollbar-track': { bgcolor: 'transparent' },
-                        '&::-webkit-scrollbar-thumb': {
-                            bgcolor: alpha('#fff', 0.15),
-                            borderRadius: 3,
-                            '&:hover': { bgcolor: alpha('#fff', 0.3) },
-                        },
-                        scrollbarWidth: 'thin',
-                        scrollbarColor: `${alpha('#fff', 0.15)} transparent`,
                     }}
                 >
-                    <Box sx={{ minWidth: 640 }}>
-                        <ResultItemsHeader sortResults={sortResults} keepAlive={keepAlive} captureServer={captureServer} inBlacklists={inBlacklists} sorting={sorting} />
+                    <Box sx={{ minWidth: minTableWidth }}>
+                        <ResultItemsHeader sortResults={sortResults} keepAlive={keepAlive} captureServer={captureServer} inBlacklists={inBlacklists} sorting={sorting} gridTemplate={gridTemplate} />
 
                         <Box>
                             {filteredItems.slice(0, countOfResults).map(item => (
                                 <ResultListItem
                                     key={item.id}
                                     {...item}
+                                    coreKeepAlive={keepAlive}
+                                    captureServer={captureServer}
+                                    gridTemplate={gridTemplate}
                                     isDetailsOpen={activeDetails !== null && activeDetails.host === item.host && activeDetails.port === item.port}
                                     onOpenDetails={openDetails}
                                     onCloseDetails={closeDetails}

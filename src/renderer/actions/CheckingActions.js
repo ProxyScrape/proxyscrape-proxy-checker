@@ -9,6 +9,7 @@ import { pingJudgesWithOverlay } from './OverlayJudgesActions';
 let currentCheckId = null;
 let closeCurrentStream = null;
 let resolveProtocolWarning = null;
+let resolveMMDBDecision = null;
 
 export const respondToProtocolWarning = choice => dispatch => {
     dispatch({ type: CORE_SET_PROTOCOL_WARNING, warning: { open: false } });
@@ -117,6 +118,41 @@ export const start = () => async (dispatch, getState) => {
 
         if (blacklist.filter) {
             validateBlacklist(blacklist.items);
+        }
+
+        // Ensure the GeoIP database is downloaded before starting.
+        // Uses the same Promise-based pause pattern as showProtocolWarning so the flow
+        // suspends here waiting for the user — rather than restarting start() from scratch.
+        if (window.__ELECTRON__ && window.__ELECTRON__.ensureMMDB) {
+            let mmdbReady = false;
+            while (!mmdbReady) {
+                let removeProgressListener = null;
+                try {
+                    removeProgressListener = window.__ELECTRON__.onMMDBProgress((_, { pct, totalBytes }) => {
+                        dispatch(otherChanges({ mmdbDownloading: true, mmdbProgress: pct, mmdbTotalBytes: totalBytes }));
+                    });
+                    const result = await window.__ELECTRON__.ensureMMDB();
+                    if (result && result.status === 'cancelled') return;
+                    mmdbReady = true;
+                } catch (error) {
+                    const isUnavailable = error.code === 'MMDB_UNAVAILABLE' ||
+                        (error.message && error.message.includes('GeoIP database unavailable'));
+                    if (!isUnavailable) throw error;
+
+                    // Pause here and wait for the user's choice from the error dialog.
+                    const decision = await new Promise(resolve => {
+                        resolveMMDBDecision = resolve;
+                        dispatch(otherChanges({ mmdbError: true }));
+                    });
+
+                    if (decision === 'cancel') return;
+                    if (decision === 'continue') mmdbReady = true; // proceed without MMDB
+                    // decision === 'retry': loop and attempt the download again
+                } finally {
+                    if (removeProgressListener) removeProgressListener();
+                    dispatch(otherChanges({ mmdbDownloading: false, mmdbProgress: 0, mmdbTotalBytes: 0 }));
+                }
+            }
         }
 
         // Show the judge ping overlay, ping all judges, then proceed only if
@@ -260,3 +296,24 @@ export const upCounterStatus = counter => ({
     type: CHECKING_UP_COUNTER_STATUS,
     counter
 });
+
+/** Abort an in-progress MMDB download initiated by the checking flow. */
+export const cancelMMDBDownload = () => () => {
+    if (window.__ELECTRON__ && window.__ELECTRON__.cancelMMDB) {
+        window.__ELECTRON__.cancelMMDB();
+    }
+};
+
+// Resolves the Promise that start() is suspended on at the MMDB step,
+// mirroring the respondToProtocolWarning pattern.
+const resolveMMDB = choice => dispatch => {
+    dispatch(otherChanges({ mmdbError: false }));
+    if (resolveMMDBDecision) {
+        resolveMMDBDecision(choice);
+        resolveMMDBDecision = null;
+    }
+};
+
+export const dismissMmdbError    = () => resolveMMDB('cancel');
+export const retryAfterMmdbError = () => resolveMMDB('retry');
+export const continueWithoutMmdb = () => resolveMMDB('continue');

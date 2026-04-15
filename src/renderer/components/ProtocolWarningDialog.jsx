@@ -4,9 +4,8 @@ import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
-import DialogActions from '@mui/material/DialogActions';
-import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
+import DialogActionRow from './ui/DialogActionRow';
 import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
 import { respondToProtocolWarning } from '../actions/CheckingActions';
@@ -48,14 +47,11 @@ const ProtocolWarningDialog = ({ open, listProtocols, selectedProtocols, respond
                 protocols instead.
             </DialogContentText>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button variant="outlined" onClick={() => respondToProtocolWarning('override')}>
-                Ignore List Protocols
-            </Button>
-            <Button variant="contained" onClick={() => respondToProtocolWarning('list')} autoFocus>
-                Continue
-            </Button>
-        </DialogActions>
+        <DialogActionRow
+            cancel={{ label: 'Cancel', onClick: () => respondToProtocolWarning('cancel') }}
+            secondary={{ label: 'Ignore List Protocols', onClick: () => respondToProtocolWarning('override') }}
+            primary={{ label: 'Continue', onClick: () => respondToProtocolWarning('list') }}
+        />
     </Dialog>
 );
 

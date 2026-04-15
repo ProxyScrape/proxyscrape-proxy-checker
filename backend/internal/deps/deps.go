@@ -3,5 +3,4 @@ package deps
 
 import (
 	_ "github.com/mattn/go-sqlite3"
-	_ "github.com/oschwald/geoip2-golang"
 )

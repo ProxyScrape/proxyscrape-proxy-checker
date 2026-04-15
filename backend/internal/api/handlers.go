@@ -794,6 +794,20 @@ func probeCapture() (string, error) {
 	return "", lastErr
 }
 
+// =============================================================================
+// MMDB
+// =============================================================================
+
+// handleMMDBReload hot-reloads the GeoIP database from disk.
+// Called by the Electron main process after it finishes downloading a fresh copy.
+func (s *server) handleMMDBReload(w http.ResponseWriter, r *http.Request) {
+	if err := s.geoDB.Reload(); err != nil {
+		jsonError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	writeJSON(w, map[string]interface{}{"status": "ok"})
+}
+
 func classifyPcapErr(err error) string {
 	if err == nil {
 		return ""

@@ -39,6 +39,42 @@ jobs:
       - name: Check version consistency and branch alignment
         run: bash scripts/check-versions.sh "${{ github.ref_name }}"
 
+  # ── GeoIP MMDB: built from ipapi.is + geofeed, uploaded as artifact ──────────
+  # Runs in parallel with the JS/Go builds so it doesn't add to the critical
+  # path.  The publish job downloads the artifact and puts it on R2 last,
+  # ensuring it is always available before any release binary reaches users.
+  build-geoip:
+    needs: [check-versions]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install mmdbctl
+        run: |
+          curl -sL "https://github.com/ipinfo/mmdbctl/releases/download/mmdbctl-1.4.10/mmdbctl_1.4.10_linux_amd64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP" mmdbctl
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Build geoip.mmdb
+        env:
+          GEOFEED_URL: ${{ secrets.GEOFEED_URL }}
+          MMDB_OUT: geoip.mmdb
+        run: python3 scripts/build-geoip-db.py
+
+      - name: Compute SHA-256 checksum
+        run: sha256sum geoip.mmdb | awk '{print $1}' > checksum.txt
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: geoip-mmdb
+          path: |
+            geoip.mmdb
+            checksum.txt
+
   # ── JS bundle: built once, shared across all platform release jobs ────────────
   build-renderer:
     needs: [check-versions]
@@ -523,7 +559,7 @@ jobs:
   # releases.json read-modify-write is serialised (never races).
   publish:
     runs-on: ubuntu-latest
-    needs: [build-windows, build-linux, build-macos]
+    needs: [build-geoip, build-windows, build-linux, build-macos]
     concurrency:
       group: releases-json-update
       cancel-in-progress: false
@@ -541,6 +577,46 @@ jobs:
             echo "path=canary" >> $GITHUB_OUTPUT
           else
             echo "path=stable" >> $GITHUB_OUTPUT
+          fi
+
+      # Download the GeoIP MMDB artifact built by the build-geoip job and upload
+      # it to R2.  The MMDB is shared across all channels/platforms; publishing
+      # it here (after binaries are live but before yml metadata) ensures users
+      # always have a working database when the update notification arrives.
+      - uses: actions/download-artifact@v7
+        with:
+          name: geoip-mmdb
+          path: geoip-artifact/
+
+      - name: Upload MMDB to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          LOCAL_CHECKSUM=$(cat geoip-artifact/checksum.txt)
+
+          # Skip upload if the MMDB on R2 already matches (idempotent retries).
+          REMOTE_CHECKSUM=$(aws s3 cp "s3://$R2_BUCKET/mmdb/checksum.txt" - \
+            --endpoint-url "$R2_ENDPOINT" 2>/dev/null || true)
+
+          if [ "$LOCAL_CHECKSUM" = "$REMOTE_CHECKSUM" ]; then
+            echo "MMDB unchanged — skipping upload."
+          else
+            echo "Uploading geoip.mmdb (checksum: $LOCAL_CHECKSUM)…"
+
+            # Upload the MMDB first so it is live before the checksum changes.
+            aws s3 cp geoip-artifact/geoip.mmdb "s3://$R2_BUCKET/mmdb/geoip.mmdb" \
+              --endpoint-url "$R2_ENDPOINT" \
+              --content-type "application/octet-stream" \
+              --cache-control "public, max-age=86400" \
+              --no-progress
+
+            echo -n "$LOCAL_CHECKSUM" | aws s3 cp - "s3://$R2_BUCKET/mmdb/checksum.txt" \
+              --endpoint-url "$R2_ENDPOINT" \
+              --content-type "text/plain" \
+              --cache-control "no-cache, max-age=0" \
+              --no-progress
           fi
 
       - name: Download all yml artifacts

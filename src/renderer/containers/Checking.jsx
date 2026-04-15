@@ -1,53 +1,74 @@
 import React from 'react';
 import Counter from '../components/Counter';
+import ProgressBar from '../components/ui/ProgressBar';
+import FullScreenOverlay from '../components/ui/FullScreenOverlay';
 import { connect } from 'react-redux';
-import { stop } from '../actions/CheckingActions';
+import { stop, cancelMMDBDownload } from '../actions/CheckingActions';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import { alpha } from '@mui/material/styles';
-import { PAGE_BACKGROUND } from '../theme/palette';
 
-const Checking = props => (
-    <Box sx={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        bgcolor: alpha(PAGE_BACKGROUND, 0.95),
-        backdropFilter: 'blur(8px)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: props.state.opened ? 1 : 0,
-        pointerEvents: props.state.opened ? 'auto' : 'none',
-        transition: 'opacity 0.3s ease',
-    }}>
-        <Box sx={{ textAlign: 'center', width: '80%', maxWidth: 500 }}>
-            <Counter {...props.state.counter} />
-            <Button variant="contained" onClick={props.stop} sx={{ mt: 3 }}>
-                Stop
-            </Button>
-            {props.state.preparing && (
-                <Typography variant="body2" sx={{ mt: 2, color: 'primary.main', fontWeight: 500 }}>
-                    Preparing results
-                </Typography>
-            )}
-        </Box>
-    </Box>
-);
+/** Format bytes as a human-readable string, e.g. 64.2 MB. */
+function formatBytes(bytes) {
+    if (!bytes || bytes <= 0) return '';
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const Checking = ({ state, stop, cancelMMDBDownload }) => {
+    const { opened, preparing, mmdbDownloading, mmdbProgress, mmdbTotalBytes } = state;
+    const visible = opened || mmdbDownloading;
+
+    return (
+        <FullScreenOverlay isActive={visible}>
+            <Box sx={{ textAlign: 'center', width: '80%', maxWidth: 500 }}>
+                {mmdbDownloading ? (
+                    <>
+                        <Typography variant="body1" sx={{ mb: 0.5, fontWeight: 500 }}>
+                            Downloading GeoIP database
+                        </Typography>
+                        <Typography variant="body2" sx={{ mb: 2.5, color: 'text.secondary' }}>
+                            One-time setup
+                            {mmdbTotalBytes > 0 && ` · ${formatBytes(mmdbTotalBytes)}`}
+                        </Typography>
+                        <ProgressBar value={mmdbProgress} sx={{ mb: 1 }} />
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                            {mmdbProgress}%
+                        </Typography>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={cancelMMDBDownload}
+                            sx={{ mt: 3 }}
+                        >
+                            Cancel
+                        </Button>
+                    </>
+                ) : (
+                    <>
+                        <Counter {...state.counter} />
+                        <Button variant="contained" onClick={stop} sx={{ mt: 3 }}>
+                            Stop
+                        </Button>
+                        {preparing && (
+                            <Typography variant="body2" sx={{ mt: 2, color: 'primary.main', fontWeight: 500 }}>
+                                Preparing results
+                            </Typography>
+                        )}
+                    </>
+                )}
+            </Box>
+        </FullScreenOverlay>
+    );
+};
 
 const mapStateToProps = state => ({
-    state: state.checking
+    state: state.checking,
 });
 
 const mapDispatchToProps = {
-    stop
+    stop,
+    cancelMMDBDownload,
 };
 
-export default connect(
-    mapStateToProps,
-    mapDispatchToProps
-)(Checking);
+export default connect(mapStateToProps, mapDispatchToProps)(Checking);

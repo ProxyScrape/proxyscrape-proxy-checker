@@ -53,4 +53,19 @@ contextBridge.exposeInMainWorld('__ELECTRON__', {
 
     // Triggered by the renderer's "Restart now" button after update-ready fires.
     installUpdate: () => ipcRenderer.send('install-update'),
+
+    // GeoIP database — ensure the MMDB is downloaded before a proxy check.
+    // Resolves with { status: 'ready' | 'cancelled' }.
+    ensureMMDB: () => ipcRenderer.invoke('mmdb:ensure'),
+
+    // Abort an in-progress MMDB download.
+    cancelMMDB: () => ipcRenderer.invoke('mmdb:cancel'),
+
+    // Subscribe to download progress events { pct: 0-100, totalBytes: number }.
+    // Returns a cleanup function — call it when the subscription is no longer needed.
+    onMMDBProgress: (cb) => {
+        const handler = (_e, data) => cb(null, data);
+        ipcRenderer.on('mmdb-progress', handler);
+        return () => ipcRenderer.removeListener('mmdb-progress', handler);
+    },
 });

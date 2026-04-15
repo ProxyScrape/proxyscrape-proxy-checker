@@ -138,7 +138,8 @@ function buildPrompt(version, prevVersion, channel, commits) {
     return (
       `You are writing release notes for ${app}\n\n` +
       `This is release ${version}. No commit history is available.\n` +
-      `Write a brief one-line "Release ${version}" note.\n` +
+      `Write a brief one-line note.\n` +
+      `Do NOT include a version/date header line — start directly with the content.\n` +
       `Output only the markdown, nothing else.`
     );
   }
@@ -149,12 +150,13 @@ function buildPrompt(version, prevVersion, channel, commits) {
       `These are all git commits since the last stable release ` +
       `(${prevVersion ?? 'initial'}), included in stable release ${version}:\n\n` +
       `${commits}\n\n` +
-      `Write a "What's New in ${version}" summary for users upgrading from the ` +
-      `previous stable release. Focus on the big picture — major capabilities, ` +
-      `important fixes, meaningful improvements. Skip internal/CI-only changes.\n` +
-      `Use Keep a Changelog sections as appropriate: ### Added, ### Changed, ` +
-      `### Fixed, ### Security\n` +
-      `One concise sentence per bullet. Output only the markdown, nothing else.`
+      `Write a "What's New" summary for users upgrading from the previous stable release. ` +
+      `Focus on the big picture — major capabilities, important fixes, meaningful improvements. ` +
+      `Skip internal/CI-only changes.\n` +
+      `Use sections as appropriate: ### Added, ### Changed, ### Fixed, ### Security\n` +
+      `One concise sentence per bullet.\n` +
+      `Do NOT include a version/date header line — start directly with the first ### section.\n` +
+      `Output only the markdown, nothing else.`
     );
   }
 
@@ -162,12 +164,13 @@ function buildPrompt(version, prevVersion, channel, commits) {
     `You are writing release notes for ${app}\n\n` +
     `These are the git commits between ${prevVersion} and ${version}:\n\n` +
     `${commits}\n\n` +
-    `Write concise, user-facing release notes in Keep a Changelog format. ` +
-    `Focus on what end users would notice — new features, bug fixes, ` +
-    `behaviour changes. Skip internal/CI-only changes.\n` +
-    `Use Keep a Changelog sections as appropriate: ### Added, ### Changed, ` +
-    `### Fixed, ### Security\n` +
-    `One concise sentence per bullet. Output only the markdown, nothing else.`
+    `Write concise, user-facing release notes. ` +
+    `Focus on what end users would notice — new features, bug fixes, behaviour changes. ` +
+    `Skip internal/CI-only changes.\n` +
+    `Use sections as appropriate: ### Added, ### Changed, ### Fixed, ### Security\n` +
+    `One concise sentence per bullet.\n` +
+    `Do NOT include a version/date header line — start directly with the first ### section.\n` +
+    `Output only the markdown, nothing else.`
   );
 }
 

@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/proxyscrape/checker-backend/internal/api"
+	"github.com/proxyscrape/checker-backend/internal/geo"
 	"github.com/proxyscrape/checker-backend/internal/settings"
 	"github.com/proxyscrape/checker-backend/internal/store"
 	"github.com/spf13/cobra"
@@ -92,6 +93,12 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("load settings: %w", err)
 	}
 
+	// Load GeoIP database from the data directory (downloaded on first check).
+	// If the file doesn't exist yet, lookups return Unknown until Reload is called
+	// after the Electron main process downloads it.
+	geoDB := geo.NewDB(serveDataDir)
+	geo.SetDefault(geoDB)
+
 	if mode == "server" {
 		hasUsers, err := db.HasUsers(context.Background())
 		if err != nil {
@@ -104,12 +111,12 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	}
 
 	if mode == "desktop" {
-		return serveDesktop(db, mgr)
+		return serveDesktop(db, mgr, geoDB)
 	}
-	return serveServer(db, mgr)
+	return serveServer(db, mgr, geoDB)
 }
 
-func serveDesktop(db *store.Store, mgr *settings.Manager) error {
+func serveDesktop(db *store.Store, mgr *settings.Manager, geoDB *geo.DB) error {
 	u, err := uuid.NewRandomFromReader(rand.Reader)
 	if err != nil {
 		return err
@@ -121,7 +128,7 @@ func serveDesktop(db *store.Store, mgr *settings.Manager) error {
 		}
 		return subtle.ConstantTimeCompare([]byte(token), []byte(tokenStr)) == 1
 	}
-	handler := api.NewServer(verify, db, mgr)
+	handler := api.NewServer(verify, db, mgr, geoDB)
 
 	addr := "127.0.0.1:0"
 	if servePort > 0 {
@@ -164,11 +171,11 @@ func serveDesktop(db *store.Store, mgr *settings.Manager) error {
 	}
 }
 
-func serveServer(db *store.Store, mgr *settings.Manager) error {
+func serveServer(db *store.Store, mgr *settings.Manager, geoDB *geo.DB) error {
 	verify := func(ctx context.Context, token string) bool {
 		return db.ValidateSession(ctx, token)
 	}
-	handler := api.NewServer(verify, db, mgr)
+	handler := api.NewServer(verify, db, mgr, geoDB)
 
 	binds := serveBind
 	if len(binds) == 0 {

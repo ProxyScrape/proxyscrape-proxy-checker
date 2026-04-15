@@ -3,6 +3,10 @@ import { CHECKING_UP_COUNTER_STATUS, CHECKING_OPEN, CHECKING_OTHER_CHANGES } fro
 const initialState = {
     opened: false,
     preparing: false,
+    mmdbDownloading: false,
+    mmdbProgress: 0,
+    mmdbTotalBytes: 0,
+    mmdbError: false,
     counter: {
         all: 0,
         done: 0,
