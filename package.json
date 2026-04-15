@@ -1,6 +1,6 @@
 {
     "name": "proxyscrape-proxy-checker",
-    "version": "2.2.1-canary",
+    "version": "2.2.2-canary",
     "main": "./dist/main/index.js",
     "license": "MIT AND Commons-Clause-1.0",
     "author": {

@@ -33,7 +33,9 @@ jobs:
       - name: Install mmdbctl
         run: |
           curl -sL "https://github.com/ipinfo/mmdbctl/releases/download/mmdbctl-1.4.10/mmdbctl_1.4.10_linux_amd64.tar.gz" \
-            | tar -xz -C "$RUNNER_TEMP" mmdbctl
+            | tar -xz -C "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/mmdbctl_1.4.10_linux_amd64" "$RUNNER_TEMP/mmdbctl"
+          chmod +x "$RUNNER_TEMP/mmdbctl"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - name: Build geoip.mmdb

@@ -17,9 +17,6 @@ env:
   # or rely on ProxyScrape's bucket.
   R2_BUCKET: ${{ secrets.R2_BUCKET }}
   R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-  # Zig version used for Windows cross-compilation. Promoted to workflow env so
-  # the GOCACHE key automatically invalidates when Zig is upgraded.
-  ZIG_VERSION: "0.15.2"
   # Cap the Go build cache size so it never exhausts GitHub's 10 GB cache budget.
   GOCACHELIMIT: 2g
 
@@ -56,7 +53,9 @@ jobs:
       - name: Install mmdbctl
         run: |
           curl -sL "https://github.com/ipinfo/mmdbctl/releases/download/mmdbctl-1.4.10/mmdbctl_1.4.10_linux_amd64.tar.gz" \
-            | tar -xz -C "$RUNNER_TEMP" mmdbctl
+            | tar -xz -C "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/mmdbctl_1.4.10_linux_amd64" "$RUNNER_TEMP/mmdbctl"
+          chmod +x "$RUNNER_TEMP/mmdbctl"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - name: Build geoip.mmdb
@@ -103,7 +102,10 @@ jobs:
           name: renderer-dist
           path: dist/
 
-  # ── Go binaries: Windows (cross-compiled from Linux with zig cc) ─────────────
+  # ── Go binaries: Windows (cross-compiled from Linux, CGO_ENABLED=0) ──────────
+  # pcap_windows.go loads wpcap.dll at runtime via syscall — no CGO needed.
+  # CGO_ENABLED=0 means no C toolchain is required, so both Windows targets
+  # can be cross-compiled cleanly from an ubuntu runner without Zig or MinGW.
   build-go-windows:
     needs: [check-versions]
     runs-on: ubuntu-latest
@@ -124,29 +126,19 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ${{ steps.gocache.outputs.path }}
-          # Key encodes the Zig version so a Zig upgrade triggers a correct
-          # cache miss rather than reusing stale CGO object files.
-          key: go-build-win-zig-${{ env.ZIG_VERSION }}-${{ hashFiles('backend/go.sum') }}
-          restore-keys: go-build-win-zig-${{ env.ZIG_VERSION }}-
-
-      - name: Install Zig
-        run: |
-          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
-            | tar -xJ -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/zig-x86_64-linux-${ZIG_VERSION}" >> "$GITHUB_PATH"
+          key: go-build-win-${{ hashFiles('backend/go.sum') }}
+          restore-keys: go-build-win-
 
       - name: Build win-x64
         run: |
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=1 \
-            CC="zig cc -target x86_64-windows-gnu" \
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
             go build -C backend -buildvcs=false \
             -ldflags="-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION#v}'" \
             -o ../bin/checker-win-x64.exe ./cmd/checker
 
       - name: Build win-arm64
         run: |
-          GOOS=windows GOARCH=arm64 CGO_ENABLED=1 \
-            CC="zig cc -target aarch64-windows-gnu" \
+          GOOS=windows GOARCH=arm64 CGO_ENABLED=0 \
             go build -C backend -buildvcs=false \
             -ldflags="-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION#v}'" \
             -o ../bin/checker-win-arm64.exe ./cmd/checker
