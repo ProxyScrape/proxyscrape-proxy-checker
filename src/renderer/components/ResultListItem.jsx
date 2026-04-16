@@ -127,14 +127,6 @@ export default class ResultListItem extends React.PureComponent {
                     <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         {showCountryAsDash ? (
                             <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>–</Typography>
-                        ) : geoStatus === 'pending' && !country.code ? (
-                            <Typography
-                                variant="caption"
-                                title="Geo data pending enrichment"
-                                sx={{ color: 'text.disabled', fontSize: '0.65rem', fontStyle: 'italic' }}
-                            >
-                                pending…
-                            </Typography>
                         ) : (
                             <>
                                 <Box sx={{ width: 20, height: 14, flexShrink: 0 }}>

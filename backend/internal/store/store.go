@@ -160,9 +160,9 @@ var migrations = []migration{
 		},
 	},
 	{
-		// v2: index geo_status so the enrichment worker's batch queries
-		// (WHERE geo_status = 'pending' LIMIT 100) and COUNT(*) are O(log n + k)
-		// instead of a full table scan on every batch.
+		// v2: index geo_status so the enrichment worker's query
+		// (WHERE geo_status = 'pending') and COUNT(*) are O(log n + k)
+		// instead of a full table scan.
 		up: func(tx *sql.Tx) error {
 			_, err := tx.Exec(
 				`CREATE INDEX IF NOT EXISTS idx_check_results_geo_status

@@ -68,10 +68,14 @@ type workerResponse struct {
 
 // LookupBatch resolves geo data for all hosts in a single logical call.
 // Internally it chunks hosts into workerBatchSize slices and issues one HTTP
-// request per chunk — all serially to avoid overwhelming the worker.
-// Results are returned in the same order as hosts.
+// request per chunk, continuing past any failed chunk rather than aborting.
+// Hosts from failed chunks are omitted from the returned results so callers
+// can detect them (absent from the result set) and leave them as pending for
+// a future retry. A non-nil error is returned if any chunk failed, but
+// results always contain whatever was successfully retrieved.
 func (c *Client) LookupBatch(ctx context.Context, hosts []string) ([]Result, error) {
 	out := make([]Result, 0, len(hosts))
+	var firstErr error
 	for i := 0; i < len(hosts); i += workerBatchSize {
 		end := i + workerBatchSize
 		if end > len(hosts) {
@@ -79,11 +83,15 @@ func (c *Client) LookupBatch(ctx context.Context, hosts []string) ([]Result, err
 		}
 		batch, err := c.lookupChunk(ctx, hosts[i:end])
 		if err != nil {
-			return nil, err
+			log.Printf("[geoworker] chunk [%d:%d] failed: %v — hosts will be marked done with unknown country", i, end, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
 		out = append(out, batch...)
 	}
-	return out, nil
+	return out, firstErr
 }
 
 func (c *Client) lookupChunk(ctx context.Context, hosts []string) ([]Result, error) {

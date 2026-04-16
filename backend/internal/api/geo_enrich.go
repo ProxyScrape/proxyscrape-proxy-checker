@@ -207,10 +207,13 @@ func runGeoEnrichmentWorker(ctx context.Context, st *store.Store, client *geowor
 		return
 	}
 
-	// Call the worker — one HTTP round-trip for all IPs.
+	// Call the worker — chunks serially, continuing past any failed chunk.
+	// Hosts from failed chunks are absent from results and left as pending.
 	results, err := client.LookupBatch(ctx, hosts)
 	if err != nil {
-		log.Printf("geo enrich worker: lookup: %v", err)
+		log.Printf("geo enrich worker: one or more chunks failed: %v — persisting partial results", err)
+	}
+	if len(results) == 0 {
 		return
 	}
 
@@ -243,7 +246,7 @@ func runGeoEnrichmentWorker(ctx context.Context, st *store.Store, client *geowor
 
 		enriched := make([]enrichedRow, 0, len(chunk))
 		for _, p := range chunk {
-			r := byHost[p.host]
+			r := byHost[p.host] // zero-value (empty country) if chunk failed
 			if _, err := tx.ExecContext(ctx,
 				`UPDATE check_results
 				 SET country_code = ?, country_name = ?, country_flag = ?, city = ?, geo_status = 'done'
