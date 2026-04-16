@@ -1,74 +1,74 @@
 {
-    "name": "proxyscrape-proxy-checker",
-    "version": "2.2.3-canary",
-    "main": "./dist/main/index.js",
-    "license": "MIT AND Commons-Clause-1.0",
-    "author": {
-        "name": "ProxyScrape",
-        "email": "support@proxyscrape.com",
-        "url": "https://proxyscrape.com/home"
-    },
-    "keywords": [
-        "ProxyScrape",
-        "proxy",
-        "checker"
-    ],
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/ProxyScrape/proxy-checker"
-    },
-    "bugs": {
-        "url": "https://github.com/ProxyScrape/proxy-checker/issues"
-    },
-    "homepage": "https://proxyscrape.com/proxy-checker",
-    "scripts": {
-        "dev": "electron-vite dev",
-        "dev:web": "vite --config vite.web.config.mjs",
-        "dev:web:all": "concurrently --names \"go,vite\" --prefix-colors \"cyan,magenta\" \"cd backend && air\" \"vite --config vite.web.config.mjs\"",
-        "build": "npm run build:backend && electron-vite build",
-        "build:backend": "bash scripts/build-backend.sh",
-        "build:webserver": "bash scripts/build-webserver.sh",
-        "build:renderer": "electron-vite build --outDir dist",
-        "start": "electron-vite preview --outDir dist",
-        "dist": "npm run build && electron-builder --config electron-builder.config.js",
-        "package": "npm run build && electron-builder --config electron-builder.config.js --win",
-        "package-mac": "npm run build && electron-builder --config electron-builder.config.js --mac",
-        "package-linux": "npm run build && electron-builder --config electron-builder.config.js --linux",
-        "package-all": "npm run build && electron-builder --config electron-builder.config.js --mac --win --linux",
-        "publish": "npm run build && electron-builder --config electron-builder.config.js --win --publish always",
-        "publish:ci": "electron-vite build --outDir dist && electron-builder --config electron-builder.config.js --win --publish always",
-        "publish-mac": "npm run build && electron-builder --config electron-builder.config.js --mac --publish always",
-        "publish-linux": "npm run build && electron-builder --config electron-builder.config.js --linux --publish always",
-        "publish-all": "npm run build && electron-builder --config electron-builder.config.js --mac --win --linux --publish always",
-        "postinstall": "electron-builder install-app-deps",
-        "prepare": "[ -d .git ] && git config core.hooksPath .githooks || true"
-    },
-    "devDependencies": {
-        "@emotion/react": "^11.14.0",
-        "@emotion/styled": "^11.14.1",
-        "@fontsource/montserrat": "^5.2.8",
-        "@mui/material": "^9.0.0",
-        "@vitejs/plugin-react": "^4.3.0",
-        "axios": "^1.2.0",
-        "concurrently": "^9.2.1",
-        "electron": "^41.1.0",
-        "electron-builder": "^26.8.2",
-        "electron-updater": "^6.3.0",
-        "electron-vite": "^3.1.0",
-        "fast-sort": "^3.4.0",
-        "react": "^18.2.0",
-        "react-dom": "^18.2.0",
-        "react-markdown": "^9.0.0",
-        "react-redux": "^8.0.2",
-        "redux": "^4.2.0",
-        "redux-thunk": "^2.4.1",
-        "reselect": "^4.1.6",
-        "vite-plugin-electron-renderer": "^0.14.6"
-    },
-    "dependencies": {
-        "@intercom/messenger-js-sdk": "^0.0.19",
-        "@posthog/react": "^1.9.0",
-        "framer-motion": "^12.38.0",
-        "posthog-js": "^1.367.0"
-    }
+  "name": "proxyscrape-proxy-checker",
+  "version": "2.2.4-canary",
+  "main": "./dist/main/index.js",
+  "license": "MIT AND Commons-Clause-1.0",
+  "author": {
+    "name": "ProxyScrape",
+    "email": "support@proxyscrape.com",
+    "url": "https://proxyscrape.com/home"
+  },
+  "keywords": [
+    "ProxyScrape",
+    "proxy",
+    "checker"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ProxyScrape/proxy-checker"
+  },
+  "bugs": {
+    "url": "https://github.com/ProxyScrape/proxy-checker/issues"
+  },
+  "homepage": "https://proxyscrape.com/proxy-checker",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "dev:web": "vite --config vite.web.config.mjs",
+    "dev:web:all": "concurrently --names \"go,vite\" --prefix-colors \"cyan,magenta\" \"cd backend && air\" \"vite --config vite.web.config.mjs\"",
+    "build": "npm run build:backend && electron-vite build",
+    "build:backend": "bash scripts/build-backend.sh",
+    "build:webserver": "bash scripts/build-webserver.sh",
+    "build:renderer": "electron-vite build --outDir dist",
+    "start": "electron-vite preview --outDir dist",
+    "dist": "npm run build && electron-builder --config electron-builder.config.js",
+    "package": "npm run build && electron-builder --config electron-builder.config.js --win",
+    "package-mac": "npm run build && electron-builder --config electron-builder.config.js --mac",
+    "package-linux": "npm run build && electron-builder --config electron-builder.config.js --linux",
+    "package-all": "npm run build && electron-builder --config electron-builder.config.js --mac --win --linux",
+    "publish": "npm run build && electron-builder --config electron-builder.config.js --win --publish always",
+    "publish:ci": "electron-vite build --outDir dist && electron-builder --config electron-builder.config.js --win --publish always",
+    "publish-mac": "npm run build && electron-builder --config electron-builder.config.js --mac --publish always",
+    "publish-linux": "npm run build && electron-builder --config electron-builder.config.js --linux --publish always",
+    "publish-all": "npm run build && electron-builder --config electron-builder.config.js --mac --win --linux --publish always",
+    "postinstall": "electron-builder install-app-deps",
+    "prepare": "[ -d .git ] && git config core.hooksPath .githooks || true"
+  },
+  "devDependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@fontsource/montserrat": "^5.2.8",
+    "@mui/material": "^9.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "axios": "^1.2.0",
+    "concurrently": "^9.2.1",
+    "electron": "^41.1.0",
+    "electron-builder": "^26.8.2",
+    "electron-updater": "^6.3.0",
+    "electron-vite": "^3.1.0",
+    "fast-sort": "^3.4.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^9.0.0",
+    "react-redux": "^8.0.2",
+    "redux": "^4.2.0",
+    "redux-thunk": "^2.4.1",
+    "reselect": "^4.1.6",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  },
+  "dependencies": {
+    "@intercom/messenger-js-sdk": "^0.0.19",
+    "@posthog/react": "^1.9.0",
+    "framer-motion": "^12.38.0",
+    "posthog-js": "^1.367.0"
+  }
 }
