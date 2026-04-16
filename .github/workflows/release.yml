@@ -13,6 +13,9 @@ env:
   # Derived from the pushed tag (e.g. v2.0.0-canary or v2.0.0).
   # Used to inject appVersion into Go binaries.
   APP_VERSION: ${{ github.ref_name }}
+  # Zig version used as C cross-compiler for CGO Windows builds.
+  # go-sqlite3 requires CGO; Zig is the easiest way to cross-compile C from Linux.
+  ZIG_VERSION: "0.14.0"
   # R2 configuration — stored as secrets so forks can't accidentally write to
   # or rely on ProxyScrape's bucket.
   R2_BUCKET: ${{ secrets.R2_BUCKET }}
@@ -64,10 +67,10 @@ jobs:
           name: renderer-dist
           path: dist/
 
-  # ── Go binaries: Windows (cross-compiled from Linux, CGO_ENABLED=0) ──────────
-  # pcap_windows.go loads wpcap.dll at runtime via syscall — no CGO needed.
-  # CGO_ENABLED=0 means no C toolchain is required, so both Windows targets
-  # can be cross-compiled cleanly from an ubuntu runner without Zig or MinGW.
+  # ── Go binaries: Windows (cross-compiled from Linux via Zig) ─────────────────
+  # go-sqlite3 requires CGO — CGO_ENABLED=0 produces a broken stub binary.
+  # Zig bundles a full C cross-compilation toolchain, letting us build CGO
+  # Windows targets on an ubuntu runner without MinGW or MSVC.
   build-go-windows:
     needs: [check-versions]
     runs-on: ubuntu-latest
@@ -88,19 +91,29 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ${{ steps.gocache.outputs.path }}
-          key: go-build-win-${{ hashFiles('backend/go.sum') }}
-          restore-keys: go-build-win-
+          # Key encodes the Zig version so a Zig upgrade triggers a correct
+          # cache miss rather than reusing stale CGO object files.
+          key: go-build-win-zig-${{ env.ZIG_VERSION }}-${{ hashFiles('backend/go.sum') }}
+          restore-keys: go-build-win-zig-${{ env.ZIG_VERSION }}-
+
+      - name: Install Zig
+        run: |
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
+            | tar -xJ -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/zig-linux-x86_64-${ZIG_VERSION}" >> "$GITHUB_PATH"
 
       - name: Build win-x64
         run: |
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=1 \
+            CC="zig cc -target x86_64-windows-gnu" \
             go build -C backend -buildvcs=false \
             -ldflags="-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION#v}'" \
             -o ../bin/checker-win-x64.exe ./cmd/checker
 
       - name: Build win-arm64
         run: |
-          GOOS=windows GOARCH=arm64 CGO_ENABLED=0 \
+          GOOS=windows GOARCH=arm64 CGO_ENABLED=1 \
+            CC="zig cc -target aarch64-windows-gnu" \
             go build -C backend -buildvcs=false \
             -ldflags="-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION#v}'" \
             -o ../bin/checker-win-arm64.exe ./cmd/checker
