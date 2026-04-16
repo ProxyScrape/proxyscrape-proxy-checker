@@ -1,9 +1,6 @@
 import path from 'path';
 import fs from 'fs';
 import http from 'http';
-import https from 'https';
-import { pipeline, Transform } from 'stream';
-import { promisify } from 'util';
 import readline from 'readline';
 import { spawn, execSync } from 'child_process';
 import { BrowserWindow, app, ipcMain, dialog, session, clipboard } from 'electron';
@@ -31,8 +28,7 @@ let isQuitting = false;
 let pendingDeepLink = null;
 
 // True while a geo-enrich SSE connection is open. Prevents duplicate streams
-// from being created if listenGeoEnrichSSE() is called multiple times (e.g.
-// once at startup and again after an MMDB download completes).
+// from being created if listenGeoEnrichSSE() is called multiple times.
 let geoEnrichListening = false;
 
 const isMac = process.platform === 'darwin';
@@ -526,12 +522,8 @@ app.whenReady().then(async () => {
         autoUpdater.checkForUpdates();
     }
 
-    // On startup, trigger geo enrichment for any proxies checked without MMDB.
-    // The Go backend returns immediately if there's nothing to enrich.
-    signalGoGeoEnrich();
-
-    // Connect to the geo enrichment SSE stream and forward progress to the renderer.
-    listenGeoEnrichSSE();
+    // On startup, trigger geo enrichment for any pending rows.
+    signalAndListenGeoEnrich();
 });
 
 app.on('activate', () => {
@@ -674,304 +666,54 @@ function listenGeoEnrichSSE() {
     req.end();
 }
 
-// =============================================================================
-// MMDB — GeoIP database download
-// =============================================================================
-
-const MMDB_BASE_URL = 'https://software.cdn.proxyscrape.com/mmdb';
-const pipelineAsync = promisify(pipeline);
-
-/** Active AbortController while a download is in progress; null otherwise. */
-let activeMMDBAbort = null;
-
 /**
- * Fetch text from a URL, following one redirect level.
- * Times out after 10 s and destroys the socket on timeout.
+ * POST /api/geo/enrich and return the parsed JSON response, or null on error.
+ * Awaiting this resolves only after the server has accepted (or rejected) the
+ * job, so callers know the exact status before deciding to open an SSE stream.
  */
-function fetchText(url) {
-    return new Promise((resolve, reject) => {
-        const mod = url.startsWith('https') ? https : http;
-        const req = mod.get(url, { timeout: 10000 }, (res) => {
-            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                fetchText(res.headers.location).then(resolve).catch(reject);
-                res.resume();
-                return;
-            }
-            if (res.statusCode !== 200) {
-                res.resume();
-                reject(new Error(`HTTP ${res.statusCode} fetching ${url}`));
-                return;
-            }
-            let data = '';
-            res.on('data', chunk => { data += chunk; });
-            res.on('end', () => resolve(data.trim()));
-            res.on('error', reject);
-        });
-        req.on('error', reject);
-        // timeout only emits an event — must explicitly destroy to abort.
-        req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
-    });
-}
-
-/**
- * Download a file from url to destPath with progress callbacks.
- * Uses stream.pipeline for correct backpressure handling on large files and
- * automatic stream cleanup on error. Writes atomically via a .download temp
- * file so a partial download never replaces a valid existing file.
- *
- * onProgress receives { pct: 0-100, totalBytes: number }.
- * Supports AbortSignal for user-initiated cancellation.
- */
-async function downloadFile(url, destPath, onProgress, signal) {
-    // Resolve any redirect before starting the download so we can get the
-    // content-length from the final URL without double-streaming.
-    const res = await new Promise((resolve, reject) => {
-        const mod = url.startsWith('https') ? https : http;
-        const req = mod.get(url, { timeout: 120000 }, (r) => {
-            if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) {
-                r.resume();
-                // Re-enter for the redirect target (one hop only).
-                downloadFile(r.headers.location, destPath, onProgress, signal)
-                    .then(() => resolve(null))
-                    .catch(reject);
-                return;
-            }
-            if (r.statusCode !== 200) {
-                r.resume();
-                reject(new Error(`HTTP ${r.statusCode} downloading MMDB`));
-                return;
-            }
-            resolve(r);
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('MMDB download timed out')); });
-
-        if (signal) {
-            signal.addEventListener('abort', () => req.destroy(), { once: true });
-        }
-    });
-
-    // redirect was handled recursively — nothing left to do.
-    if (res === null) return;
-
-    if (signal?.aborted) throw Object.assign(new Error('MMDB download cancelled'), { code: 'MMDB_CANCELLED' });
-
-    const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
-    let downloaded = 0;
-    const tmp = `${destPath}.download`;
-
-    // Transform stream to track progress bytes without breaking the pipeline.
-    const tracker = new Transform({
-        transform(chunk, _, cb) {
-            downloaded += chunk.length;
-            if (onProgress) {
-                onProgress({
-                    pct: totalBytes > 0 ? Math.min(99, Math.floor((downloaded / totalBytes) * 100)) : 0,
-                    totalBytes,
-                });
-            }
-            cb(null, chunk);
-        },
-    });
-
-    const out = fs.createWriteStream(tmp);
-
-    try {
-        await pipelineAsync(res, tracker, out);
-    } catch (err) {
-        // Clean up the partial temp file on any error (including abort).
-        await fs.promises.unlink(tmp).catch(() => {});
-        if (signal?.aborted) {
-            throw Object.assign(new Error('MMDB download cancelled'), { code: 'MMDB_CANCELLED' });
-        }
-        throw err;
-    }
-
-    // Atomic rename: the old file stays fully available until the new one is in place.
-    await fs.promises.rename(tmp, destPath);
-}
-
-/**
- * Signal the Go backend to decompress a downloaded .zst file and hot-reload.
- * Returns a Promise that resolves when decompression is complete.
- */
-function signalGoMMDBDecompress(srcPath) {
-    return new Promise((resolve, reject) => {
-        if (!checkerPort || !checkerToken) {
-            reject(new Error('Go backend not ready'));
-            return;
-        }
-        const body = JSON.stringify({ src: srcPath });
+function signalGoGeoEnrich() {
+    if (!checkerPort || !checkerToken) return Promise.resolve(null);
+    return new Promise((resolve) => {
         const req = http.request({
             hostname: '127.0.0.1',
             port: checkerPort,
-            path: '/api/mmdb/decompress',
+            path: '/api/geo/enrich',
             method: 'POST',
-            headers: {
-                Authorization: `Bearer ${checkerToken}`,
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(body),
-            },
+            headers: { Authorization: `Bearer ${checkerToken}` },
         }, (res) => {
-            let raw = '';
-            res.on('data', chunk => { raw += chunk; });
+            let body = '';
+            res.on('data', chunk => { body += chunk; });
             res.on('end', () => {
-                if (res.statusCode === 200) {
-                    resolve();
-                } else {
-                    reject(new Error(`MMDB decompress failed: HTTP ${res.statusCode} — ${raw}`));
-                }
+                try { resolve(JSON.parse(body)); } catch { resolve(null); }
             });
         });
-        req.on('error', reject);
-        req.write(body);
+        req.on('error', () => resolve(null));
         req.end();
     });
 }
 
 /**
- * Signal the Go backend to start background geo enrichment.
- * Fire-and-forget — non-fatal if unavailable or already running.
+ * Signal geo enrichment and — only if the server confirms work was started or
+ * is already in progress — open the SSE listener. This prevents the race where
+ * listenGeoEnrichSSE() connects before the POST is processed: the first SSE
+ * tick would see running=false, close the stream, and leave enrichment with no
+ * listener for the rest of the job.
  */
-function signalGoGeoEnrich() {
-    if (!checkerPort || !checkerToken) return;
-    const req = http.request({
-        hostname: '127.0.0.1',
-        port: checkerPort,
-        path: '/api/geo/enrich',
-        method: 'POST',
-        headers: { Authorization: `Bearer ${checkerToken}` },
-    }, (res) => { res.resume(); });
-    req.on('error', () => { /* non-fatal */ });
-    req.end();
+async function signalAndListenGeoEnrich() {
+    const result = await signalGoGeoEnrich();
+    if (result?.status === 'started' || result?.status === 'already_running') {
+        listenGeoEnrichSSE();
+    }
+    return result;
 }
-
-/**
- * Fetch the remote metadata.json. Returns parsed JSON or throws.
- * Uses cache-busting query param to bypass CDN caches.
- */
-async function fetchMetadata() {
-    const text = await fetchText(`${MMDB_BASE_URL}/metadata.json?t=${Date.now()}`);
-    return JSON.parse(text);
-}
-
-/**
- * mmdb:ensure — verify the local GeoIP database is current; download if not.
- *
- * Two-phase progress events are pushed via 'mmdb-progress':
- *   { phase: 'download', pct: 0-100, totalBytes: number }
- *   { phase: 'decompress', pct: -1 }   (indeterminate while Go decompresses)
- *   { phase: 'decompress', pct: 100 }  (complete)
- *
- * Returns { status: 'ready' | 'cancelled' }.
- */
-ipcMain.handle('mmdb:ensure', async () => {
-    const dataDir = getDataDir();
-    const mmdbDir = path.join(dataDir, 'mmdb');
-    const mmdbPath = path.join(mmdbDir, 'geoip.mmdb');
-    const checksumPath = path.join(mmdbDir, 'checksum.txt');
-
-    // Fetch remote metadata (checksum + sizes). If unreachable and a local copy
-    // exists, silently proceed with what we have.
-    let metadata;
-    try {
-        metadata = await fetchMetadata();
-    } catch {
-        if (fs.existsSync(mmdbPath)) return { status: 'ready' };
-        throw Object.assign(new Error('GeoIP database unavailable and no local copy found.'), { code: 'MMDB_UNAVAILABLE' });
-    }
-
-    const remoteChecksum = metadata.checksum;
-
-    // Compare with the locally stored checksum.
-    let localChecksum = null;
-    if (fs.existsSync(checksumPath)) {
-        try { localChecksum = fs.readFileSync(checksumPath, 'utf8').trim(); } catch { /* ignore */ }
-    }
-
-    if (localChecksum === remoteChecksum && fs.existsSync(mmdbPath)) {
-        return { status: 'ready' }; // already up to date
-    }
-
-    await fs.promises.mkdir(mmdbDir, { recursive: true });
-
-    const ac = new AbortController();
-    activeMMDBAbort = ac;
-
-    const sendProgress = (data) => {
-        if (window && !window.isDestroyed()) {
-            window.webContents.send('mmdb-progress', data);
-        }
-    };
-
-    // — Phase 1: Download the compressed file —
-    // downloadFile writes atomically via <destPath>.download then renames to <destPath>.
-    const zstPath = path.join(mmdbDir, 'geoip.mmdb.zst');
-    sendProgress({ phase: 'download', pct: 0, totalBytes: metadata.compressed_size || 0 });
-
-    try {
-        await downloadFile(
-            `${MMDB_BASE_URL}/geoip.mmdb.zst`,
-            zstPath,
-            ({ pct, totalBytes }) => sendProgress({ phase: 'download', pct, totalBytes }),
-            ac.signal,
-        );
-    } catch (err) {
-        await fs.promises.unlink(zstPath).catch(() => {});
-        if (err.code === 'MMDB_CANCELLED') return { status: 'cancelled' };
-        throw err;
-    } finally {
-        activeMMDBAbort = null;
-    }
-
-    // — Phase 2: Decompress via Go backend —
-    sendProgress({ phase: 'decompress', pct: -1 }); // indeterminate
-
-    try {
-        await signalGoMMDBDecompress(zstPath);
-    } finally {
-        await fs.promises.unlink(zstPath).catch(() => {});
-    }
-
-    sendProgress({ phase: 'decompress', pct: 100 });
-
-    // Persist the checksum of the newly installed file.
-    try { fs.writeFileSync(checksumPath, remoteChecksum, 'utf8'); } catch { /* ignore */ }
-
-    // Kick off background geo enrichment for proxies checked without MMDB,
-    // and open the SSE stream so the renderer receives progress events.
-    signalGoGeoEnrich();
-    listenGeoEnrichSSE();
-
-    return { status: 'ready' };
-});
-
-/** mmdb:cancel — abort an in-progress MMDB download. */
-ipcMain.handle('mmdb:cancel', async () => {
-    if (activeMMDBAbort) {
-        activeMMDBAbort.abort();
-        activeMMDBAbort = null;
-    }
-});
-
-/**
- * mmdb:available — check whether the local GeoIP database file exists.
- * Returns { available: boolean }. Does NOT trigger a download.
- */
-ipcMain.handle('mmdb:available', () => {
-    const dataDir = getDataDir();
-    const mmdbPath = path.join(dataDir, 'mmdb', 'geoip.mmdb');
-    return { available: fs.existsSync(mmdbPath) };
-});
 
 /**
  * geo:enrich:start — trigger background geo enrichment for pending rows and
  * open the SSE stream so the renderer receives progress events.
  * Idempotent: safe to call even if enrichment is already running.
  */
-ipcMain.handle('geo:enrich:start', () => {
-    signalGoGeoEnrich();
-    listenGeoEnrichSSE();
+ipcMain.handle('geo:enrich:start', async () => {
+    return await signalAndListenGeoEnrich();
 });
 
 /**

@@ -36,45 +36,6 @@ jobs:
       - name: Check version consistency and branch alignment
         run: bash scripts/check-versions.sh "${{ github.ref_name }}"
 
-  # ── GeoIP MMDB: built from ipapi.is + geofeed, uploaded as artifact ──────────
-  # Runs in parallel with the JS/Go builds so it doesn't add to the critical
-  # path.  The publish job downloads the artifact and puts it on R2 last,
-  # ensuring it is always available before any release binary reaches users.
-  build-geoip:
-    needs: [check-versions]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install mmdbctl
-        run: |
-          curl -sL "https://github.com/ipinfo/mmdbctl/releases/download/mmdbctl-1.4.10/mmdbctl_1.4.10_linux_amd64.tar.gz" \
-            | tar -xz -C "$RUNNER_TEMP"
-          mv "$RUNNER_TEMP/mmdbctl_1.4.10_linux_amd64" "$RUNNER_TEMP/mmdbctl"
-          chmod +x "$RUNNER_TEMP/mmdbctl"
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-
-      - name: Install zstd
-        run: sudo apt-get install -y zstd
-
-      - name: Build geoip.mmdb
-        env:
-          GEOFEED_URL: ${{ secrets.GEOFEED_URL }}
-          MMDB_OUT: geoip.mmdb
-          METADATA_OUT: metadata.json
-        run: python3 scripts/build-geoip-db.py
-
-      - uses: actions/upload-artifact@v6
-        with:
-          name: geoip-mmdb
-          path: |
-            geoip.mmdb.zst
-            metadata.json
-
   # ── JS bundle: built once, shared across all platform release jobs ────────────
   build-renderer:
     needs: [check-versions]
@@ -306,6 +267,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Sign Go binaries (Windows)
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE_NAME }}
+          files-folder: ${{ github.workspace }}\bin
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
       - name: Build Windows (no publish)
         run: npx electron-builder --config electron-builder.config.js --win --publish never
         env:
@@ -314,6 +290,21 @@ jobs:
           POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}
           POSTHOG_UI_HOST: ${{ secrets.POSTHOG_UI_HOST }}
           INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
+
+      - name: Sign Windows installers
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE_NAME }}
+          files-folder: ${{ github.workspace }}\release
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
 
       - name: Install s5cmd
         shell: bash
@@ -552,7 +543,7 @@ jobs:
   # releases.json read-modify-write is serialised (never races).
   publish:
     runs-on: ubuntu-latest
-    needs: [build-geoip, build-windows, build-linux, build-macos]
+    needs: [build-windows, build-linux, build-macos]
     concurrency:
       group: releases-json-update
       cancel-in-progress: false
@@ -570,44 +561,6 @@ jobs:
             echo "path=canary" >> $GITHUB_OUTPUT
           else
             echo "path=stable" >> $GITHUB_OUTPUT
-          fi
-
-      # Download the GeoIP MMDB artifact built by the build-geoip job and upload
-      # it to R2.  The MMDB is shared across all channels/platforms; publishing
-      # it here (after binaries are live but before yml metadata) ensures users
-      # always have a working database when the update notification arrives.
-      - uses: actions/download-artifact@v7
-        with:
-          name: geoip-mmdb
-          path: geoip-artifact/
-
-      - name: Upload MMDB to R2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-        run: |
-          LOCAL_CHECKSUM=$(python3 -c "import json,sys; print(json.load(open('geoip-artifact/metadata.json'))['checksum'])")
-
-          REMOTE_CHECKSUM=$(aws s3 cp "s3://$R2_BUCKET/mmdb/metadata.json" - \
-            --endpoint-url "$R2_ENDPOINT" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('checksum',''))" 2>/dev/null || true)
-
-          if [ "$LOCAL_CHECKSUM" = "$REMOTE_CHECKSUM" ]; then
-            echo "MMDB unchanged — skipping upload."
-          else
-            echo "Uploading geoip.mmdb.zst (checksum: $LOCAL_CHECKSUM)…"
-
-            aws s3 cp geoip-artifact/geoip.mmdb.zst "s3://$R2_BUCKET/mmdb/geoip.mmdb.zst" \
-              --endpoint-url "$R2_ENDPOINT" \
-              --content-type "application/octet-stream" \
-              --cache-control "public, max-age=31536000, immutable" \
-              --no-progress
-
-            aws s3 cp geoip-artifact/metadata.json "s3://$R2_BUCKET/mmdb/metadata.json" \
-              --endpoint-url "$R2_ENDPOINT" \
-              --content-type "application/json" \
-              --cache-control "no-cache, max-age=0" \
-              --no-progress
           fi
 
       - name: Download all yml artifacts

@@ -49,7 +49,7 @@ export default class ResultListItem extends React.PureComponent {
 
         const rowOpacity = isCancelled ? 0.45 : isFailed ? 0.6 : 1;
         const showAnonDash = !anon;
-        const showCountryAsDash = isCancelled;
+        const showCountryAsDash = isCancelled || geoStatus === 'skipped';
         const showProtocolsDash = isCancelled || (isFailed && protocols.length === 0);
 
         return (

@@ -10,7 +10,7 @@ import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import LinearProgress from '@mui/material/LinearProgress';
 import { blueBrand } from '../theme/palette';
-import { FOOTER_HEIGHT, CANARY_BANNER_HEIGHT } from '../constants/Layout';
+import { getToastBottom } from '../constants/Layout';
 import { CARD_VARIANTS, ToastCard, ToastDismissButton } from '../components/ui/ToastBase';
 
 // Content panes: old drifts upward out, new rises up into place.
@@ -87,15 +87,14 @@ class Update extends React.PureComponent {
     handleDismissReady  = () => { this._clearSim(); this.setState({ phase: null }); };
     handleInstall       = () => ipcRenderer.send('install-update');
 
-    // Sits above the footer. On stable builds the canary banner isn't present
-    // so only FOOTER_HEIGHT is added. On canary both heights are included.
     cardStyle = () => ({
         position: 'fixed',
-        bottom: FOOTER_HEIGHT + (IS_CANARY ? CANARY_BANNER_HEIGHT : 0) + 12,
+        bottom: getToastBottom(this.props.checkingOpen),
         right: 20,
         zIndex: 1400,
         width: 310,
         pointerEvents: 'auto',
+        transition: 'bottom 0.3s ease',
     });
 
     render() {
@@ -225,6 +224,7 @@ class Update extends React.PureComponent {
 const mapStateToProps = state => ({
     available:     state.update.available,
     portableAsset: state.update.portableAsset,
+    checkingOpen:  state.checking.opened || state.checking.starting || state.result.isOpened,
 });
 
 const mapDispatchToProps = { checkAtAvailable };

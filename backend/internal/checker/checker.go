@@ -211,6 +211,18 @@ func (c *Checker) Run(ctx context.Context, results chan<- Result, progress chan<
 	var resultsMu sync.Mutex
 	var wg sync.WaitGroup
 
+	// emitCancelled sends a cancelled Result for a proxy that was dequeued from
+	// work but will not be (or was not) checked. This keeps the results set
+	// complete: every input proxy produces exactly one Result on any exit path.
+	emitCancelled := func(p Proxy) {
+		resultsMu.Lock()
+		results <- Result{Proxy: p, Status: "cancelled"}
+		c.mu.Lock()
+		c.doneCount++
+		c.mu.Unlock()
+		resultsMu.Unlock()
+	}
+
 	sendProgress := func() {
 		c.mu.Lock()
 		p := Progress{
@@ -251,8 +263,12 @@ func (c *Checker) Run(ctx context.Context, results chan<- Result, progress chan<
 			for p := range work {
 				select {
 				case <-ctx.Done():
+					// p was already dequeued but won't be checked — emit cancelled
+					// so it appears in results and gets persisted to SQLite.
+					emitCancelled(p)
 					return
 				case <-c.stopped:
+					emitCancelled(p)
 					return
 				default:
 				}
@@ -277,6 +293,15 @@ func (c *Checker) Run(ctx context.Context, results chan<- Result, progress chan<
 	}
 
 	wg.Wait()
+
+	// Drain proxies still in the work buffer — these were never picked up by any
+	// worker (all workers exited early on cancellation). Emit a cancelled Result
+	// for each so the full input list is represented in every check's results.
+	// No mutex needed here: all workers have exited so there are no concurrent
+	// senders; resultsMu is still used inside emitCancelled for consistency.
+	for p := range work {
+		emitCancelled(p)
+	}
 
 	// Stop the progress goroutine
 	select {
@@ -442,11 +467,10 @@ func (c *Checker) checkProxy(ctx context.Context, p Proxy) Result {
 		result.Status = "failed"
 	}
 
-	if proxyIP != "" {
-		country, city := geo.Lookup(proxyIP)
-		result.Country = country
-		result.City = city
-	}
+	// Country/City are left empty here. After the check completes, the backend
+	// calls the ip-geo Cloudflare Worker in a single batch to enrich all working
+	// proxies. geoStatusForResult stores these rows as geo_status='pending' so
+	// the enrichment pass can identify and update them.
 
 	if c.blacklist != nil {
 		result.Blacklists = c.blacklist.Check(p.Host)

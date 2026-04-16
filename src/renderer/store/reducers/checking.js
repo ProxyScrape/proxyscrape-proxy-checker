@@ -2,12 +2,11 @@ import { CHECKING_UP_COUNTER_STATUS, CHECKING_OPEN, CHECKING_OTHER_CHANGES } fro
 
 const initialState = {
     opened: false,
+    starting: false, // true from the moment Start is clicked until the checker overlay opens or the attempt fails
     preparing: false,
-    mmdbDownloading: false,
-    mmdbPhase: 'download',   // 'download' | 'decompress'
-    mmdbProgress: 0,
-    mmdbTotalBytes: 0,
-    mmdbError: false,
+    // Set while the backend is calling the geo worker after the check finishes.
+    // The overlay stays open until results are shown.
+    finalizingMessage: null,  // string — shown with spinner in the overlay
     counter: {
         all: 0,
         done: 0,
@@ -33,6 +32,7 @@ const checking = (state = initialState, action) => {
             return {
                 ...state,
                 opened: true,
+                starting: false,
                 preparing: false,
                 counter: action.counter
             };

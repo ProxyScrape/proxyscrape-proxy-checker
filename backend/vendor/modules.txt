@@ -16,22 +16,9 @@ github.com/google/uuid
 # github.com/inconshreveable/mousetrap v1.1.0
 ## explicit; go 1.18
 github.com/inconshreveable/mousetrap
-# github.com/klauspost/compress v1.18.5
-## explicit; go 1.24
-github.com/klauspost/compress
-github.com/klauspost/compress/fse
-github.com/klauspost/compress/huff0
-github.com/klauspost/compress/internal/cpuinfo
-github.com/klauspost/compress/internal/le
-github.com/klauspost/compress/internal/snapref
-github.com/klauspost/compress/zstd
-github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/mattn/go-sqlite3 v1.14.42
 ## explicit; go 1.21
 github.com/mattn/go-sqlite3
-# github.com/oschwald/maxminddb-golang v1.13.0
-## explicit; go 1.21
-github.com/oschwald/maxminddb-golang
 # github.com/spf13/cobra v1.8.0
 ## explicit; go 1.15
 github.com/spf13/cobra

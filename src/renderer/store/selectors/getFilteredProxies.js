@@ -78,17 +78,10 @@ const arrayContainsArray = (superset, subset) => {
     return subset.some(value => superset.indexOf(value) !== -1);
 };
 
-const getGeoFilter = state => state.result.geoFilter || 'all';
-
-const filter = (items, protocols, anons, countries, search, isKeepAlive, inBlacklists, maxTimeout, ports, sorting, hiddenStatuses, geoFilter) => {
+const filter = (items, protocols, anons, countries, search, isKeepAlive, inBlacklists, maxTimeout, ports, sorting, hiddenStatuses) => {
     let next = items;
     if (hiddenStatuses.length > 0) {
         next = next.filter(item => !hiddenStatuses.includes(item.status));
-    }
-    if (geoFilter === 'has_geo') {
-        next = next.filter(item => item.country && item.country.code);
-    } else if (geoFilter === 'pending') {
-        next = next.filter(item => item.geoStatus === 'pending');
     }
     next = maxTimeout ? next.filter(item => item.timeout <= maxTimeout) : next;
 
@@ -159,4 +152,4 @@ const sortFilter = (items, sorting) => {
     }
 };
 
-export const getFilteredProxies = createSelector(getItems, getProtocols, getAnons, getCountries, getSearch, isOnlyKeepAlive, getInBlacklists, getMaxTimeout, getPorts, getCurrentSorting, getHiddenStatuses, getGeoFilter, filter);
+export const getFilteredProxies = createSelector(getItems, getProtocols, getAnons, getCountries, getSearch, isOnlyKeepAlive, getInBlacklists, getMaxTimeout, getPorts, getCurrentSorting, getHiddenStatuses, filter);

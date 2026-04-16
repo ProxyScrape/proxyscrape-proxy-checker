@@ -1,8 +1,7 @@
 import React from 'react';
 import { connect } from 'react-redux';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FOOTER_HEIGHT, CANARY_BANNER_HEIGHT } from '../constants/Layout';
-import { IS_CANARY } from '../../shared/AppConstants';
+import { getToastBottom } from '../constants/Layout';
 import { CARD_VARIANTS, ToastCard, ToastHeader } from './ui/ToastBase';
 import { clearError } from '../store/reducers/app';
 
@@ -10,21 +9,22 @@ const ERROR_ACCENT = '#e74856';
 
 const CARD_WIDTH = 320;
 
-const cardStyle = (isCanary) => ({
+const cardStyle = (checkingOpen) => ({
     position: 'fixed',
-    bottom: FOOTER_HEIGHT + (isCanary ? CANARY_BANNER_HEIGHT : 0) + 12,
+    bottom: getToastBottom(checkingOpen),
     left: `calc(50% - ${CARD_WIDTH / 2}px)`,
     zIndex: 1400,
     width: CARD_WIDTH,
     pointerEvents: 'auto',
+    transition: 'bottom 0.3s ease',
 });
 
-const ErrorToast = ({ error, onClose }) => (
+const ErrorToast = ({ error, onClose, checkingOpen }) => (
     <AnimatePresence>
         {!!error && (
             <motion.div
                 key="error-toast"
-                style={cardStyle(IS_CANARY)}
+                style={cardStyle(checkingOpen)}
                 variants={CARD_VARIANTS}
                 initial="hidden"
                 animate="visible"
@@ -42,7 +42,10 @@ const ErrorToast = ({ error, onClose }) => (
     </AnimatePresence>
 );
 
-const mapStateToProps = state => ({ error: state.app.error });
+const mapStateToProps = state => ({
+    error: state.app.error,
+    checkingOpen: state.checking.opened || state.checking.starting || state.result.isOpened,
+});
 const mapDispatchToProps = { onClose: clearError };
 
 export default connect(mapStateToProps, mapDispatchToProps)(ErrorToast);

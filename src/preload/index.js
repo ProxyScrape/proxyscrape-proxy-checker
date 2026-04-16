@@ -54,27 +54,6 @@ contextBridge.exposeInMainWorld('__ELECTRON__', {
     // Triggered by the renderer's "Restart now" button after update-ready fires.
     installUpdate: () => ipcRenderer.send('install-update'),
 
-    // GeoIP database — ensure the MMDB is downloaded before a proxy check.
-    // Resolves with { status: 'ready' | 'cancelled' }.
-    ensureMMDB: () => ipcRenderer.invoke('mmdb:ensure'),
-
-    // Abort an in-progress MMDB download.
-    cancelMMDB: () => ipcRenderer.invoke('mmdb:cancel'),
-
-    // Check whether the local MMDB file exists (does NOT download).
-    // Resolves with { available: boolean }.
-    mmdbAvailable: () => ipcRenderer.invoke('mmdb:available'),
-
-    // Subscribe to MMDB download/decompress progress events.
-    // Events: { phase: 'download'|'decompress', pct: 0-100|-1, totalBytes?: number }
-    //   pct = -1 means indeterminate (decompression running).
-    // Returns a cleanup function.
-    onMMDBProgress: (cb) => {
-        const handler = (_e, data) => cb(null, data);
-        ipcRenderer.on('mmdb-progress', handler);
-        return () => ipcRenderer.removeListener('mmdb-progress', handler);
-    },
-
     // Background geo enrichment — trigger / cancel enrichment of pending rows.
     geoEnrichStart: () => ipcRenderer.invoke('geo:enrich:start'),
     geoEnrichCancel: () => ipcRenderer.invoke('geo:enrich:cancel'),

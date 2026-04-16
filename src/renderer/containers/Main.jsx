@@ -8,13 +8,11 @@ import { connect } from 'react-redux';
 import Checking from './Checking';
 import Overlay from './Overlay';
 import Update from './Update';
-import GeoEnrichToast from './GeoEnrichToast';
 import ErrorToast from '../components/ErrorToast';
 import Footer from '../components/Footer';
 import Info from '../components/Info';
 import LicenseModal from '../components/LicenseModal';
 import ProtocolWarningDialog from '../components/ProtocolWarningDialog';
-import MmdbErrorDialog from '../components/MmdbErrorDialog';
 import Result from './Result';
 import History from '../components/History';
 import Titlebar from './Titlebar';
@@ -165,9 +163,7 @@ class Main extends React.PureComponent {
                     <Checking />
                     <Overlay />
                     <Update />
-                    <GeoEnrichToast />
                     <ProtocolWarningDialog />
-                    <MmdbErrorDialog />
                     <ErrorToast />
                     <Footer toggleModal={this.toggleModal} closeDrawer={this.props.closeDrawer}/>
                 </Box>

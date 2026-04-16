@@ -10,18 +10,45 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/proxyscrape/checker-backend/internal/geo"
+	"github.com/proxyscrape/checker-backend/internal/geoworker"
 	"github.com/proxyscrape/checker-backend/internal/store"
 )
 
+// enrichedRow is the per-row payload sent to the renderer after each batch
+// so it can patch geo fields in the Redux result store without a full reload.
+type enrichedRow struct {
+	Host        string `json:"host"`
+	CountryCode string `json:"countryCode"`
+	CountryName string `json:"countryName"`
+	CountryFlag string `json:"countryFlag"`
+	City        string `json:"city"`
+}
+
 // enrichState tracks a running enrichment job. Only one can run at a time.
-// The mu field protects cancel; the atomic fields are self-synchronising.
+// mu protects cancel and recentRows; the atomic fields are self-synchronising.
 type enrichState struct {
-	mu      sync.Mutex
-	cancel  context.CancelFunc
-	total   atomic.Int64
-	done    atomic.Int64
-	running atomic.Bool
+	mu          sync.Mutex
+	cancel      context.CancelFunc
+	recentRows  []enrichedRow // rows updated since last SSE tick; drained per tick
+	total       atomic.Int64
+	done        atomic.Int64
+	running     atomic.Bool
+}
+
+// appendRows appends enriched rows under the lock.
+func (e *enrichState) appendRows(rows []enrichedRow) {
+	e.mu.Lock()
+	e.recentRows = append(e.recentRows, rows...)
+	e.mu.Unlock()
+}
+
+// drainRows atomically returns and clears the accumulated rows.
+func (e *enrichState) drainRows() []enrichedRow {
+	e.mu.Lock()
+	rows := e.recentRows
+	e.recentRows = nil
+	e.mu.Unlock()
+	return rows
 }
 
 var globalEnrich enrichState
@@ -73,7 +100,7 @@ func (s *server) handleGeoEnrichStart(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(context.Background())
 	globalEnrich.storeCancel(cancel)
 
-	go runGeoEnrichment(ctx, s.store, s.geoDB)
+	go runGeoEnrichmentWorker(ctx, s.store, s.geoWorker)
 
 	writeJSON(w, map[string]interface{}{"status": "started", "total": total})
 }
@@ -118,12 +145,18 @@ func (s *server) handleGeoEnrichEvents(w http.ResponseWriter, r *http.Request) {
 			running := globalEnrich.running.Load()
 			total := globalEnrich.total.Load()
 			done := globalEnrich.done.Load()
+			updated := globalEnrich.drainRows() // nil → omitted from JSON
 
-			data, _ := json.Marshal(map[string]interface{}{
+			payload := map[string]interface{}{
 				"running": running,
 				"total":   total,
 				"done":    done,
-			})
+			}
+			if len(updated) > 0 {
+				payload["updated"] = updated
+			}
+
+			data, _ := json.Marshal(payload)
 			_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 			flusher.Flush()
 
@@ -134,98 +167,108 @@ func (s *server) handleGeoEnrichEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// runGeoEnrichment processes pending rows in batches.
-// Rate-limited to ~500 rows/second to avoid starving active checks.
-func runGeoEnrichment(ctx context.Context, st *store.Store, geoDB *geo.DB) {
+// runGeoEnrichmentWorker enriches all pending rows by calling the ip-geo
+// Cloudflare Worker instead of the local MMDB.  All pending hosts are
+// collected in one query and sent to the worker in a single call (the worker
+// fans them out to ip-api internally).  No artificial rate limiting is needed
+// since the worker handles batching.
+func runGeoEnrichmentWorker(ctx context.Context, st *store.Store, client *geoworker.Client) {
 	defer func() {
 		globalEnrich.running.Store(false)
 		globalEnrich.callAndClearCancel()
 	}()
 
-	const batchSize = 100
-	// ~500 rows/s: process 100 rows, sleep 200ms → average 500/s
-	const sleepBetweenBatches = 200 * time.Millisecond
+	// Fetch all pending rows at once — no need to loop in batches since the
+	// worker accepts up to 10,000 IPs per call and handles the rest internally.
+	rows, err := st.DB().QueryContext(ctx,
+		`SELECT id, host FROM check_results WHERE geo_status = 'pending'`,
+	)
+	if err != nil {
+		log.Printf("geo enrich worker: query: %v", err)
+		return
+	}
 
-	for {
+	type pendingRow struct{ id, host string }
+	var pending []pendingRow
+	hosts := make([]string, 0)
+	for rows.Next() {
+		var r pendingRow
+		if err := rows.Scan(&r.id, &r.host); err == nil {
+			pending = append(pending, r)
+			hosts = append(hosts, r.host)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("geo enrich worker: scan: %v", err)
+	}
+	rows.Close()
+
+	if len(pending) == 0 {
+		return
+	}
+
+	// Call the worker — one HTTP round-trip for all IPs.
+	results, err := client.LookupBatch(ctx, hosts)
+	if err != nil {
+		log.Printf("geo enrich worker: lookup: %v", err)
+		return
+	}
+
+	// Index results by host for O(1) matching.
+	byHost := make(map[string]geoworker.Result, len(results))
+	for _, r := range results {
+		byHost[r.Host] = r
+	}
+
+	// Persist and stream updates in DB-friendly chunks.
+	const dbBatch = 500
+	for i := 0; i < len(pending); i += dbBatch {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
 
-		rows, err := st.DB().QueryContext(ctx,
-			`SELECT id, host FROM check_results WHERE geo_status = 'pending' LIMIT ?`,
-			batchSize,
-		)
-		if err != nil {
-			log.Printf("geo enrich: query batch: %v", err)
-			return
+		end := i + dbBatch
+		if end > len(pending) {
+			end = len(pending)
 		}
-
-		type row struct{ id, host string }
-		var batch []row
-		for rows.Next() {
-			var r row
-			if err := rows.Scan(&r.id, &r.host); err == nil {
-				batch = append(batch, r)
-			}
-		}
-		if err := rows.Err(); err != nil {
-			log.Printf("geo enrich: scan batch: %v", err)
-		}
-		rows.Close()
-
-		if len(batch) == 0 {
-			return
-		}
-
-		type update struct {
-			id          string
-			countryCode string
-			countryName string
-			countryFlag string
-			city        string
-		}
-		updates := make([]update, 0, len(batch))
-		for _, r := range batch {
-			country, city := geoDB.Lookup(r.host)
-			updates = append(updates, update{
-				id:          r.id,
-				countryCode: country.Code,
-				countryName: country.Name,
-				countryFlag: country.Flag,
-				city:        city,
-			})
-		}
+		chunk := pending[i:end]
 
 		tx, err := st.DB().BeginTx(ctx, nil)
 		if err != nil {
-			log.Printf("geo enrich: begin tx: %v", err)
+			log.Printf("geo enrich worker: begin tx: %v", err)
 			return
 		}
-		for _, u := range updates {
+
+		enriched := make([]enrichedRow, 0, len(chunk))
+		for _, p := range chunk {
+			r := byHost[p.host]
 			if _, err := tx.ExecContext(ctx,
 				`UPDATE check_results
 				 SET country_code = ?, country_name = ?, country_flag = ?, city = ?, geo_status = 'done'
 				 WHERE id = ?`,
-				u.countryCode, u.countryName, u.countryFlag, u.city, u.id,
+				r.CountryCode, r.CountryName, r.CountryFlag, r.City, p.id,
 			); err != nil {
 				_ = tx.Rollback()
-				log.Printf("geo enrich: update row: %v", err)
+				log.Printf("geo enrich worker: update: %v", err)
 				return
 			}
+			enriched = append(enriched, enrichedRow{
+				Host:        p.host,
+				CountryCode: r.CountryCode,
+				CountryName: r.CountryName,
+				CountryFlag: r.CountryFlag,
+				City:        r.City,
+			})
 		}
+
 		if err := tx.Commit(); err != nil {
-			log.Printf("geo enrich: commit: %v", err)
+			log.Printf("geo enrich worker: commit: %v", err)
 			return
 		}
 
-		globalEnrich.done.Add(int64(len(batch)))
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(sleepBetweenBatches):
-		}
+		globalEnrich.appendRows(enriched)
+		globalEnrich.done.Add(int64(len(chunk)))
 	}
 }

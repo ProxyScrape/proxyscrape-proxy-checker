@@ -1,24 +1,5 @@
 package geo
 
-import (
-	"fmt"
-	"io"
-	"net"
-	"os"
-	"path/filepath"
-	"sync"
-
-	"github.com/klauspost/compress/zstd"
-	"github.com/oschwald/maxminddb-golang"
-)
-
-// mmdbRecord maps the fields produced by build-geoip-db.py / mmdbctl import.
-// Field names match the CSV column names written by the build script.
-type mmdbRecord struct {
-	CountryCode string `maxminddb:"country_code"`
-	City        string `maxminddb:"city"`
-}
-
 // Country holds the result of a GeoIP lookup.
 type Country struct {
 	Code string `json:"code"`
@@ -292,163 +273,13 @@ var codes = map[string]countryInfo{
 	"ZZ": {flag: "unknown", name: "Unknown"},
 }
 
-var unknown = Country{Code: "ZZ", Name: "Unknown", Flag: "unknown"}
-
-// DB is a goroutine-safe GeoIP database that can be hot-reloaded.
-// Create one with NewDB; the package-level Lookup function delegates to the
-// default instance set via SetDefault (following the same pattern as log,
-// http.DefaultClient, rand, etc. in the standard library).
-type DB struct {
-	mu  sync.RWMutex
-	db  *maxminddb.Reader
-	dir string
-}
-
-// NewDB opens the GeoIP database in dataDir/mmdb/geoip.mmdb.
-// If the file does not yet exist, lookups return Unknown until Reload is called
-// after the Electron main process downloads it.
-func NewDB(dataDir string) *DB {
-	g := &DB{dir: dataDir}
-	if r, err := maxminddb.Open(g.path()); err == nil {
-		g.db = r
-	}
-	return g
-}
-
-// path returns the canonical location of the MMDB file for this instance.
-func (g *DB) path() string {
-	return filepath.Join(g.dir, "mmdb", "geoip.mmdb")
-}
-
-// MMDBPath returns the canonical file path for the cached MMDB in dataDir.
-// Exported so callers (e.g. the Electron main process) can verify the path
-// without creating a full DB instance.
-func MMDBPath(dataDir string) string {
-	return filepath.Join(dataDir, "mmdb", "geoip.mmdb")
-}
-
-// Reload re-reads the MMDB from disk.
-// Called by the /api/mmdb/reload endpoint after the Electron main process
-// downloads a fresh copy.  The write-lock ensures all in-flight Lookup calls
-// finish before the old reader is closed.
-func (g *DB) Reload() error {
-	r, err := maxminddb.Open(g.path())
-	if err != nil {
-		return err
-	}
-	g.mu.Lock()
-	old := g.db
-	g.db = r
-	g.mu.Unlock()
-	if old != nil {
-		_ = old.Close()
-	}
-	return nil
-}
-
-// Lookup returns geo information for the given IP address.
-// The second return value is the city name (empty string if not found).
-// Returns Country with code "ZZ" (Unknown) if the IP cannot be resolved or the
-// database has not yet been loaded.
-//
-// The read-lock is held for the entire call so that a concurrent Reload cannot
-// close the reader while it is still being used.  maxminddb.Reader is
-// goroutine-safe for concurrent reads, so multiple Lookup calls holding RLock
-// simultaneously is correct.
-func (g *DB) Lookup(ip string) (Country, string) {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-
-	if g.db == nil {
-		return unknown, ""
-	}
-
-	parsed := net.ParseIP(ip)
-	if parsed == nil {
-		return unknown, ""
-	}
-
-	var record mmdbRecord
-	if err := g.db.Lookup(parsed, &record); err != nil {
-		return unknown, ""
-	}
-
-	info, ok := codes[record.CountryCode]
+// InfoForCode returns the full country name and flag slug for an ISO 3166-1
+// alpha-2 country code. Returns ("", "", false) for unknown codes.
+// Used by geoworker to derive flag/name from a countryCode returned by ip-api.
+func InfoForCode(cc string) (name, flag string, ok bool) {
+	info, ok := codes[cc]
 	if !ok {
-		return unknown, ""
+		return "", "", false
 	}
-
-	return Country{
-		Code: record.CountryCode,
-		Name: info.name,
-		Flag: info.flag,
-	}, record.City
-}
-
-// =============================================================================
-// Package-level default instance — mirrors the standard library pattern used
-// by log.Println, http.Get, rand.Intn, etc.
-// =============================================================================
-
-var defaultDB *DB
-
-// SetDefault registers the package-level DB used by the top-level Lookup
-// function.  Call this once from main before starting the HTTP server.
-func SetDefault(g *DB) { defaultDB = g }
-
-// DecompressAndReload decompresses a zstd-compressed MMDB file at srcPath into
-// the standard mmdb/geoip.mmdb location, then hot-reloads the database.
-// Uses an atomic rename so the existing file stays valid until the new one is ready.
-func (g *DB) DecompressAndReload(srcPath string) error {
-	destPath := g.path()
-	if err := os.MkdirAll(filepath.Dir(destPath), 0o700); err != nil {
-		return fmt.Errorf("geo: create mmdb dir: %w", err)
-	}
-
-	in, err := os.Open(srcPath)
-	if err != nil {
-		return fmt.Errorf("geo: open compressed file: %w", err)
-	}
-	defer in.Close()
-
-	dec, err := zstd.NewReader(in)
-	if err != nil {
-		return fmt.Errorf("geo: create zstd reader: %w", err)
-	}
-	defer dec.Close()
-
-	tmp := destPath + ".decompress"
-	out, err := os.Create(tmp)
-	if err != nil {
-		return fmt.Errorf("geo: create tmp file: %w", err)
-	}
-
-	if _, err := io.Copy(out, dec); err != nil {
-		out.Close()
-		os.Remove(tmp)
-		return fmt.Errorf("geo: decompress: %w", err)
-	}
-	if err := out.Close(); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("geo: close tmp file: %w", err)
-	}
-
-	// Atomic rename.
-	if err := os.Rename(tmp, destPath); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("geo: rename: %w", err)
-	}
-
-	// Hot-reload.
-	return g.Reload()
-}
-
-// Lookup is a package-level convenience that delegates to the default DB.
-// Existing call sites (e.g. the checker package) use this without needing to
-// own a *DB instance directly.
-func Lookup(ip string) (Country, string) {
-	if defaultDB == nil {
-		return unknown, ""
-	}
-	return defaultDB.Lookup(ip)
+	return info.name, info.flag, true
 }

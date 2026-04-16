@@ -188,6 +188,12 @@ export function openCheckStream(checkId, handlers = {}, token) {
 
   attach('result', 'onResult');
   attach('progress', 'onProgress');
+  // Sent by the backend immediately before it calls the geo worker, while the
+  // check results are already persisted. Lets the renderer show a message.
+  attach('enriching', 'onEnriching');
+  // Sent after the geo worker responds, before complete/stopped. Contains the
+  // enriched country data for every working proxy in this check.
+  attach('geo-batch', 'onGeoBatch');
   attach('complete', 'onComplete');
   attach('stopped', 'onStopped');
   // Server-sent `event: error` from the backend (a named SSE event with a data

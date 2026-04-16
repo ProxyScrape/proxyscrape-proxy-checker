@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -18,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/proxyscrape/checker-backend/internal/blacklist"
 	"github.com/proxyscrape/checker-backend/internal/checker"
+	"github.com/proxyscrape/checker-backend/internal/geoworker"
 	"github.com/proxyscrape/checker-backend/internal/ip"
 	"github.com/proxyscrape/checker-backend/internal/judges"
 	"github.com/proxyscrape/checker-backend/internal/settings"
@@ -343,10 +345,20 @@ type apiResult struct {
 	GeoStatus string                           `json:"geoStatus,omitempty"`
 }
 
-// geoStatusFor returns "pending" when the country code is empty (MMDB was
-// unavailable at check time) and "done" otherwise.
-func geoStatusFor(code string) string {
-	if code == "" {
+// geoStatusForResult derives the geo_status to store for a freshly-checked proxy.
+//
+//   - "skipped"  – failed or cancelled proxies: geo lookup is never attempted
+//                  during checking (proxyIP is only set for working proxies), so
+//                  there is no country data to store and enrichment would gain
+//                  nothing meaningful.
+//   - "pending"  – working proxy without a country code yet; the geo enrichment
+//                  worker will fill it in after the check completes.
+//   - "done"     – working proxy with a country code already populated.
+func geoStatusForResult(proxyStatus, countryCode string) string {
+	if proxyStatus == "failed" || proxyStatus == "cancelled" {
+		return "skipped"
+	}
+	if countryCode == "" {
 		return "pending"
 	}
 	return "done"
@@ -420,7 +432,7 @@ func resultToAPI(r checker.Result) apiResult {
 		KeepAlive: r.KeepAlive,
 		Traces:    r.Traces,
 		FullData:  r.FullData,
-		GeoStatus: geoStatusFor(r.Country.Code),
+		GeoStatus: geoStatusForResult(r.Status, r.Country.Code),
 	}
 }
 
@@ -454,7 +466,7 @@ func resultToStore(checkID string, r checker.Result) store.CheckResult {
 		KeepAlive:    r.KeepAlive,
 		TracesJSON:   marshalJSON(r.Traces),
 		FullDataJSON: marshalJSON(r.FullData),
-		GeoStatus:    geoStatusFor(r.Country.Code),
+		GeoStatus:    geoStatusForResult(r.Status, r.Country.Code),
 	}
 }
 
@@ -494,7 +506,7 @@ func (s *server) handleCheckEvents(w http.ResponseWriter, r *http.Request) {
 	// Stream live events if the check is still running.
 	if v, ok := s.checks.Load(id); ok {
 		rc := v.(*runningCheck)
-		s.streamLiveEvents(w, r, rc)
+		s.streamLiveEvents(w, r, rc, id)
 		return
 	}
 
@@ -504,9 +516,18 @@ func (s *server) handleCheckEvents(w http.ResponseWriter, r *http.Request) {
 
 // streamLiveEvents consumes the results and progress channels of an active check
 // and writes SSE events until completion or client disconnect.
-func (s *server) streamLiveEvents(w http.ResponseWriter, r *http.Request, rc *runningCheck) {
+//
+// After all proxies are checked and SQLite is flushed (rc.done), if a geo
+// worker is configured it performs inline enrichment before signalling the
+// client. This guarantees that the renderer receives country data alongside
+// — rather than after — the completion event, eliminating race conditions.
+func (s *server) streamLiveEvents(w http.ResponseWriter, r *http.Request, rc *runningCheck, checkID string) {
 	resultsCh := rc.results
 	progressCh := rc.progress
+
+	// Collect working proxy hosts as results stream through so we can enrich
+	// them in one batch call after the check finishes.
+	var workingHosts []string
 
 	for {
 		select {
@@ -518,16 +539,44 @@ func (s *server) streamLiveEvents(w http.ResponseWriter, r *http.Request, rc *ru
 				case <-rc.done:
 				case <-r.Context().Done():
 				}
-			// "complete" = all proxies were checked naturally.
-			// "stopped"  = user cancelled the run mid-way via DELETE /check/{id}.
-			if atomic.LoadInt32(&rc.cancelled) == 1 {
-				writeSSEEvent(w, "stopped", map[string]string{"status": "stopped"})
-			} else {
-				writeSSEEvent(w, "complete", map[string]string{"status": "complete"})
-			}
+
+				// Inline geo enrichment — runs synchronously so every row is
+				// updated in SQLite and the geo-batch event reaches the renderer
+				// before the terminal complete/stopped event.
+				if s.geoWorker != nil && len(workingHosts) > 0 {
+					writeSSEEvent(w, "enriching", map[string]string{"message": "Enriching location data"})
+					geoResults, err := s.geoWorker.LookupBatch(r.Context(), workingHosts)
+					if err != nil {
+						log.Printf("[geoworker] inline enrichment: %v", err)
+					} else {
+						inlineUpdateGeo(s.store.DB(), checkID, geoResults)
+						enriched := make([]enrichedRow, 0, len(geoResults))
+						for _, gr := range geoResults {
+							enriched = append(enriched, enrichedRow{
+								Host:        gr.Host,
+								CountryCode: gr.CountryCode,
+								CountryName: gr.CountryName,
+								CountryFlag: gr.CountryFlag,
+								City:        gr.City,
+							})
+						}
+						writeSSEEvent(w, "geo-batch", map[string]interface{}{"results": enriched})
+					}
+				}
+
+				// "complete" = all proxies were checked naturally.
+				// "stopped"  = user cancelled the run mid-way via DELETE /check/{id}.
+				if atomic.LoadInt32(&rc.cancelled) == 1 {
+					writeSSEEvent(w, "stopped", map[string]string{"status": "stopped"})
+				} else {
+					writeSSEEvent(w, "complete", map[string]string{"status": "complete"})
+				}
 				return
 			}
 			writeSSEEvent(w, "result", resultToAPI(result))
+			if result.Status == "working" && result.Proxy.Host != "" {
+				workingHosts = append(workingHosts, result.Proxy.Host)
+			}
 
 		case prog, ok := <-progressCh:
 			if !ok {
@@ -540,6 +589,31 @@ func (s *server) streamLiveEvents(w http.ResponseWriter, r *http.Request, rc *ru
 		case <-r.Context().Done():
 			return
 		}
+	}
+}
+
+// inlineUpdateGeo updates geo fields for working proxies of a single check
+// in one transaction. Scoped to the check's rows so other checks are unaffected.
+func inlineUpdateGeo(db *sql.DB, checkID string, results []geoworker.Result) {
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("[geoworker] inline update begin tx: %v", err)
+		return
+	}
+	for _, gr := range results {
+		if _, err := tx.Exec(
+			`UPDATE check_results
+			 SET country_code = ?, country_name = ?, country_flag = ?, city = ?, geo_status = 'done'
+			 WHERE check_id = ? AND host = ? AND geo_status = 'pending'`,
+			gr.CountryCode, gr.CountryName, gr.CountryFlag, gr.City, checkID, gr.Host,
+		); err != nil {
+			log.Printf("[geoworker] inline update row: %v", err)
+			_ = tx.Rollback()
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		log.Printf("[geoworker] inline update commit: %v", err)
 	}
 }
 
@@ -805,44 +879,6 @@ func probeCapture() (string, error) {
 		lastErr = err
 	}
 	return "", lastErr
-}
-
-// =============================================================================
-// MMDB
-// =============================================================================
-
-// handleMMDBReload hot-reloads the GeoIP database from disk.
-// Called by the Electron main process after it finishes downloading a fresh copy.
-func (s *server) handleMMDBReload(w http.ResponseWriter, r *http.Request) {
-	if err := s.geoDB.Reload(); err != nil {
-		jsonError(w, http.StatusServiceUnavailable, err.Error())
-		return
-	}
-	writeJSON(w, map[string]interface{}{"status": "ok"})
-}
-
-// handleMMDBDecompress decompresses a zstd-compressed MMDB file downloaded by
-// Electron. Electron downloads geoip.mmdb.zst to a temp path, then calls this
-// endpoint. Go decompresses it to the final geoip.mmdb path and hot-reloads.
-//
-// Request body (JSON): { "src": "/tmp/geoip.mmdb.zst" }
-// The destination path is always dataDir/mmdb/geoip.mmdb (known to the server).
-func (s *server) handleMMDBDecompress(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Src string `json:"src"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Src == "" {
-		jsonError(w, http.StatusBadRequest, "missing src path")
-		return
-	}
-
-	if err := s.geoDB.DecompressAndReload(req.Src); err != nil {
-		log.Printf("mmdb decompress: %v", err)
-		jsonError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
-	writeJSON(w, map[string]interface{}{"status": "ok"})
 }
 
 func classifyPcapErr(err error) string {

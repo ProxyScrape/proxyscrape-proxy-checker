@@ -12,7 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/proxyscrape/checker-backend/internal/blacklist"
-	"github.com/proxyscrape/checker-backend/internal/geo"
+	"github.com/proxyscrape/checker-backend/internal/geoworker"
 	"github.com/proxyscrape/checker-backend/internal/judges"
 	"github.com/proxyscrape/checker-backend/internal/settings"
 	"github.com/proxyscrape/checker-backend/internal/store"
@@ -34,25 +34,25 @@ func init() {
 
 // server holds shared dependencies available to all route handlers.
 type server struct {
-	store    *store.Store
-	settings *settings.Manager
-	verify   TokenVerifier
-	checks   sync.Map // map[string]*runningCheck
-	mu       sync.RWMutex
-	judges   *judges.Judges
-	blists   *blacklist.Blacklist
-	geoDB    *geo.DB
+	store     *store.Store
+	settings  *settings.Manager
+	verify    TokenVerifier
+	checks    sync.Map // map[string]*runningCheck
+	mu        sync.RWMutex
+	judges    *judges.Judges
+	blists    *blacklist.Blacklist
+	geoWorker *geoworker.Client
 }
 
 // NewServer builds the HTTP API router. POST /api/login is unauthenticated and rate-limited;
 // GET /api/check/{id}/events validates its token inside the handler;
 // all other /api routes go through the auth middleware.
-func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, geoDB *geo.DB) http.Handler {
+func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, geoWorker *geoworker.Client) http.Handler {
 	s := &server{
-		store:    db,
-		settings: mgr,
-		verify:   verifier,
-		geoDB:    geoDB,
+		store:     db,
+		settings:  mgr,
+		verify:    verifier,
+		geoWorker: geoWorker,
 	}
 
 	r := chi.NewRouter()
@@ -98,9 +98,6 @@ func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, g
 			r.Get("/ip", s.handleGetIP)
 			r.Get("/version", s.handleGetVersion)
 			r.Get("/trace/status", s.handleTraceStatus)
-
-			r.Post("/mmdb/reload", s.handleMMDBReload)
-			r.Post("/mmdb/decompress", s.handleMMDBDecompress)
 
 			r.Post("/geo/enrich", s.handleGeoEnrichStart)
 			r.Delete("/geo/enrich", s.handleGeoEnrichCancel)

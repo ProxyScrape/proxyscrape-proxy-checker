@@ -68,7 +68,7 @@ type CheckResult struct {
 	KeepAlive   bool
 	TracesJSON   string // JSON-serialized map[protocol][]TraceEvent, empty when no trace
 	FullDataJSON string // JSON-serialized map[protocol]ProtoFullData, empty when not captured
-	GeoStatus    string // 'done' or 'pending' (pending = MMDB unavailable at check time)
+	GeoStatus    string // 'done', 'pending', or 'skipped'
 }
 
 // baseSchema creates the initial tables if they don't exist.
@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS check_results (
   keep_alive INTEGER NOT NULL,
   traces TEXT,
   full_data TEXT,
+  geo_status TEXT NOT NULL DEFAULT 'done',
   FOREIGN KEY(check_id) REFERENCES checks(id) ON DELETE CASCADE
 );
 `
@@ -134,15 +135,22 @@ type migration struct {
 // Each migration runs inside a transaction; user_version is updated atomically.
 var migrations = []migration{
 	{
-		// v1: add geo_status to distinguish enrichment state.
-		// 'done'    = geo lookup was attempted (country_code may be empty if IP not in DB)
-		// 'pending' = MMDB was unavailable at check time; needs enrichment
+		// v1: add geo_status to track geo enrichment state per result row.
+		// 'done'    = geo enrichment was attempted (country_code may still be empty
+		//             if the IP was unrecognised by the lookup service)
+		// 'pending' = working proxy not yet enriched; picked up by the background worker
+		// 'skipped' = failed/cancelled proxy; geo enrichment is never attempted
 		//
-		// Existing rows default to 'done'. The retroactive backfill that marks
-		// empty-country rows as 'pending' runs after Open() returns via
-		// backfillGeoStatus — batched and outside this transaction so the write
-		// lock is never held for an unbounded duration.
+		// Existing rows default to 'done'.
 		up: func(tx *sql.Tx) error {
+			// Fresh installs already have geo_status in baseSchema; skip for them.
+			var count int
+			if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('check_results') WHERE name='geo_status'`).Scan(&count); err != nil {
+				return err
+			}
+			if count > 0 {
+				return nil
+			}
 			_, err := tx.Exec(`ALTER TABLE check_results ADD COLUMN geo_status TEXT NOT NULL DEFAULT 'done'`)
 			return err
 		},
@@ -167,35 +175,58 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		// v3: introduce geo_status = 'skipped' for failed/cancelled proxies.
+		// The checker never performs a geo lookup on non-working proxies (proxyIP
+		// is only populated for alive results), so those rows were incorrectly
+		// stored as geo_status = 'pending' and re-processed by the enrichment
+		// worker on every check completion. Marking them 'skipped' excludes them
+		// permanently from enrichment, which only makes sense for working proxies.
+		up: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`
+				UPDATE check_results
+				SET    geo_status = 'skipped'
+				WHERE  geo_status = 'pending'
+				  AND  status IN ('failed', 'cancelled')`)
+			return err
+		},
+		down: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`
+				UPDATE check_results
+				SET    geo_status = 'pending'
+				WHERE  geo_status = 'skipped'`)
+			return err
+		},
+	},
+	{
+		// v4: retire legacy 'pending' rows that have no country data.
+		// Previously, a startup backfill re-queued rows with geo_status='done'
+		// and country_code='' as 'pending' so the local MMDB could fill them.
+		// The MMDB pipeline has been removed; geo enrichment now happens inline
+		// via the Cloudflare Worker at the end of each check. Rows that still
+		// carry an empty country after enrichment are simply unknown — there is
+		// no point re-queuing them on every startup. Mark them 'done' so they
+		// are excluded from future enrichment runs.
+		up: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`
+				UPDATE check_results
+				SET    geo_status = 'done'
+				WHERE  geo_status = 'pending'
+				  AND  country_code = ''`)
+			return err
+		},
+		down: nil, // intentionally irreversible
+	},
 }
 
-// backfillGeoStatus marks pre-MMDB rows (country_code = '', geo_status = 'done')
-// as 'pending' so the geo enrichment worker picks them up.
-//
-// Runs in 10 000-row batches using UPDATE...FROM so each iteration is a short
-// independent transaction and the write lock is never held for an unbounded
-// duration. UPDATE...FROM avoids the temp-table materialisation of the
-// equivalent IN-subquery form (confirmed by SQLite's query planner; requires
-// SQLite ≥ 3.33 — our driver bundles 3.49.1).
-//
-// Note: UPDATE...LIMIT is NOT supported by mattn/go-sqlite3 (requires
-// SQLITE_ENABLE_UPDATE_DELETE_LIMIT, which the driver does not compile with).
-func backfillGeoStatus(db *sql.DB) error {
-	for {
-		res, err := db.Exec(`
-			UPDATE check_results
-			SET    geo_status = 'pending'
-			FROM   (SELECT id FROM check_results
-			        WHERE  geo_status = 'done' AND country_code = ''
-			        LIMIT  10000) AS sub
-			WHERE  check_results.id = sub.id`)
-		if err != nil {
-			return fmt.Errorf("store: backfill geo_status: %w", err)
-		}
-		n, _ := res.RowsAffected()
-		if n == 0 {
-			return nil
-		}
+// purgeOrphanedWAL removes stale WAL/SHM sidecar files when the main database
+// file is absent. This can happen if a previous Reset() or crash deleted the
+// main file but left the sidecars behind; SQLite's WAL recovery then fails
+// with a disk I/O error when trying to open the (new, empty) main file.
+func purgeOrphanedWAL(dbPath string) {
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		_ = os.Remove(dbPath + "-wal")
+		_ = os.Remove(dbPath + "-shm")
 	}
 }
 
@@ -206,14 +237,19 @@ func Open(dataDir string) (*Store, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "checker.db")
+	purgeOrphanedWAL(dbPath)
 	db, err := openDB(dbPath)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := backfillGeoStatus(db); err != nil {
-		log.Printf("store: geo_status backfill: %v", err)
-		// Non-fatal: the enrichment worker will handle any remaining rows.
+		// The database (or its WAL/SHM sidecars) may be corrupt. Wipe everything
+		// and create a fresh database rather than leaving the app unlaunchable.
+		log.Printf("store: initial open failed (%v) — wiping and recreating", err)
+		_ = os.Remove(dbPath)
+		_ = os.Remove(dbPath + "-wal")
+		_ = os.Remove(dbPath + "-shm")
+		db, err = openDB(dbPath)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &Store{db: db, dbPath: dbPath}, nil
@@ -659,6 +695,8 @@ func (s *Store) Reset() error {
 
 	_ = s.db.Close()
 	_ = os.Remove(s.dbPath)
+	_ = os.Remove(s.dbPath + "-wal")
+	_ = os.Remove(s.dbPath + "-shm")
 
 	db, err := openDB(s.dbPath)
 	if err != nil {

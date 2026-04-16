@@ -10,7 +10,6 @@ import { pingJudgesWithOverlay } from './OverlayJudgesActions';
 let currentCheckId = null;
 let closeCurrentStream = null;
 let resolveProtocolWarning = null;
-let resolveMMDBDecision = null;
 
 export const respondToProtocolWarning = choice => dispatch => {
     dispatch({ type: CORE_SET_PROTOCOL_WARNING, warning: { open: false } });
@@ -121,45 +120,9 @@ export const start = () => async (dispatch, getState) => {
             validateBlacklist(blacklist.items);
         }
 
-        // Ensure the GeoIP database is downloaded before starting.
-        // Uses the same Promise-based pause pattern as showProtocolWarning so the flow
-        // suspends here waiting for the user — rather than restarting start() from scratch.
-        if (window.__ELECTRON__ && window.__ELECTRON__.ensureMMDB) {
-            let mmdbReady = false;
-            while (!mmdbReady) {
-                let removeProgressListener = null;
-                try {
-                    removeProgressListener = window.__ELECTRON__.onMMDBProgress((_, { phase, pct, totalBytes }) => {
-                        dispatch(otherChanges({
-                            mmdbDownloading: true,
-                            mmdbPhase: phase || 'download',
-                            mmdbProgress: pct >= 0 ? pct : 0,
-                            mmdbTotalBytes: totalBytes || 0,
-                        }));
-                    });
-                    const result = await window.__ELECTRON__.ensureMMDB();
-                    if (result && result.status === 'cancelled') return;
-                    mmdbReady = true;
-                } catch (error) {
-                    const isUnavailable = error.code === 'MMDB_UNAVAILABLE' ||
-                        (error.message && error.message.includes('GeoIP database unavailable'));
-                    if (!isUnavailable) throw error;
-
-                    // Pause here and wait for the user's choice from the error dialog.
-                    const decision = await new Promise(resolve => {
-                        resolveMMDBDecision = resolve;
-                        dispatch(otherChanges({ mmdbError: true }));
-                    });
-
-                    if (decision === 'cancel') return;
-                    if (decision === 'continue') mmdbReady = true; // proceed without MMDB
-                    // decision === 'retry': loop and attempt the download again
-                } finally {
-                    if (removeProgressListener) removeProgressListener();
-                    dispatch(otherChanges({ mmdbDownloading: false, mmdbProgress: 0, mmdbTotalBytes: 0 }));
-                }
-            }
-        }
+        // Signal that checking is starting so toasts use compact positioning
+        // immediately (before the full-screen overlay opens after judges pass).
+        dispatch(otherChanges({ starting: true }));
 
         // Show the judge ping overlay, ping all judges, then proceed only if
         // required judge types are reachable for the selected protocols.
@@ -234,6 +197,7 @@ export const start = () => async (dispatch, getState) => {
 
         const displayResults = () => {
             finalise();
+            dispatch(otherChanges({ finalizingMessage: null }));
             dispatch(showResult({
                 items: bufferedResults,
                 inBlacklists: buildInBlacklists(bufferedResults),
@@ -253,6 +217,26 @@ export const start = () => async (dispatch, getState) => {
                     protocols: {},
                 }));
             },
+            // Backend signals it is about to call the geo worker.
+            onEnriching: () => {
+                dispatch(otherChanges({ finalizingMessage: 'Enriching location data...' }));
+            },
+            // Backend resolved country data for all working proxies.
+            // Patch bufferedResults in-place so showResult() has countries ready.
+            onGeoBatch: data => {
+                const patchMap = new Map((data?.results ?? []).map(r => [r.host, r]));
+                bufferedResults.forEach(item => {
+                    const patch = patchMap.get(item.host);
+                    if (!patch) return;
+                    item.country = {
+                        code: patch.countryCode || '',
+                        name: patch.countryName || '',
+                        flag: patch.countryFlag || '',
+                        city: patch.city || '',
+                    };
+                    item.geoStatus = 'done';
+                });
+            },
             // All proxies were checked — natural finish.
             onComplete: displayResults,
             // User cancelled the run mid-way via the Stop button.
@@ -261,6 +245,7 @@ export const start = () => async (dispatch, getState) => {
             onBackendError: displayResults,
         });
     } catch (error) {
+        dispatch(otherChanges({ starting: false }));
         dispatch(showError(error.message));
     }
 };
@@ -303,23 +288,3 @@ export const upCounterStatus = counter => ({
     counter
 });
 
-/** Abort an in-progress MMDB download initiated by the checking flow. */
-export const cancelMMDBDownload = () => () => {
-    if (window.__ELECTRON__ && window.__ELECTRON__.cancelMMDB) {
-        window.__ELECTRON__.cancelMMDB();
-    }
-};
-
-// Resolves the Promise that start() is suspended on at the MMDB step,
-// mirroring the respondToProtocolWarning pattern.
-const resolveMMDB = choice => dispatch => {
-    dispatch(otherChanges({ mmdbError: false }));
-    if (resolveMMDBDecision) {
-        resolveMMDBDecision(choice);
-        resolveMMDBDecision = null;
-    }
-};
-
-export const dismissMmdbError    = () => resolveMMDB('cancel');
-export const retryAfterMmdbError = () => resolveMMDB('retry');
-export const continueWithoutMmdb = () => resolveMMDB('continue');
