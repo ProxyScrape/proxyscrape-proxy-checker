@@ -17,6 +17,7 @@ import {
     RESULT_EXPORT_CHANGE_TYPE,
     RESULT_EXPORT_CHANGE_AUTH_TYPE,
     RESULT_TOGGLE_HIDE_STATUS,
+    RESULT_PATCH_GEO,
     SETTINGS_LOAD
 } from '../../constants/ActionTypes';
 
@@ -99,6 +100,29 @@ const result = (state = initialState, action) => {
                 hiddenStatuses: current.includes(status)
                     ? current.filter(s => s !== status)
                     : [...current, status],
+            };
+        }
+        case RESULT_PATCH_GEO: {
+            if (!action.rows || !action.rows.length) return state;
+            // Build a lookup map keyed by host (proxy IP) for O(1) access.
+            const byHost = {};
+            for (const row of action.rows) byHost[row.host] = row;
+            return {
+                ...state,
+                items: state.items.map(item => {
+                    const patch = byHost[item.host];
+                    if (!patch) return item;
+                    return {
+                        ...item,
+                        country: {
+                            code: patch.countryCode,
+                            name: patch.countryName,
+                            flag: patch.countryFlag,
+                            city: patch.city,
+                        },
+                        geoStatus: 'done',
+                    };
+                }),
             };
         }
         case RESULT_CHANGE_PORTS_INPUT:

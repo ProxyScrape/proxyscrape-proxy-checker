@@ -38,16 +38,9 @@ export const refreshJudges = (protocols = ['http', 'https', 'socks4', 'socks5'])
         }
         dispatch({ type: JUDGES_SET_STATUSES, statuses: map });
 
-        const needsSSL = protocols.includes('https');
-        const needsHTTP = protocols.includes('http');
-        const needsSocks = protocols.some(p => p === 'socks4' || p === 'socks5');
-        const hasSSL = Object.values(map).some(s => s.isSSL && s.alive);
-        const hasHTTP = Object.values(map).some(s => !s.isSSL && s.alive);
-
-        if ((needsSSL && !hasSSL) || (needsHTTP && !hasHTTP) || (needsSocks && !hasSSL && !hasHTTP)) {
-            return false;
-        }
-        return true;
+        // Any alive judge works for all proxy protocols.
+        const hasAny = Object.values(map).some(s => s.alive);
+        return hasAny;
     } catch {
         return false;
     } finally {

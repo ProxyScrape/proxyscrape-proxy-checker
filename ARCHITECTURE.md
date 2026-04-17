@@ -94,7 +94,8 @@ Password requirements: minimum 12 characters, at least one uppercase, one lowerc
 | `internal/checker` | Concurrent proxy checking engine. Goroutine pool — pool size = `settings.threads`. Results sent via channel. |
 | `internal/judges` | Judge server management: ping, classify (SSL/usual), validate responses, round-robin getters |
 | `internal/blacklist` | Load blacklists from URLs or files, parse IPs and CIDR ranges, `Check(ip)` method |
-| `internal/geo` | MaxMind GeoIP2 lookups. The `.mmdb` file is embedded in the binary at compile time via `go:embed` |
+| `internal/geo` | Country code → name/flag mapping used by `geoworker`. No local database — geo lookups go to the Cloudflare Worker. |
+| `internal/geoworker` | HTTP client for the `ip-geo` Cloudflare Worker (`ip-geo.proxyscrape.workers.dev`). Sends up to 10 000 IPs per call; the worker fans out to ip-api.com and applies geofeed overrides. |
 | `internal/store` | SQLite persistence using `modernc.org/sqlite` (pure Go — no CGo, no native rebuild required). Schema: `checks`, `check_results`, `users` (bcrypt hashes), `sessions` (session tokens with expiry) |
 | `internal/settings` | Read/write settings JSON file. Version migration. Thread-safe access. |
 | `internal/ip` | Fetch caller's public IP address |
@@ -104,7 +105,7 @@ Password requirements: minimum 12 characters, at least one uppercase, one lowerc
 
 When a check is started, the checker spawns a goroutine pool of size `settings.threads`. Each goroutine pulls proxies from a shared channel, tests them (potentially across multiple protocols concurrently), and sends results to a results channel. The API handler for `GET /api/check/{id}/events` consumes this results channel and writes SSE events to the HTTP response as they arrive.
 
-The `GeoLite2-City.mmdb` is loaded once at startup and is safe for concurrent reads.
+After all results are persisted, the backend calls the `ip-geo` Cloudflare Worker in a single batch to enrich country data for every working proxy. The worker fans out to ip-api.com internally and applies geofeed overrides. Enriched data is written back to SQLite and pushed to the renderer via an SSE `geo-batch` event before the `complete` event fires. Any proxies that could not be enriched remain with an empty country and are marked `done`.
 
 SQLite uses WAL mode and a single-writer connection pool to avoid contention.
 

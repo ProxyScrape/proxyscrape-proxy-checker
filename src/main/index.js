@@ -1,8 +1,9 @@
 import path from 'path';
 import fs from 'fs';
+import http from 'http';
 import readline from 'readline';
 import { spawn, execSync } from 'child_process';
-import { BrowserWindow, app, ipcMain, dialog, session } from 'electron';
+import { BrowserWindow, app, ipcMain, dialog, session, clipboard } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { isDev, isPortable, IS_CANARY } from '../shared/AppConstants';
 
@@ -22,6 +23,13 @@ let goProcess = null;
 let checkerPort = null;
 let checkerToken = null;
 let isQuitting = false;
+
+// Buffered deep-link URL that arrived before the renderer window was ready.
+let pendingDeepLink = null;
+
+// True while a geo-enrich SSE connection is open. Prevents duplicate streams
+// from being created if listenGeoEnrichSSE() is called multiple times.
+let geoEnrichListening = false;
 
 const isMac = process.platform === 'darwin';
 
@@ -58,6 +66,19 @@ function killGoProcess(proc) {
         }
     } catch {
         try { proc.kill(); } catch { /* already dead */ }
+    }
+}
+
+/**
+ * Route an incoming proxychecker:// deep-link URL to the renderer.
+ * If the window is not yet ready the URL is buffered and flushed after load.
+ */
+function handleDeepLink(url) {
+    if (!url || !url.startsWith('proxychecker://')) return;
+    if (window && !window.isDestroyed()) {
+        window.webContents.send('deep-link-proxy', url);
+    } else {
+        pendingDeepLink = url;
     }
 }
 
@@ -330,6 +351,12 @@ ipcMain.handle('write-file', async (_event, filePath, content) => {
 
 ipcMain.handle('getDownloadsPath', () => app.getPath('downloads'));
 
+// Clipboard — accessed from the main process to avoid the renderer-side
+// deprecation warning ("Accessing clipboard.readText from the renderer process
+// is deprecated"). The renderer calls window.__ELECTRON__.readClipboard() which
+// invokes this handler via IPC.
+ipcMain.handle('clipboard:read', () => clipboard.readText());
+
 
 const preloadPath = path.join(__dirname, '../preload/index.js');
 
@@ -390,6 +417,24 @@ const createWindow = () => {
     });
 };
 
+// Register as the default OS handler for proxychecker:// deep links (browser extension).
+// On Windows in dev mode Electron is not the executable itself, so the main
+// script path must be passed as an extra argument — see Electron deep-link docs.
+if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('proxychecker', process.execPath, [
+        path.resolve(process.argv[1]),
+    ]);
+} else {
+    app.setAsDefaultProtocolClient('proxychecker');
+}
+
+// macOS fires open-url when a proxychecker:// link is clicked in the browser.
+// Register early so links that arrive before whenReady() are not lost.
+app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleDeepLink(url);
+});
+
 // Enforce a single running instance. A second launch focuses the existing window
 // instead of opening a duplicate. This also prevents the Chromium service-worker
 // storage error caused by two processes sharing the same user-data directory.
@@ -397,11 +442,15 @@ if (!app.requestSingleInstanceLock()) {
     app.quit();
 }
 
-app.on('second-instance', () => {
+// Windows / Linux: a second instance is spawned when a proxychecker:// link is
+// clicked. The URL arrives in commandLine; we focus the existing window and route it.
+app.on('second-instance', (event, commandLine) => {
     if (window) {
         if (window.isMinimized()) window.restore();
         window.focus();
     }
+    const url = commandLine.find(arg => arg.startsWith('proxychecker://'));
+    if (url) handleDeepLink(url);
 });
 
 app.whenReady().then(async () => {
@@ -452,9 +501,29 @@ app.whenReady().then(async () => {
     }
 
     createWindow();
+
+    // Windows / Linux cold launch: if the app was started directly by the OS
+    // protocol handler (first instance), the URL lands in process.argv.
+    if (process.platform !== 'darwin') {
+        const coldUrl = process.argv.find(arg => arg.startsWith('proxychecker://'));
+        if (coldUrl) pendingDeepLink = coldUrl;
+    }
+
+    // Flush any deep-link that arrived before the renderer was ready.
+    if (pendingDeepLink) {
+        const urlToSend = pendingDeepLink;
+        pendingDeepLink = null;
+        window.webContents.once('did-finish-load', () => {
+            window.webContents.send('deep-link-proxy', urlToSend);
+        });
+    }
+
     if ((!IS_CANARY || enableUpdater) && app.isPackaged && !isPortable) {
         autoUpdater.checkForUpdates();
     }
+
+    // On startup, trigger geo enrichment for any pending rows.
+    signalAndListenGeoEnrich();
 });
 
 app.on('activate', () => {
@@ -535,4 +604,130 @@ ipcMain.on('window-close', () => {
     if (window && !window.isDestroyed()) {
         window.close();
     }
+});
+
+// =============================================================================
+// Geo enrichment SSE — forward progress events to the renderer window
+// =============================================================================
+
+/**
+ * Connect to the Go geo enrichment SSE stream and forward progress events to
+ * the renderer via 'geo-enrich-progress'. Stops once the backend reports
+ * running=false or the stream closes naturally.
+ */
+function listenGeoEnrichSSE() {
+    if (!checkerPort || !checkerToken) return;
+    // Singleton guard — only one SSE connection at a time. If a connection is
+    // already open (e.g. from startup), skip rather than opening a duplicate
+    // that would send every progress event twice to the renderer.
+    if (geoEnrichListening) return;
+
+    geoEnrichListening = true;
+
+    const req = http.request({
+        hostname: '127.0.0.1',
+        port: checkerPort,
+        path: '/api/geo/enrich/events',
+        method: 'GET',
+        headers: { Authorization: `Bearer ${checkerToken}` },
+    }, (res) => {
+        let buf = '';
+        res.on('data', chunk => {
+            buf += chunk.toString();
+            const lines = buf.split('\n');
+            buf = lines.pop(); // keep incomplete line for next chunk
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const payload = JSON.parse(line.slice(6));
+                    if (window && !window.isDestroyed()) {
+                        window.webContents.send('geo-enrich-progress', payload);
+                    }
+                    // Stop listening when enrichment is done.
+                    if (!payload.running) {
+                        res.destroy();
+                        geoEnrichListening = false;
+                        return;
+                    }
+                } catch { /* ignore malformed frames */ }
+            }
+        });
+        res.on('end', () => {
+            geoEnrichListening = false;
+        });
+        res.on('error', () => {
+            geoEnrichListening = false;
+        });
+    });
+    req.on('error', () => {
+        geoEnrichListening = false;
+    });
+    req.end();
+}
+
+/**
+ * POST /api/geo/enrich and return the parsed JSON response, or null on error.
+ * Awaiting this resolves only after the server has accepted (or rejected) the
+ * job, so callers know the exact status before deciding to open an SSE stream.
+ */
+function signalGoGeoEnrich() {
+    if (!checkerPort || !checkerToken) return Promise.resolve(null);
+    return new Promise((resolve) => {
+        const req = http.request({
+            hostname: '127.0.0.1',
+            port: checkerPort,
+            path: '/api/geo/enrich',
+            method: 'POST',
+            headers: { Authorization: `Bearer ${checkerToken}` },
+        }, (res) => {
+            let body = '';
+            res.on('data', chunk => { body += chunk; });
+            res.on('end', () => {
+                try { resolve(JSON.parse(body)); } catch { resolve(null); }
+            });
+        });
+        req.on('error', () => resolve(null));
+        req.end();
+    });
+}
+
+/**
+ * Signal geo enrichment and — only if the server confirms work was started or
+ * is already in progress — open the SSE listener. This prevents the race where
+ * listenGeoEnrichSSE() connects before the POST is processed: the first SSE
+ * tick would see running=false, close the stream, and leave enrichment with no
+ * listener for the rest of the job.
+ */
+async function signalAndListenGeoEnrich() {
+    const result = await signalGoGeoEnrich();
+    if (result?.status === 'started' || result?.status === 'already_running') {
+        listenGeoEnrichSSE();
+    }
+    return result;
+}
+
+/**
+ * geo:enrich:start — trigger background geo enrichment for pending rows and
+ * open the SSE stream so the renderer receives progress events.
+ * Idempotent: safe to call even if enrichment is already running.
+ */
+ipcMain.handle('geo:enrich:start', async () => {
+    return await signalAndListenGeoEnrich();
+});
+
+/**
+ * geo:enrich:cancel — cancel any running geo enrichment job.
+ */
+ipcMain.handle('geo:enrich:cancel', () => {
+    if (!checkerPort || !checkerToken) return;
+    const req = http.request({
+        hostname: '127.0.0.1',
+        port: checkerPort,
+        path: '/api/geo/enrich',
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${checkerToken}` },
+    }, (res) => { res.resume(); });
+    req.on('error', () => { /* non-fatal */ });
+    req.end();
 });

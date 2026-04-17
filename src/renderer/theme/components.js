@@ -17,13 +17,23 @@ export const components = {
         boxSizing: 'border-box',
       },
       '::-webkit-scrollbar': {
-        width: 6,
-      },
-      '::-webkit-scrollbar-thumb': {
-        backgroundColor: 'rgba(255, 255, 255, 0.15)',
-        borderRadius: 3,
+        width: 8,
+        height: 8,
       },
       '::-webkit-scrollbar-track': {
+        backgroundColor: 'transparent',
+      },
+      '::-webkit-scrollbar-thumb': {
+        backgroundColor: 'rgba(255, 255, 255, 0.24)',
+        borderRadius: 4,
+      },
+      '::-webkit-scrollbar-thumb:hover': {
+        backgroundColor: 'rgba(255, 255, 255, 0.45)',
+      },
+      '::-webkit-scrollbar-thumb:active': {
+        backgroundColor: 'rgba(255, 255, 255, 0.65)',
+      },
+      '::-webkit-scrollbar-corner': {
         backgroundColor: 'transparent',
       },
     },

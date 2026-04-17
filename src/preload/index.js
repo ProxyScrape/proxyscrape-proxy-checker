@@ -53,4 +53,32 @@ contextBridge.exposeInMainWorld('__ELECTRON__', {
 
     // Triggered by the renderer's "Restart now" button after update-ready fires.
     installUpdate: () => ipcRenderer.send('install-update'),
+
+    // Background geo enrichment — trigger / cancel enrichment of pending rows.
+    geoEnrichStart: () => ipcRenderer.invoke('geo:enrich:start'),
+    geoEnrichCancel: () => ipcRenderer.invoke('geo:enrich:cancel'),
+
+    // Subscribe to geo enrichment progress events pushed from the main process.
+    // Events: { running: bool, total: number, done: number }
+    // Returns a cleanup function.
+    onGeoEnrichProgress: (cb) => {
+        const handler = (_e, data) => cb(null, data);
+        ipcRenderer.on('geo-enrich-progress', handler);
+        return () => ipcRenderer.removeListener('geo-enrich-progress', handler);
+    },
+
+    // Clipboard — clipboard.readText() must be called from the main process.
+    // Accessing it from the renderer/preload context is deprecated in Electron
+    // and will be removed. The main process handles 'clipboard:read' and returns
+    // the text over IPC, so this returns a Promise<string>.
+    readClipboard: () => ipcRenderer.invoke('clipboard:read'),
+
+    // Deep-link from the browser extension via the proxychecker:// protocol.
+    // The raw URL string is forwarded; the renderer parses it.
+    // Returns a cleanup function.
+    onDeepLinkProxy: (cb) => {
+        const handler = (_e, url) => cb(null, url);
+        ipcRenderer.on('deep-link-proxy', handler);
+        return () => ipcRenderer.removeListener('deep-link-proxy', handler);
+    },
 });

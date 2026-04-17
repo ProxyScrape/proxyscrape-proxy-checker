@@ -34,7 +34,7 @@ if (__POSTHOG_KEY__) {
 
     posthog.register({
         app_version: version,
-        os: typeof process !== 'undefined' && process.platform ? process.platform : 'web',
+        os: window.__ELECTRON__?.platform ?? 'web',
     });
 }
 

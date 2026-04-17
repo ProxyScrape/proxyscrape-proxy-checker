@@ -8,6 +8,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/proxyscrape/checker-backend/internal/api"
+	"github.com/proxyscrape/checker-backend/internal/geoworker"
 	"github.com/proxyscrape/checker-backend/internal/settings"
 	"github.com/proxyscrape/checker-backend/internal/store"
 	"github.com/spf13/cobra"
@@ -92,6 +94,14 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("load settings: %w", err)
 	}
 
+	const defaultWorkerURL = "https://ip-geo.proxyscrape.workers.dev"
+	workerURL := strings.TrimSpace(os.Getenv("GEO_WORKER_URL"))
+	if workerURL == "" {
+		workerURL = defaultWorkerURL
+	}
+	geoWorkerClient := geoworker.New(workerURL)
+	log.Printf("[geo] enrichment via worker: %s", workerURL)
+
 	if mode == "server" {
 		hasUsers, err := db.HasUsers(context.Background())
 		if err != nil {
@@ -104,12 +114,12 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	}
 
 	if mode == "desktop" {
-		return serveDesktop(db, mgr)
+		return serveDesktop(db, mgr, geoWorkerClient)
 	}
-	return serveServer(db, mgr)
+	return serveServer(db, mgr, geoWorkerClient)
 }
 
-func serveDesktop(db *store.Store, mgr *settings.Manager) error {
+func serveDesktop(db *store.Store, mgr *settings.Manager, geoWorker *geoworker.Client) error {
 	u, err := uuid.NewRandomFromReader(rand.Reader)
 	if err != nil {
 		return err
@@ -121,7 +131,7 @@ func serveDesktop(db *store.Store, mgr *settings.Manager) error {
 		}
 		return subtle.ConstantTimeCompare([]byte(token), []byte(tokenStr)) == 1
 	}
-	handler := api.NewServer(verify, db, mgr)
+	handler := api.NewServer(verify, db, mgr, geoWorker)
 
 	addr := "127.0.0.1:0"
 	if servePort > 0 {
@@ -164,11 +174,11 @@ func serveDesktop(db *store.Store, mgr *settings.Manager) error {
 	}
 }
 
-func serveServer(db *store.Store, mgr *settings.Manager) error {
+func serveServer(db *store.Store, mgr *settings.Manager, geoWorker *geoworker.Client) error {
 	verify := func(ctx context.Context, token string) bool {
 		return db.ValidateSession(ctx, token)
 	}
-	handler := api.NewServer(verify, db, mgr)
+	handler := api.NewServer(verify, db, mgr, geoWorker)
 
 	binds := serveBind
 	if len(binds) == 0 {

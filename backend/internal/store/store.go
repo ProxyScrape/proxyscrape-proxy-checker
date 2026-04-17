@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -67,9 +68,12 @@ type CheckResult struct {
 	KeepAlive   bool
 	TracesJSON   string // JSON-serialized map[protocol][]TraceEvent, empty when no trace
 	FullDataJSON string // JSON-serialized map[protocol]ProtoFullData, empty when not captured
+	GeoStatus    string // 'done', 'pending', or 'skipped'
 }
 
-const schema = `
+// baseSchema creates the initial tables if they don't exist.
+// This is applied before any migrations run.
+const baseSchema = `
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
@@ -114,9 +118,117 @@ CREATE TABLE IF NOT EXISTS check_results (
   keep_alive INTEGER NOT NULL,
   traces TEXT,
   full_data TEXT,
+  geo_status TEXT NOT NULL DEFAULT 'done',
   FOREIGN KEY(check_id) REFERENCES checks(id) ON DELETE CASCADE
 );
 `
+
+// migration describes a schema change. down may be nil for migrations that
+// cannot be safely reversed (e.g. those that transform data).
+type migration struct {
+	up   func(tx *sql.Tx) error
+	down func(tx *sql.Tx) error // nil = no safe rollback
+}
+
+// migrations is the ordered list of schema changes applied after baseSchema.
+// NEVER modify existing entries — only append new ones.
+// Each migration runs inside a transaction; user_version is updated atomically.
+var migrations = []migration{
+	{
+		// v1: add geo_status to track geo enrichment state per result row.
+		// 'done'    = geo enrichment was attempted (country_code may still be empty
+		//             if the IP was unrecognised by the lookup service)
+		// 'pending' = working proxy not yet enriched; picked up by the background worker
+		// 'skipped' = failed/cancelled proxy; geo enrichment is never attempted
+		//
+		// Existing rows default to 'done'.
+		up: func(tx *sql.Tx) error {
+			// Fresh installs already have geo_status in baseSchema; skip for them.
+			var count int
+			if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('check_results') WHERE name='geo_status'`).Scan(&count); err != nil {
+				return err
+			}
+			if count > 0 {
+				return nil
+			}
+			_, err := tx.Exec(`ALTER TABLE check_results ADD COLUMN geo_status TEXT NOT NULL DEFAULT 'done'`)
+			return err
+		},
+		down: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`ALTER TABLE check_results DROP COLUMN geo_status`)
+			return err
+		},
+	},
+	{
+		// v2: index geo_status so the enrichment worker's query
+		// (WHERE geo_status = 'pending') and COUNT(*) are O(log n + k)
+		// instead of a full table scan.
+		up: func(tx *sql.Tx) error {
+			_, err := tx.Exec(
+				`CREATE INDEX IF NOT EXISTS idx_check_results_geo_status
+				 ON check_results (geo_status)`,
+			)
+			return err
+		},
+		down: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`DROP INDEX IF EXISTS idx_check_results_geo_status`)
+			return err
+		},
+	},
+	{
+		// v3: introduce geo_status = 'skipped' for failed/cancelled proxies.
+		// The checker never performs a geo lookup on non-working proxies (proxyIP
+		// is only populated for alive results), so those rows were incorrectly
+		// stored as geo_status = 'pending' and re-processed by the enrichment
+		// worker on every check completion. Marking them 'skipped' excludes them
+		// permanently from enrichment, which only makes sense for working proxies.
+		up: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`
+				UPDATE check_results
+				SET    geo_status = 'skipped'
+				WHERE  geo_status = 'pending'
+				  AND  status IN ('failed', 'cancelled')`)
+			return err
+		},
+		down: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`
+				UPDATE check_results
+				SET    geo_status = 'pending'
+				WHERE  geo_status = 'skipped'`)
+			return err
+		},
+	},
+	{
+		// v4: retire legacy 'pending' rows that have no country data.
+		// Previously, a startup backfill re-queued rows with geo_status='done'
+		// and country_code='' as 'pending' so the local MMDB could fill them.
+		// The MMDB pipeline has been removed; geo enrichment now happens inline
+		// via the Cloudflare Worker at the end of each check. Rows that still
+		// carry an empty country after enrichment are simply unknown — there is
+		// no point re-queuing them on every startup. Mark them 'done' so they
+		// are excluded from future enrichment runs.
+		up: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`
+				UPDATE check_results
+				SET    geo_status = 'done'
+				WHERE  geo_status = 'pending'
+				  AND  country_code = ''`)
+			return err
+		},
+		down: nil, // intentionally irreversible
+	},
+}
+
+// purgeOrphanedWAL removes stale WAL/SHM sidecar files when the main database
+// file is absent. This can happen if a previous Reset() or crash deleted the
+// main file but left the sidecars behind; SQLite's WAL recovery then fails
+// with a disk I/O error when trying to open the (new, empty) main file.
+func purgeOrphanedWAL(dbPath string) {
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		_ = os.Remove(dbPath + "-wal")
+		_ = os.Remove(dbPath + "-shm")
+	}
+}
 
 // Open opens (or creates) the SQLite database at <dataDir>/checker.db.
 func Open(dataDir string) (*Store, error) {
@@ -125,10 +237,21 @@ func Open(dataDir string) (*Store, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "checker.db")
+	purgeOrphanedWAL(dbPath)
 	db, err := openDB(dbPath)
 	if err != nil {
-		return nil, err
+		// The database (or its WAL/SHM sidecars) may be corrupt. Wipe everything
+		// and create a fresh database rather than leaving the app unlaunchable.
+		log.Printf("store: initial open failed (%v) — wiping and recreating", err)
+		_ = os.Remove(dbPath)
+		_ = os.Remove(dbPath + "-wal")
+		_ = os.Remove(dbPath + "-shm")
+		db, err = openDB(dbPath)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	return &Store{db: db, dbPath: dbPath}, nil
 }
 
@@ -137,17 +260,57 @@ func openDB(dbPath string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: open: %w", err)
 	}
-	if _, err := db.Exec(schema); err != nil {
+	if err := initDB(db); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("store: apply schema: %w", err)
+		return nil, err
 	}
 	return db, nil
 }
 
+// initDB applies the base schema and runs any pending migrations.
+func initDB(db *sql.DB) error {
+	// Apply base schema (idempotent CREATE TABLE IF NOT EXISTS).
+	if _, err := db.Exec(baseSchema); err != nil {
+		return fmt.Errorf("store: apply base schema: %w", err)
+	}
+
+	// Read current schema version.
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("store: read user_version: %w", err)
+	}
+
+	// Apply any pending migrations in order.
+	for i := version; i < len(migrations); i++ {
+		newVersion := i + 1
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("store: migration v%d: begin tx: %w", newVersion, err)
+		}
+		if err := migrations[i].up(tx); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("store: migration v%d: %w", newVersion, err)
+		}
+		if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, newVersion)); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("store: migration v%d: set user_version: %w", newVersion, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("store: migration v%d: commit: %w", newVersion, err)
+		}
+		log.Printf("store: applied migration v%d", newVersion)
+	}
+	return nil
+}
 
 // Close shuts down the database connection.
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// DB returns the underlying *sql.DB for direct queries (used by geo enrichment).
+func (s *Store) DB() *sql.DB {
+	return s.db
 }
 
 // --- helpers ---
@@ -372,8 +535,8 @@ func (s *Store) SaveCheckResults(ctx context.Context, results []CheckResult) err
 	stmt, err := tx.PrepareContext(ctx,
 		`INSERT INTO check_results
 		 (id, check_id, host, port, auth, status, protocols, anon, timeout_ms,
-		  country_code, country_name, country_flag, city, blacklists, errors, server, keep_alive, traces, full_data)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  country_code, country_name, country_flag, city, blacklists, errors, server, keep_alive, traces, full_data, geo_status)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	)
 	if err != nil {
 		return fmt.Errorf("store: prepare stmt: %w", err)
@@ -413,7 +576,7 @@ func (s *Store) SaveCheckResults(ctx context.Context, results []CheckResult) err
 			r.ID, r.CheckID, r.Host, r.Port, r.Auth, r.Status,
 			protocols, r.Anon, r.TimeoutMs,
 			r.CountryCode, r.CountryName, r.CountryFlag, r.City,
-			blacklists, errorsJSON, r.Server, boolToInt(r.KeepAlive), tracesVal, fullDataVal,
+			blacklists, errorsJSON, r.Server, boolToInt(r.KeepAlive), tracesVal, fullDataVal, r.GeoStatus,
 		); err != nil {
 			return fmt.Errorf("store: insert check result: %w", err)
 		}
@@ -466,7 +629,7 @@ func (s *Store) GetCheckResults(ctx context.Context, checkID string, page, limit
 	offset := (page - 1) * limit
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, check_id, host, port, auth, status, protocols, anon, timeout_ms,
-		        country_code, country_name, country_flag, city, blacklists, errors, server, keep_alive, traces, full_data
+		        country_code, country_name, country_flag, city, blacklists, errors, server, keep_alive, traces, full_data, geo_status
 		 FROM check_results WHERE check_id = ?
 		 ORDER BY id LIMIT ? OFFSET ?`,
 		checkID, limit, offset,
@@ -486,7 +649,7 @@ func (s *Store) GetCheckResults(ctx context.Context, checkID string, page, limit
 			&r.ID, &r.CheckID, &r.Host, &r.Port, &r.Auth, &r.Status,
 			&protocols, &r.Anon, &r.TimeoutMs,
 			&r.CountryCode, &r.CountryName, &r.CountryFlag, &r.City,
-			&blacklists, &errorsJSON, &r.Server, &keepAlive, &tracesJSON, &fullDataJSON,
+			&blacklists, &errorsJSON, &r.Server, &keepAlive, &tracesJSON, &fullDataJSON, &r.GeoStatus,
 		); err != nil {
 			return nil, 0, fmt.Errorf("store: scan result: %w", err)
 		}
@@ -532,6 +695,8 @@ func (s *Store) Reset() error {
 
 	_ = s.db.Close()
 	_ = os.Remove(s.dbPath)
+	_ = os.Remove(s.dbPath + "-wal")
+	_ = os.Remove(s.dbPath + "-shm")
 
 	db, err := openDB(s.dbPath)
 	if err != nil {

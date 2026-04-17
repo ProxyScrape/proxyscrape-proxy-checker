@@ -1,6 +1,15 @@
 import posthog from 'posthog-js';
+import { version } from '../../../package.json';
 
-const BASE = { platform: 'desktop' };
+// BASE is spread into every event. Add any property here to ensure it appears
+// on all events — new tracking helpers must also spread BASE.
+// Note: app_version and os are also registered as PostHog super properties in
+// index.jsx (posthog.register), which covers any posthog.capture() calls made
+// outside this module.
+const BASE = {
+    platform: 'desktop',
+    app_version: version,
+};
 
 let checkStartedAt = null;
 

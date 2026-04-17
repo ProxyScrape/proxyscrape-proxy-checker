@@ -27,13 +27,17 @@ export default class ResultListItem extends React.PureComponent {
             country: countryProp,
             timeout,
             keepAlive,
+            coreKeepAlive,
+            captureServer,
             server,
             blacklist,
             status: statusProp,
             errors,
             traces,
             fullData,
+            geoStatus,
             isDetailsOpen,
+            gridTemplate,
         } = this.props;
 
         const status = statusProp || 'failed';
@@ -45,7 +49,7 @@ export default class ResultListItem extends React.PureComponent {
 
         const rowOpacity = isCancelled ? 0.45 : isFailed ? 0.6 : 1;
         const showAnonDash = !anon;
-        const showCountryAsDash = isCancelled;
+        const showCountryAsDash = isCancelled || geoStatus === 'skipped';
         const showProtocolsDash = isCancelled || (isFailed && protocols.length === 0);
 
         return (
@@ -56,19 +60,19 @@ export default class ResultListItem extends React.PureComponent {
                 opacity: rowOpacity,
             }}>
                 <Box sx={{
-                    display: 'flex',
+                    display: 'grid',
+                    gridTemplateColumns: gridTemplate,
                     alignItems: 'center',
                     py: 0.75,
                     px: 1,
                 }}>
                     <Box sx={{
-                        width: 40, flexShrink: 0,
                         fontSize: '0.7rem',
                         color: 'text.secondary',
                         '&::before': { content: 'counter(items-counter)' },
                     }} />
 
-                    <Box sx={{ flex: '2 0 120px', fontSize: '0.8rem', fontWeight: 500, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+                    <Box sx={{ minWidth: 0, fontSize: '0.8rem', fontWeight: 500, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
                         <span>{host}</span>
                         {!isCancelled && host !== ip && (
                             <Typography component="span" variant="caption" sx={{ ml: 0.5, color: 'text.secondary', fontSize: '0.7rem' }} title="Real IP">
@@ -83,9 +87,9 @@ export default class ResultListItem extends React.PureComponent {
                         )}
                     </Box>
 
-                    <Box sx={{ flex: '0 0 55px', fontSize: '0.8rem', color: 'text.secondary' }}>{port}</Box>
+                    <Box sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>{port}</Box>
 
-                    <Box sx={{ flex: '1.5 0 110px', display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <Box sx={{ minWidth: 0, display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
                         {showProtocolsDash ? (
                             <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>–</Typography>
                         ) : (
@@ -102,7 +106,7 @@ export default class ResultListItem extends React.PureComponent {
                         )}
                     </Box>
 
-                    <Box sx={{ flex: '1 0 75px' }}>
+                    <Box sx={{ minWidth: 0 }}>
                         {showAnonDash ? (
                             <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>–</Typography>
                         ) : (
@@ -120,7 +124,7 @@ export default class ResultListItem extends React.PureComponent {
                         )}
                     </Box>
 
-                    <Box sx={{ flex: '1.5 0 110px', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         {showCountryAsDash ? (
                             <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>–</Typography>
                         ) : (
@@ -136,7 +140,7 @@ export default class ResultListItem extends React.PureComponent {
                         )}
                     </Box>
 
-                    <Box sx={{ width: 30, flexShrink: 0, textAlign: 'center' }}>
+                    <Box sx={{ textAlign: 'center' }}>
                         {isCancelled ? (
                             <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>–</Typography>
                         ) : (
@@ -148,23 +152,25 @@ export default class ResultListItem extends React.PureComponent {
                         )}
                     </Box>
 
-                    <Box sx={{ width: keepAlive !== undefined ? 30 : 0, flexShrink: 0, textAlign: 'center' }}>
-                        {isWorking && keepAlive && (
-                            <Typography variant="caption" title="Connection: Keep-Alive" sx={{ color: 'success.main', fontSize: '0.65rem', fontWeight: 700 }}>K-A</Typography>
-                        )}
-                    </Box>
-
-                    {server !== undefined && (
-                        <Box sx={{ flex: '1 0 75px', fontSize: '0.75rem', color: 'text.secondary' }}>
-                            {isCancelled ? '–' : server}
+                    {coreKeepAlive && (
+                        <Box sx={{ textAlign: 'center' }}>
+                            {isWorking && keepAlive && (
+                                <Typography variant="caption" title="Connection: Keep-Alive" sx={{ color: 'success.main', fontSize: '0.65rem', fontWeight: 700 }}>K-A</Typography>
+                            )}
                         </Box>
                     )}
 
-                    <Box sx={{ width: 70, flexShrink: 0, textAlign: 'center', fontSize: '0.75rem', color: 'text.secondary' }}>
+                    {captureServer && (
+                        <Box sx={{ minWidth: 0, fontSize: '0.75rem', color: 'text.secondary' }}>
+                            {isCancelled || !server ? '–' : server}
+                        </Box>
+                    )}
+
+                    <Box sx={{ textAlign: 'center', fontSize: '0.75rem', color: 'text.secondary' }}>
                         {!isWorking ? '–' : `${splitByKK(timeout)} ms`}
                     </Box>
 
-                    <Box sx={{ width: 58, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                         <Chip
                             label="Details"
                             size="small"

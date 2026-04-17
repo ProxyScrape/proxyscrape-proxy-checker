@@ -28,14 +28,17 @@ const Ip = ({ lookupUrl, current, changeOption, IpLookup }) => (
             </HelpTip>
         </Box>
         <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1.5 }}>Your ip is</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1.5 }}>
+                Public IP
+                <InfoIcon title={'Leave blank to auto-detect your real IP before every check (recommended).\n\nIf you enter a value manually, auto-detection is skipped and this exact IP is used instead. If it becomes outdated or incorrect, transparent proxies will not be detected accurately.'} />
+            </Typography>
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                <HelpTip title="Your detected public IP. You can manually override this if auto-detection fails." placement="bottom">
+                <HelpTip title={current ? 'Manual override active — auto-detection is skipped. Clear this field to resume auto-detection.' : 'Auto-detected before each check using the lookup URL above.'} placement="bottom">
                     <TextField
                         fullWidth
                         size="small"
                         name="current"
-                        placeholder="Your IP address"
+                        placeholder="Auto-detected before each check"
                         onChange={changeOption}
                         value={current}
                     />

@@ -69,10 +69,6 @@ export const deleteHistoryCheck = (checkId) => async (dispatch) => {
 };
 
 export const clearHistory = () => async (dispatch) => {
-    try {
-        await apiFetch('/api/checks', { method: 'DELETE' });
-        dispatch({ type: HISTORY_CLEAR });
-    } catch {
-        // clear failed silently
-    }
+    dispatch({ type: HISTORY_CLEAR });
+    apiFetch('/api/checks', { method: 'DELETE' }).catch(() => {});
 };

@@ -3,6 +3,7 @@ import { wait } from '../misc/wait';
 import { isIP } from '../misc/regexes';
 import { trackAction } from '../misc/analytics';
 import { CHECKING_UP_COUNTER_STATUS, CHECKING_OPEN, CHECKING_OTHER_CHANGES, CORE_SET_PROTOCOL_WARNING } from '../constants/ActionTypes';
+import { showError } from '../store/reducers/app';
 import { showResult, mapResultItem } from './ResultActions';
 import { pingJudgesWithOverlay } from './OverlayJudgesActions';
 
@@ -18,22 +19,16 @@ export const respondToProtocolWarning = choice => dispatch => {
     }
 };
 
-const validateJudges = (judges, targetProtocols) => {
-    if (targetProtocols.some(protocol => ['http', 'https'].includes(protocol)) && !judges.some(({ url }) => !url.match(/https:\/\//))) {
-        throw new Error('You have no judges for HTTP/HTTPS');
-    }
-
-    if (judges.filter(({ active }) => active).length == 0) {
+const validateJudges = (judges) => {
+    if (judges.filter(({ active }) => active).length === 0) {
         throw new Error('You have no active judges');
     }
 
-    if (judges.every(({ url }) => {
-        try { new URL(url); return true; } catch { return false; }
+    if (judges.some(({ url }) => {
+        try { new URL(url); return false; } catch { return true; }
     })) {
-        return true;
+        throw new Error('Judge URL is not correct');
     }
-
-    throw new Error('Judge URL is not correct');
 };
 
 const validateBlacklist = items => {
@@ -113,11 +108,15 @@ export const start = () => async (dispatch, getState) => {
             ? [...new Set([...listProtocols, ...selectedProtocols])]
             : selectedProtocols;
 
-        validateJudges(activeJudges, protocols);
+        validateJudges(activeJudges);
 
         if (blacklist.filter) {
             validateBlacklist(blacklist.items);
         }
+
+        // Signal that checking is starting so toasts use compact positioning
+        // immediately (before the full-screen overlay opens after judges pass).
+        dispatch(otherChanges({ starting: true }));
 
         // Show the judge ping overlay, ping all judges, then proceed only if
         // required judge types are reachable for the selected protocols.
@@ -128,6 +127,8 @@ export const start = () => async (dispatch, getState) => {
 
         trackAction('proxy_check_started', {
             proxy_count: input.list.length,
+            authenticated_proxies: input.list.filter(p => p.auth && p.auth !== 'none').length,
+            unauthenticated_proxies: input.list.filter(p => !p.auth || p.auth === 'none').length,
             protocols: protocols.join(','),
             threads: core.threads,
             timeout: core.timeout,
@@ -192,6 +193,7 @@ export const start = () => async (dispatch, getState) => {
 
         const displayResults = () => {
             finalise();
+            dispatch(otherChanges({ finalizingMessage: null }));
             dispatch(showResult({
                 items: bufferedResults,
                 inBlacklists: buildInBlacklists(bufferedResults),
@@ -211,6 +213,26 @@ export const start = () => async (dispatch, getState) => {
                     protocols: {},
                 }));
             },
+            // Backend signals it is about to call the geo worker.
+            onEnriching: () => {
+                dispatch(otherChanges({ finalizingMessage: 'Enriching location data...' }));
+            },
+            // Backend resolved country data for all working proxies.
+            // Patch bufferedResults in-place so showResult() has countries ready.
+            onGeoBatch: data => {
+                const patchMap = new Map((data?.results ?? []).map(r => [r.host, r]));
+                bufferedResults.forEach(item => {
+                    const patch = patchMap.get(item.host);
+                    if (!patch) return;
+                    item.country = {
+                        code: patch.countryCode || '',
+                        name: patch.countryName || '',
+                        flag: patch.countryFlag || '',
+                        city: patch.city || '',
+                    };
+                    item.geoStatus = 'done';
+                });
+            },
             // All proxies were checked — natural finish.
             onComplete: displayResults,
             // User cancelled the run mid-way via the Stop button.
@@ -219,7 +241,8 @@ export const start = () => async (dispatch, getState) => {
             onBackendError: displayResults,
         });
     } catch (error) {
-        alert(error);
+        dispatch(otherChanges({ starting: false }));
+        dispatch(showError(error.message));
     }
 };
 
@@ -260,3 +283,4 @@ export const upCounterStatus = counter => ({
     type: CHECKING_UP_COUNTER_STATUS,
     counter
 });
+

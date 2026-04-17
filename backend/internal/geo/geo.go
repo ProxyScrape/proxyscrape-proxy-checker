@@ -1,15 +1,5 @@
 package geo
 
-import (
-	_ "embed"
-	"net"
-
-	"github.com/oschwald/geoip2-golang"
-)
-
-//go:embed GeoLite2-City.mmdb
-var mmdbData []byte
-
 // Country holds the result of a GeoIP lookup.
 type Country struct {
 	Code string `json:"code"`
@@ -283,50 +273,13 @@ var codes = map[string]countryInfo{
 	"ZZ": {flag: "unknown", name: "Unknown"},
 }
 
-var unknown = Country{Code: "ZZ", Name: "Unknown", Flag: "unknown"}
-
-var db *geoip2.Reader
-
-func init() {
-	var err error
-	db, err = geoip2.FromBytes(mmdbData)
-	if err != nil {
-		// db remains nil; Lookup will return Unknown
-	}
-}
-
-// Lookup returns geo information for the given IPv4 address.
-// The second return value is the city name (empty string if not found).
-// Returns Country with code "ZZ" (Unknown) if the IP cannot be resolved.
-func Lookup(ip string) (Country, string) {
-	if db == nil {
-		return unknown, ""
-	}
-
-	parsed := net.ParseIP(ip)
-	if parsed == nil {
-		return unknown, ""
-	}
-
-	record, err := db.City(parsed)
-	if err != nil {
-		return unknown, ""
-	}
-
-	code := record.Country.IsoCode
-	info, ok := codes[code]
+// InfoForCode returns the full country name and flag slug for an ISO 3166-1
+// alpha-2 country code. Returns ("", "", false) for unknown codes.
+// Used by geoworker to derive flag/name from a countryCode returned by ip-api.
+func InfoForCode(cc string) (name, flag string, ok bool) {
+	info, ok := codes[cc]
 	if !ok {
-		return unknown, ""
+		return "", "", false
 	}
-
-	city := ""
-	if record.City.Names != nil {
-		city = record.City.Names["en"]
-	}
-
-	return Country{
-		Code: code,
-		Name: info.name,
-		Flag: info.flag,
-	}, city
+	return info.name, info.flag, true
 }

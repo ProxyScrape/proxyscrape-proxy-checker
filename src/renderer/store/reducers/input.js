@@ -9,6 +9,7 @@ const initial = {
     name: '',
     size: 0,
     hasProtocols: false,
+    sourceType: 'file', // 'file' | 'drag_drop' | 'clipboard' | 'extension'
 };
 
 const input = (state = initial, action) => {

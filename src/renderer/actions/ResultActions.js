@@ -18,10 +18,20 @@ import {
     RESULT_EXPORT_TOGGLE,
     RESULT_EXPORT_CHANGE_TYPE,
     RESULT_EXPORT_CHANGE_AUTH_TYPE,
-    RESULT_TOGGLE_HIDE_STATUS
+    RESULT_TOGGLE_HIDE_STATUS,
+    RESULT_PATCH_GEO,
 } from '../constants/ActionTypes';
 import { otherChanges } from './CheckingActions';
 import { wait } from '../misc/wait';
+
+/**
+ * Patches geo fields for a set of enriched rows into the Redux result store.
+ * Rows are matched by host (proxy IP). Called when the SSE stream delivers
+ * updated rows from the geo enrichment worker.
+ *
+ * @param {Array<{host, countryCode, countryName, countryFlag, city}>} rows
+ */
+export const patchGeo = rows => ({ type: RESULT_PATCH_GEO, rows });
 
 /**
  * Maps a raw proxy result object (from SSE events or the history API) to the
@@ -48,6 +58,7 @@ export const mapResultItem = item => ({
     keepAlive: item.keepAlive || false,
     traces: item.traces || null,
     fullData: item.fullData || null,
+    geoStatus: item.geoStatus || 'done',
 });
 
 const getProtocolPrefix = (protocols) => {
@@ -158,10 +169,12 @@ export const showResult = result => async (dispatch, getState) => {
         timeout
     });
 
-    const working = result.items.filter(item => item.status === 'working');
+    const isAuth = item => item.auth && item.auth !== 'none';
+    const working   = result.items.filter(item => item.status === 'working');
+    const failed    = result.items.filter(item => item.status === 'failed');
+    const cancelled = result.items.filter(item => item.status === 'cancelled');
     const totalChecked = input.list ? input.list.length : 0;
-    const workingCount = working.length;
-    const failedCount = totalChecked - workingCount;
+    const actuallyChecked = working.length + failed.length;
 
     const protocolCounts = {};
     working.forEach(item => {
@@ -176,9 +189,14 @@ export const showResult = result => async (dispatch, getState) => {
     trackScreen('Results');
     trackAction('proxy_check_completed', {
         total_checked: totalChecked,
-        working_proxies: workingCount,
-        failed_proxies: failedCount,
-        success_rate: totalChecked > 0 ? Math.round((workingCount / totalChecked) * 100) : 0,
+        working_proxies: working.length,
+        failed_proxies: failed.length,
+        cancelled_proxies: cancelled.length,
+        success_rate: actuallyChecked > 0 ? Math.round((working.length / actuallyChecked) * 100) : 0,
+        working_authenticated: working.filter(isAuth).length,
+        working_unauthenticated: working.filter(i => !isAuth(i)).length,
+        failed_authenticated: failed.filter(isAuth).length,
+        failed_unauthenticated: failed.filter(i => !isAuth(i)).length,
         avg_timeout_ms: avgTimeout,
         protocol_http: protocolCounts.http || 0,
         protocol_https: protocolCounts.https || 0,
@@ -270,3 +288,4 @@ export const toggleHideStatus = status => ({
     type: RESULT_TOGGLE_HIDE_STATUS,
     status,
 });
+

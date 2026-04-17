@@ -25,6 +25,7 @@ export const RESULT_EXPORT_TOGGLE = 'RESULT_EXPORT_TOGGLE';
 export const RESULT_EXPORT_CHANGE_TYPE = 'RESULT_EXPORT_CHANGE_TYPE';
 export const RESULT_EXPORT_CHANGE_AUTH_TYPE = 'RESULT_EXPORT_CHANGE_AUTH_TYPE';
 export const RESULT_TOGGLE_HIDE_STATUS = 'RESULT_TOGGLE_HIDE_STATUS';
+export const RESULT_PATCH_GEO = 'RESULT_PATCH_GEO';
 
 //judges
 export const JUDGES_CHANGE = 'JUDGES_CHANGE';
@@ -71,6 +72,10 @@ export const HISTORY_CLEAR = 'HISTORY_CLEAR';
 
 //settings
 export const SETTINGS_LOAD = 'SETTINGS_LOAD';
+
+//app — global transient error notifications
+export const APP_SET_ERROR = 'APP_SET_ERROR';
+export const APP_CLEAR_ERROR = 'APP_CLEAR_ERROR';
 
 //ui — centralized drawer state (one active drawer at a time)
 export const UI_OPEN_DRAWER = 'UI_OPEN_DRAWER';

@@ -1,0 +1,9 @@
+name            = "proxyscrape-latest-redirect"
+main            = "src/index.js"
+compatibility_date = "2025-04-01"
+
+# This Worker only intercepts /*/latest/* on the R2 custom domain.
+# All other requests fall through to R2 as normal.
+routes = [
+  { pattern = "latest-software.cdn.proxyscrape.com", custom_domain = true, zone_name = "proxyscrape.com" }
+]

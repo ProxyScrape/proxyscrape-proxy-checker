@@ -1,0 +1,30 @@
+{
+	"name": "ip-geo",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-04-15",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	// Secrets (never put real values here — set via `wrangler secret put`):
+	//   IPAPI_KEY    — ip-api.com pro API key
+	//   GEOFEED_URL  — private URL for the geofeed CSV
+	"kv_namespaces": [
+		{
+			"binding": "GEOFEED_KV",
+			"id": "a81ee22b9dde48edb96f82b11bd947f5"
+		}
+	],
+	// Refresh geofeed from the CDN every Monday at 04:00 UTC.
+	"triggers": {
+		"crons": [
+			"0 4 * * 1"
+		]
+	},
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+
+	"workers_dev": true,
+	"preview_urls": false
+}

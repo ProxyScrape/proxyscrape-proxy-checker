@@ -33,7 +33,7 @@ export default class ResultItemsHeader extends React.PureComponent {
     };
 
     render = () => {
-        const { inBlacklists, captureServer, keepAlive, sorting } = this.props;
+        const { inBlacklists, captureServer, keepAlive, sorting, gridTemplate } = this.props;
 
         const headerSx = {
             cursor: 'pointer',
@@ -50,42 +50,42 @@ export default class ResultItemsHeader extends React.PureComponent {
 
         return (
             <Box sx={{
-                display: 'flex',
+                display: 'grid',
+                gridTemplateColumns: gridTemplate,
                 alignItems: 'center',
                 py: 1,
                 px: 1,
                 borderBottom: `1px solid ${alpha('#fff', 0.1)}`,
                 mb: 0.5,
-                minWidth: 0,
                 '& svg': { width: 10, height: 10, fill: 'currentColor' },
             }}>
-                <Box sx={{ width: 40, flexShrink: 0, ...headerSx }} onClick={this.sortBy.status} title="Sort by status"><SortIcon /></Box>
-                <Box sx={{ flex: '2 0 120px', ...headerSx }} onClick={this.sortBy.ip}>
+                <Box sx={{ ...headerSx }} onClick={this.sortBy.status} title="Sort by status"><SortIcon /></Box>
+                <Box sx={{ ...headerSx, minWidth: 0 }} onClick={this.sortBy.ip}>
                     <span>Host</span><SortSVG {...sorting} />
                 </Box>
-                <Box sx={{ flex: '0 0 55px', ...headerSx }} onClick={this.sortBy.port}>
+                <Box sx={{ ...headerSx }} onClick={this.sortBy.port}>
                     <span>Port</span><SortSVG {...sorting} />
                 </Box>
-                <Box sx={{ flex: '1.5 0 110px', ...headerSx }} onClick={this.sortBy.protocols}>
+                <Box sx={{ ...headerSx, minWidth: 0 }} onClick={this.sortBy.protocols}>
                     <span>Protocols</span><SortSVG {...sorting} />
                 </Box>
-                <Box sx={{ flex: '1 0 75px', ...headerSx }} onClick={this.sortBy.anon}>
+                <Box sx={{ ...headerSx, minWidth: 0 }} onClick={this.sortBy.anon}>
                     <span>Anon</span><SortSVG {...sorting} />
                 </Box>
-                <Box sx={{ flex: '1.5 0 110px', ...headerSx }} onClick={this.sortBy.country}>
+                <Box sx={{ ...headerSx, minWidth: 0 }} onClick={this.sortBy.country}>
                     <span>Country</span><SortSVG {...sorting} />
                 </Box>
-                <Box sx={{ width: 30, flexShrink: 0 }} />
-                {keepAlive && <Box sx={{ width: 30, flexShrink: 0 }} />}
+                <Box />
+                {keepAlive && <Box />}
                 {captureServer && (
-                    <Box sx={{ flex: '1 0 75px', ...headerSx }} onClick={this.sortBy.server}>
+                    <Box sx={{ ...headerSx, minWidth: 0 }} onClick={this.sortBy.server}>
                         <span>Server</span><SortSVG {...sorting} />
                     </Box>
                 )}
-                <Box sx={{ width: 70, flexShrink: 0, ...headerSx, justifyContent: 'center' }} onClick={this.sortBy.timeout}>
+                <Box sx={{ ...headerSx, justifyContent: 'center' }} onClick={this.sortBy.timeout}>
                     <TimeIcon />
                 </Box>
-                <Box sx={{ width: 58, flexShrink: 0, ...headerSx, justifyContent: 'center', cursor: 'default', '&:hover': {} }}>
+                <Box sx={{ ...headerSx, justifyContent: 'center', cursor: 'default', '&:hover': {} }}>
                     <span>Details</span>
                 </Box>
             </Box>

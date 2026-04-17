@@ -13,13 +13,13 @@ env:
   # Derived from the pushed tag (e.g. v2.0.0-canary or v2.0.0).
   # Used to inject appVersion into Go binaries.
   APP_VERSION: ${{ github.ref_name }}
+  # Zig version used as C cross-compiler for CGO Windows builds.
+  # go-sqlite3 requires CGO; Zig is the easiest way to cross-compile C from Linux.
+  ZIG_VERSION: "0.14.0"
   # R2 configuration — stored as secrets so forks can't accidentally write to
   # or rely on ProxyScrape's bucket.
   R2_BUCKET: ${{ secrets.R2_BUCKET }}
   R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-  # Zig version used for Windows cross-compilation. Promoted to workflow env so
-  # the GOCACHE key automatically invalidates when Zig is upgraded.
-  ZIG_VERSION: "0.15.2"
   # Cap the Go build cache size so it never exhausts GitHub's 10 GB cache budget.
   GOCACHELIMIT: 2g
 
@@ -29,8 +29,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # fetch-depth 0 + fetch-tags false: we need branch history to verify
+          # the tagged commit is reachable from the correct branch (canary/master),
+          # but we don't need the full tag history here.
+          fetch-depth: 0
+          fetch-tags: false
 
-      - name: Check version consistency
+      - name: Check version consistency and branch alignment
         run: bash scripts/check-versions.sh "${{ github.ref_name }}"
 
   # ── JS bundle: built once, shared across all platform release jobs ────────────
@@ -61,7 +67,10 @@ jobs:
           name: renderer-dist
           path: dist/
 
-  # ── Go binaries: Windows (cross-compiled from Linux with zig cc) ─────────────
+  # ── Go binaries: Windows (cross-compiled from Linux via Zig) ─────────────────
+  # go-sqlite3 requires CGO — CGO_ENABLED=0 produces a broken stub binary.
+  # Zig bundles a full C cross-compilation toolchain, letting us build CGO
+  # Windows targets on an ubuntu runner without MinGW or MSVC.
   build-go-windows:
     needs: [check-versions]
     runs-on: ubuntu-latest
@@ -89,9 +98,9 @@ jobs:
 
       - name: Install Zig
         run: |
-          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
             | tar -xJ -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/zig-x86_64-linux-${ZIG_VERSION}" >> "$GITHUB_PATH"
+          echo "$RUNNER_TEMP/zig-linux-x86_64-${ZIG_VERSION}" >> "$GITHUB_PATH"
 
       - name: Build win-x64
         run: |
@@ -271,6 +280,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Sign Go binaries (Windows)
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE_NAME }}
+          files-folder: ${{ github.workspace }}\bin
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
       - name: Build Windows (no publish)
         run: npx electron-builder --config electron-builder.config.js --win --publish never
         env:
@@ -279,6 +303,21 @@ jobs:
           POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}
           POSTHOG_UI_HOST: ${{ secrets.POSTHOG_UI_HOST }}
           INTERCOM_APP_ID: ${{ secrets.INTERCOM_APP_ID }}
+
+      - name: Sign Windows installers
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE_NAME }}
+          files-folder: ${{ github.workspace }}\release
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
 
       - name: Install s5cmd
         shell: bash

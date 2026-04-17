@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/proxyscrape/checker-backend/internal/blacklist"
+	"github.com/proxyscrape/checker-backend/internal/geoworker"
 	"github.com/proxyscrape/checker-backend/internal/judges"
 	"github.com/proxyscrape/checker-backend/internal/settings"
 	"github.com/proxyscrape/checker-backend/internal/store"
@@ -33,23 +34,30 @@ func init() {
 
 // server holds shared dependencies available to all route handlers.
 type server struct {
-	store    *store.Store
-	settings *settings.Manager
-	verify   TokenVerifier
-	checks   sync.Map // map[string]*runningCheck
-	mu       sync.RWMutex
-	judges   *judges.Judges
-	blists   *blacklist.Blacklist
+	store     *store.Store
+	settings  *settings.Manager
+	verify    TokenVerifier
+	checks    sync.Map // map[string]*runningCheck
+	mu        sync.RWMutex
+	judges    *judges.Judges
+	blists    *blacklist.Blacklist
+	geoWorker *geoworker.Client
 }
 
-// NewServer builds the HTTP API router. POST /api/login is unauthenticated and rate-limited;
-// GET /api/check/{id}/events validates its token inside the handler;
-// all other /api routes go through the auth middleware.
-func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager) http.Handler {
+// NewServer builds the HTTP API router.
+//
+// Route groups:
+//   - Public:  POST /api/login (rate-limited, no token required)
+//   - SSE:     GET  /api/check/{id}/events, GET /api/geo/enrich/events
+//              (NewSSEAuthMiddleware — Bearer header OR ?token= query param,
+//              required because browser EventSource cannot set custom headers)
+//   - REST:    all other /api/* routes (NewAuthMiddleware — Bearer header only)
+func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, geoWorker *geoworker.Client) http.Handler {
 	s := &server{
-		store:    db,
-		settings: mgr,
-		verify:   verifier,
+		store:     db,
+		settings:  mgr,
+		verify:    verifier,
+		geoWorker: geoWorker,
 	}
 
 	r := chi.NewRouter()
@@ -66,13 +74,20 @@ func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager) h
 	}))
 
 	r.Route("/api", func(r chi.Router) {
+		// Public — no token required.
 		r.Group(func(r chi.Router) {
 			r.Use(loginRateLimit)
 			r.Post("/login", s.handleLogin)
 		})
 
-		r.Get("/check/{id}/events", s.handleCheckEvents)
+		// SSE — Bearer header OR ?token= query param (browser EventSource compat).
+		r.Group(func(r chi.Router) {
+			r.Use(NewSSEAuthMiddleware(verifier))
+			r.Get("/check/{id}/events", s.handleCheckEvents)
+			r.Get("/geo/enrich/events", s.handleGeoEnrichEvents)
+		})
 
+		// REST — Bearer header only.
 		r.Group(func(r chi.Router) {
 			r.Use(NewAuthMiddleware(verifier))
 
@@ -95,19 +110,14 @@ func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager) h
 			r.Get("/ip", s.handleGetIP)
 			r.Get("/version", s.handleGetVersion)
 			r.Get("/trace/status", s.handleTraceStatus)
+
+			r.Post("/geo/enrich", s.handleGeoEnrichStart)
+			r.Delete("/geo/enrich", s.handleGeoEnrichCancel)
+			r.Get("/geo/enrich", s.handleGeoEnrichStatus)
 		})
 	})
 
 	return r
-}
-
-func extractBearer(r *http.Request) string {
-	raw := r.Header.Get("Authorization")
-	const prefix = "Bearer "
-	if !strings.HasPrefix(raw, prefix) {
-		return ""
-	}
-	return strings.TrimSpace(raw[len(prefix):])
 }
 
 // --- Rate limit: 10 POST /api/login requests per minute per IP (in-memory) ---
