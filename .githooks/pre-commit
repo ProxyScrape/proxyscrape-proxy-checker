@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Validates version discipline on the master branch before every commit.
+#
+# On master:
+#   - Blocks commits where package.json still has a -canary version
+#     (you must bump to stable before committing the merge result).
+#   - Blocks commits where the stable version X does not match the latest
+#     canary cycle X (e.g. committing 2.3.0 when canary was 2.2.x).
+#
+# All other branches: passes through immediately.
+# Activated automatically via: git config core.hooksPath .githooks
+# (set by `npm install` via the prepare script in package.json)
+
+set -euo pipefail
+
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+
+# Only enforce on master.
+if [ "$BRANCH" != "master" ]; then
+    exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel)"
+PKG_VERSION=$(python3 -c "import json; print(json.load(open('$ROOT/package.json'))['version'])")
+
+echo "pre-commit (master): checking version '$PKG_VERSION'..."
+
+# ── 1. No -canary versions on master ─────────────────────────────────────────
+if [[ "$PKG_VERSION" == *"-canary"* ]]; then
+    echo ""
+    echo "ERROR: package.json version '$PKG_VERSION' still has a -canary suffix."
+    echo "  You must bump to the stable version before committing on master."
+    echo ""
+    echo "  Steps:"
+    echo "    1. Find the correct stable version (same X as latest canary):"
+    echo "       git tag --list 'v2.*-canary' --sort=-version:refname | head -1"
+    echo "    2. Bump: npm version 2.X.0 --no-git-tag-version"
+    echo "    3. git add package.json package-lock.json && git commit"
+    exit 1
+fi
+
+# ── 2. Stable version X must match the latest canary cycle X ─────────────────
+if [[ "$PKG_VERSION" =~ ^2\.([0-9]+)\.([0-9]+)$ ]]; then
+    PKG_X="${BASH_REMATCH[1]}"
+    PKG_Y="${BASH_REMATCH[2]}"
+
+    # Y must be 0 on master (stable releases only).
+    if [ "$PKG_Y" != "0" ]; then
+        echo ""
+        echo "ERROR: Stable version '$PKG_VERSION' has Y=$PKG_Y — stable releases must have Y=0."
+        echo "  Use: npm version 2.$PKG_X.0 --no-git-tag-version"
+        exit 1
+    fi
+
+    # X must match the latest canary cycle.
+    LATEST_CANARY=$(git tag --list 'v2.*-canary' --sort=-version:refname 2>/dev/null | head -1)
+    if [ -n "$LATEST_CANARY" ] && [[ "$LATEST_CANARY" =~ ^v2\.([0-9]+)\.[0-9]+-canary$ ]]; then
+        CANARY_X="${BASH_REMATCH[1]}"
+        if [ "$PKG_X" != "$CANARY_X" ]; then
+            echo ""
+            echo "ERROR: Version '$PKG_VERSION' has X=$PKG_X but the latest canary cycle is X=$CANARY_X."
+            echo "  The stable version must use the same X as the canary it promotes."
+            echo "  Correct stable version: 2.$CANARY_X.0"
+            echo ""
+            echo "  Fix: npm version 2.$CANARY_X.0 --no-git-tag-version"
+            echo "       git add package.json package-lock.json"
+            exit 1
+        fi
+    fi
+fi
+
+echo "  ✓ Version '$PKG_VERSION' is valid for a stable commit on master"
