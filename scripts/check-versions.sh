@@ -2,7 +2,9 @@
 # Verifies release tag discipline before any build job runs.
 #
 # Checks:
-#   1. package.json version matches the git tag
+#   1a. package.json version matches the git tag
+#   1b. package-lock.json version matches package.json
+#   1c. Both files are committed (no uncommitted changes)
 #   2. Version follows the 2.X.Y[-canary] scheme
 #   3. Stable tags have Y=0 (no -canary suffix)
 #   4. Canary tags have Y>=1 (with -canary suffix)
@@ -28,20 +30,41 @@ TAG="$1"
 TAG_VERSION="${TAG#v}"
 
 PKG_VERSION=$(python3 -c "import json; print(json.load(open('$ROOT/package.json'))['version'])")
+LOCK_VERSION=$(python3 -c "import json; print(json.load(open('$ROOT/package-lock.json'))['version'])")
 
 FAIL=0
 
 echo "Checking version consistency..."
-echo "  Git tag      : $TAG_VERSION (from $TAG)"
-echo "  package.json : $PKG_VERSION"
+echo "  Git tag         : $TAG_VERSION (from $TAG)"
+echo "  package.json    : $PKG_VERSION"
+echo "  package-lock.json: $LOCK_VERSION"
 
-# ── 1. package.json must match the tag ───────────────────────────────────────
+# ── 1a. package.json must match the tag ──────────────────────────────────────
 if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
     echo ""
     echo "ERROR: package.json ($PKG_VERSION) does not match git tag ($TAG_VERSION)"
     echo "  Fix: npm version $TAG_VERSION --no-git-tag-version"
     FAIL=1
 fi
+
+# ── 1b. package-lock.json must match package.json ────────────────────────────
+if [ "$LOCK_VERSION" != "$PKG_VERSION" ]; then
+    echo ""
+    echo "ERROR: package-lock.json ($LOCK_VERSION) does not match package.json ($PKG_VERSION)"
+    echo "  Fix: npm version $PKG_VERSION --no-git-tag-version  (rewrites both files)"
+    echo "  Then: git add package.json package-lock.json && git commit --amend --no-edit"
+    FAIL=1
+fi
+
+# ── 1c. Both files must be committed — no staged or unstaged changes ──────────
+for F in package.json package-lock.json; do
+    if ! git diff --quiet HEAD -- "$ROOT/$F" 2>/dev/null; then
+        echo ""
+        echo "ERROR: $F has uncommitted changes — commit it before tagging."
+        echo "  Fix: git add $F && git commit --amend --no-edit"
+        FAIL=1
+    fi
+done
 
 # ── 2. Version format must be 2.X.Y or 2.X.Y-canary ─────────────────────────
 if [[ "$TAG_VERSION" =~ ^2\.([0-9]+)\.([0-9]+)(-canary)?$ ]]; then
