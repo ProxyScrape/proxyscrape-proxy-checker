@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Checks version consistency before any push.
-# If pushing a tag, verifies it matches package.json and Go appVersion.
+# If pushing a tag, verifies it matches package.json and enforces X-cycle rules.
+# Branch-only pushes pass through immediately with no checks.
 # Activated automatically via: git config core.hooksPath .githooks
 # (set by `npm install` via the prepare script in package.json)
 
@@ -12,5 +13,10 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         TAG="${local_ref#refs/tags/}"
     fi
 done
+
+# No tag being pushed — nothing to validate.
+if [ -z "$TAG" ]; then
+    exit 0
+fi
 
 exec bash "$ROOT/scripts/check-versions.sh" "$TAG"
