@@ -75,15 +75,10 @@ export const pingJudgesWithOverlay = protocols => async (dispatch, getState) => 
 
     dispatch(changeState({ isActive: false, locked: false }));
 
-    const needsSSL = protocols.includes('https');
-    const needsHTTP = protocols.includes('http');
-    const needsSocks = protocols.some(p => p === 'socks4' || p === 'socks5');
-    const hasSSL = Object.values(statusMap).some(s => s.isSSL && s.alive);
-    const hasHTTP = Object.values(statusMap).some(s => !s.isSSL && s.alive);
-    const hasAny = hasSSL || hasHTTP;
-
-    if (needsSSL && !hasSSL) return false;
-    if (needsHTTP && !hasHTTP) return false;
-    if (needsSocks && !hasAny) return false;
-    return true;
+    // Any alive judge (HTTP or SSL) works for all proxy protocols — the
+    // backend uses the same judge URL regardless of proxy protocol type.
+    // SSL judges are opt-in for users who want to test CONNECT tunnel
+    // behaviour specifically, not a requirement for HTTPS proxy checking.
+    const hasAny = Object.values(statusMap).some(s => s.alive);
+    return hasAny;
 };

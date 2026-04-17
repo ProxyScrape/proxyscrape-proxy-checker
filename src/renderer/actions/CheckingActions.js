@@ -19,22 +19,16 @@ export const respondToProtocolWarning = choice => dispatch => {
     }
 };
 
-const validateJudges = (judges, targetProtocols) => {
-    if (targetProtocols.some(protocol => ['http', 'https'].includes(protocol)) && !judges.some(({ url }) => !url.match(/https:\/\//))) {
-        throw new Error('You have no judges for HTTP/HTTPS');
-    }
-
-    if (judges.filter(({ active }) => active).length == 0) {
+const validateJudges = (judges) => {
+    if (judges.filter(({ active }) => active).length === 0) {
         throw new Error('You have no active judges');
     }
 
-    if (judges.every(({ url }) => {
-        try { new URL(url); return true; } catch { return false; }
+    if (judges.some(({ url }) => {
+        try { new URL(url); return false; } catch { return true; }
     })) {
-        return true;
+        throw new Error('Judge URL is not correct');
     }
-
-    throw new Error('Judge URL is not correct');
 };
 
 const validateBlacklist = items => {
@@ -114,7 +108,7 @@ export const start = () => async (dispatch, getState) => {
             ? [...new Set([...listProtocols, ...selectedProtocols])]
             : selectedProtocols;
 
-        validateJudges(activeJudges, protocols);
+        validateJudges(activeJudges);
 
         if (blacklist.filter) {
             validateBlacklist(blacklist.items);
@@ -133,6 +127,8 @@ export const start = () => async (dispatch, getState) => {
 
         trackAction('proxy_check_started', {
             proxy_count: input.list.length,
+            authenticated_proxies: input.list.filter(p => p.auth && p.auth !== 'none').length,
+            unauthenticated_proxies: input.list.filter(p => !p.auth || p.auth === 'none').length,
             protocols: protocols.join(','),
             threads: core.threads,
             timeout: core.timeout,

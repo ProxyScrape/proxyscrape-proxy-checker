@@ -172,7 +172,8 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 		defer judgeCancel()
 
 		var err error
-		j, err = judges.New(judgeCtx, judgeItems, req.Protocols, false)
+		cfg := s.settings.Get()
+		j, err = judges.New(judgeCtx, judgeItems, req.Protocols, cfg.Judges.Swap)
 		if err != nil {
 			log.Printf("[check] judge init failed: %v", err)
 			jsonError(w, http.StatusBadRequest, fmt.Sprintf("judges: %v", err))
@@ -486,16 +487,6 @@ func marshalJSON(v interface{}) string {
 // =============================================================================
 
 func (s *server) handleCheckEvents(w http.ResponseWriter, r *http.Request) {
-	// Validate token from header or query param (outside auth middleware).
-	token := extractBearer(r)
-	if token == "" {
-		token = r.URL.Query().Get("token")
-	}
-	if token == "" || !s.verify(r.Context(), token) {
-		jsonError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-
 	id := chi.URLParam(r, "id")
 
 	w.Header().Set("Content-Type", "text/event-stream")

@@ -44,9 +44,14 @@ type server struct {
 	geoWorker *geoworker.Client
 }
 
-// NewServer builds the HTTP API router. POST /api/login is unauthenticated and rate-limited;
-// GET /api/check/{id}/events validates its token inside the handler;
-// all other /api routes go through the auth middleware.
+// NewServer builds the HTTP API router.
+//
+// Route groups:
+//   - Public:  POST /api/login (rate-limited, no token required)
+//   - SSE:     GET  /api/check/{id}/events, GET /api/geo/enrich/events
+//              (NewSSEAuthMiddleware — Bearer header OR ?token= query param,
+//              required because browser EventSource cannot set custom headers)
+//   - REST:    all other /api/* routes (NewAuthMiddleware — Bearer header only)
 func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, geoWorker *geoworker.Client) http.Handler {
 	s := &server{
 		store:     db,
@@ -69,13 +74,20 @@ func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, g
 	}))
 
 	r.Route("/api", func(r chi.Router) {
+		// Public — no token required.
 		r.Group(func(r chi.Router) {
 			r.Use(loginRateLimit)
 			r.Post("/login", s.handleLogin)
 		})
 
-		r.Get("/check/{id}/events", s.handleCheckEvents)
+		// SSE — Bearer header OR ?token= query param (browser EventSource compat).
+		r.Group(func(r chi.Router) {
+			r.Use(NewSSEAuthMiddleware(verifier))
+			r.Get("/check/{id}/events", s.handleCheckEvents)
+			r.Get("/geo/enrich/events", s.handleGeoEnrichEvents)
+		})
 
+		// REST — Bearer header only.
 		r.Group(func(r chi.Router) {
 			r.Use(NewAuthMiddleware(verifier))
 
@@ -102,20 +114,10 @@ func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, g
 			r.Post("/geo/enrich", s.handleGeoEnrichStart)
 			r.Delete("/geo/enrich", s.handleGeoEnrichCancel)
 			r.Get("/geo/enrich", s.handleGeoEnrichStatus)
-			r.Get("/geo/enrich/events", s.handleGeoEnrichEvents)
 		})
 	})
 
 	return r
-}
-
-func extractBearer(r *http.Request) string {
-	raw := r.Header.Get("Authorization")
-	const prefix = "Bearer "
-	if !strings.HasPrefix(raw, prefix) {
-		return ""
-	}
-	return strings.TrimSpace(raw[len(prefix):])
 }
 
 // --- Rate limit: 10 POST /api/login requests per minute per IP (in-memory) ---
