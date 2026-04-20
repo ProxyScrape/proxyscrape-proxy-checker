@@ -70,6 +70,7 @@
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.1",
     "@intercom/messenger-js-sdk": "^0.0.19",
+    "@mui/icons-material": "^9.0.0",
     "@posthog/react": "^1.9.0",
     "framer-motion": "^12.38.0",
     "posthog-js": "^1.367.0"

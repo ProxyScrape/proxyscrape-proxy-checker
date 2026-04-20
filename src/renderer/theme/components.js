@@ -95,6 +95,9 @@ export const components = {
         '&.Mui-checked': {
           color: blueBrand[500],
         },
+        '&.Mui-disabled': {
+          color: alpha('#fff', 0.12),
+        },
       },
     },
   },

@@ -4,6 +4,7 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import Typography from '@mui/material/Typography';
 import Tooltip from '@mui/material/Tooltip';
 import Box from '@mui/material/Box';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { HelpTip, tooltipSx } from './HelpTip';
 import { blueBrand } from '../../theme/palette';
 import { openPsLink } from '../../misc/links';
@@ -52,7 +53,10 @@ const Checkbox = ({ id, name, checked, onChange, text, tip, disabled, lockedTip 
                         <Typography variant="body2" sx={{ fontWeight: 600, ...dottedSx }}>{text}</Typography>
                     </HelpTip>
                 ) : tip && isLocked ? (
-                    <Typography variant="body2" sx={{ fontWeight: 600, ...lockedDottedSx }}>{text}</Typography>
+                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, ...lockedDottedSx }}>
+                        <Typography component="span" variant="body2" sx={{ fontWeight: 600 }}>{text}</Typography>
+                        <LockOutlinedIcon sx={{ fontSize: '0.7rem', opacity: 0.5, flexShrink: 0 }} />
+                    </Box>
                 ) : (
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>{text}</Typography>
                 )
