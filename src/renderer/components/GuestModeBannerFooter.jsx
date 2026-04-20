@@ -29,23 +29,23 @@ const GuestModeBannerFooter = memo(() => (
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: 2,
+            flexWrap: 'wrap',
+            gap: 1,
         }}
     >
-        {/* Left: icon + message — white text for WCAG-compliant contrast */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-            <Box sx={{ color: ACCENT_LIGHT, mt: '1px' }}>
-                <MonitorIcon />
-            </Box>
+        {/* Icon — stands alone so the text+button group wraps independently of it */}
+        <Box sx={{ color: ACCENT_LIGHT, mt: '1px', flexShrink: 0 }}>
+            <MonitorIcon />
+        </Box>
+
+        {/* Text + CTA in a flex-wrap group: when narrow, button falls under the text (not the icon) */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, flex: 1, minWidth: 0 }}>
             <Typography
                 variant="caption"
                 sx={{
                     color: alpha('#fff', 0.8),
                     fontSize: '0.72rem',
                     lineHeight: 1.4,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
                 }}
             >
                 You're using the <strong style={{ color: '#fff' }}>online checker</strong> — the{' '}
@@ -65,34 +65,33 @@ const GuestModeBannerFooter = memo(() => (
                 </Box>
                 {' '}has unlimited threads, custom judges & full history.
             </Typography>
-        </Box>
 
-        {/* Right: solid CTA — far more visible than an outlined button on a tinted bg */}
-        <Button
-            size="small"
-            variant="contained"
-            href={DESKTOP_URL}
-            onClick={openPsLink}
-            sx={{
-                flexShrink: 0,
-                bgcolor: ACCENT,
-                color: '#fff',
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                py: 0.35,
-                px: 1.5,
-                minWidth: 0,
-                whiteSpace: 'nowrap',
-                boxShadow: 'none',
-                textTransform: 'none',
-                '&:hover': {
-                    bgcolor: '#3D74A9',
+            <Button
+                size="small"
+                variant="contained"
+                href={DESKTOP_URL}
+                onClick={openPsLink}
+                sx={{
+                    flexShrink: 0,
+                    bgcolor: ACCENT,
+                    color: '#fff',
+                    fontSize: '0.72rem',
+                    fontWeight: 600,
+                    py: 0.35,
+                    px: 1.5,
+                    minWidth: 0,
+                    whiteSpace: 'nowrap',
                     boxShadow: 'none',
-                },
-            }}
-        >
-            Get desktop app
-        </Button>
+                    textTransform: 'none',
+                    '&:hover': {
+                        bgcolor: '#3D74A9',
+                        boxShadow: 'none',
+                    },
+                }}
+            >
+                Get desktop app
+            </Button>
+        </Box>
     </Box>
 ));
 

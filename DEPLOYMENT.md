@@ -6,11 +6,13 @@ This document covers deploying the proxy checker as a public-facing web server i
 
 ## Overview
 
-| Component | Detail |
-|---|---|
-| Branch | `web-prod` (branched from `canary`, no desktop versioning) |
-| Mode | Guest — anonymous sessions via HttpOnly cookie, no login |
-| Stack | Go binary (CGO, SQLite) + embedded React SPA → Nginx (TLS) |
+
+| Component | Detail                                                     |
+| --------- | ---------------------------------------------------------- |
+| Branch    | `web-prod` (branched from `canary`, no desktop versioning) |
+| Mode      | Guest — anonymous sessions via HttpOnly cookie, no login   |
+| Stack     | Go binary (CGO, SQLite) + embedded React SPA → Nginx (TLS) |
+
 
 ---
 
@@ -79,6 +81,7 @@ bash scripts/build-webserver.sh
 ```
 
 The script:
+
 1. Runs `npm run build:renderer` — compiles the React SPA via `electron-vite`
 2. Copies the renderer output into `backend/internal/api/web/` (embedded via `//go:embed`)
 3. Compiles the Go binary with `-tags webserver` and `CGO_ENABLED=1` (required for SQLite)
@@ -207,10 +210,12 @@ curl -s http://127.0.0.1:8080/api/mode
 
 The Go binary uses `go-sqlite3` for session and settings storage, which requires CGO. The `webserver` build tag excludes the pcap/libpcap dependency (TCP packet capture — desktop only), so only a C compiler and standard system libraries are needed:
 
-| Dependency | Desktop | Web server |
-|---|---|---|
-| SQLite (`go-sqlite3`) | ✅ CGO | ✅ CGO |
-| libpcap (`gopacket/pcap`) | ✅ CGO | ❌ excluded via `!webserver` tag |
+
+| Dependency                | Desktop | Web server                      |
+| ------------------------- | ------- | ------------------------------- |
+| SQLite (`go-sqlite3`)     | ✅ CGO   | ✅ CGO                           |
+| libpcap (`gopacket/pcap`) | ✅ CGO   | ❌ excluded via `!webserver` tag |
+
 
 ### Why Nginx?
 
@@ -228,8 +233,11 @@ Guest sessions are anonymous HttpOnly cookies with a 30-day sliding window TTL. 
 
 The following features are disabled for guest users, both in the UI (lock icon + tooltip) and enforced server-side in `handleCheck`:
 
-| Feature | Reason |
-|---|---|
-| Keep-Alive connections | Requires persistent connection tracking |
-| Local DNS resolution | Causes DNS leaks; desktop-only |
+
+| Feature                     | Reason                                              |
+| --------------------------- | --------------------------------------------------- |
+| Keep-Alive connections      | Requires persistent connection tracking             |
+| Local DNS resolution        | Causes DNS leaks; desktop-only                      |
 | Traces (TCP packet capture) | Requires libpcap — not compiled into the web binary |
+
+

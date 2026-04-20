@@ -188,7 +188,7 @@ const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceSt
                     <Checkbox id='core-local-dns' name='localDns' checked={localDns} onChange={toggleOption} text='Local DNS' tip="Resolve target hostnames locally before sending to the proxy (classic SOCKS4/SOCKS5 behaviour). Off by default — not recommended, as it causes DNS leaks and may produce false negatives." lockedTip={guestLock('Local DNS', 'Local DNS resolution is only available in the free desktop app.')} />
                 </Box>
             </Box>
-            <Box sx={{ display: 'flex', gap: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
                 <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, flex: 1 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                         <HelpTip title="Number of proxies checked simultaneously. Maximum depends on how many protocols are enabled.">
