@@ -19,7 +19,6 @@ This document covers deploying the proxy checker as a public-facing web server i
 `web-prod` is a long-lived branch that exists solely for the hosted web deployment. Key differences from `canary`/`master`:
 
 - `package.json` version has no `-canary` suffix → suppresses the canary banner in the UI
-- The `.githooks/pre-commit` desktop version gate is removed (desktop builds are irrelevant here)
 - No desktop release CI is triggered — only the Go webserver binary matters
 
 To pull fixes from `canary` into `web-prod`:
