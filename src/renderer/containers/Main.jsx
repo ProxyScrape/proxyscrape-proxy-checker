@@ -280,7 +280,7 @@ class Main extends React.PureComponent {
                     bgcolor: 'background.paper',
                     minHeight: '100vh',
                 }}>
-                    <Box sx={{
+                    <Box id="checker-scroll-root" sx={{
                         width: '100%',
                         overflowY: 'auto',
                         height: `calc(100vh - ${TITLEBAR_HEIGHT}px)`,

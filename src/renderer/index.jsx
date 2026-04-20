@@ -18,6 +18,7 @@ import { version } from '../../package.json';
 import { loadSettings } from './actions/SettingsActions';
 import { reconnectIfRunning } from './actions/CheckingActions';
 import { initMode, isGuestMode } from './misc/mode';
+import { TITLEBAR_HEIGHT } from './constants/Layout';
 
 import '@fontsource/montserrat/400.css';
 import '@fontsource/montserrat/500.css';
@@ -106,6 +107,38 @@ function AppRoot() {
     // 'login'    = server mode, no stored token → show Login screen
     // 'ready'    = all auth satisfied, render Main
     const [appState, setAppState] = useState('loading');
+
+    // When embedded in an iframe, tell the parent our rendered height after the
+    // app is ready so the parent can size the iframe to fit the content exactly,
+    // avoiding both outer-page scroll and internal iframe scroll.
+    useEffect(() => {
+        if (window.self === window.top) return; // not in an iframe
+        if (appState !== 'ready') return;
+
+        const sendHeight = () => {
+            // The app uses a fixed-height inner scroll container, so
+            // document.documentElement.scrollHeight always equals the iframe's
+            // current height (not the content's natural height). Instead we
+            // measure the scroll container's true content height and add the
+            // titlebar that sits above it.
+            const scrollRoot = document.getElementById('checker-scroll-root');
+            const height = scrollRoot
+                ? TITLEBAR_HEIGHT + scrollRoot.scrollHeight
+                : document.documentElement.scrollHeight;
+            window.parent.postMessage({ type: 'checker-height', height }, '*');
+        };
+
+        // ResizeObserver fires when the rendered content changes size (e.g. after
+        // fonts/images load). window resize also triggers a new measurement.
+        const ro = new ResizeObserver(sendHeight);
+        ro.observe(document.documentElement);
+        window.addEventListener('resize', sendHeight);
+
+        return () => {
+            ro.disconnect();
+            window.removeEventListener('resize', sendHeight);
+        };
+    }, [appState]);
 
     useEffect(() => {
         if (isDesktop) {
