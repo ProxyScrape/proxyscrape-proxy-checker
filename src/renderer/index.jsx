@@ -122,9 +122,13 @@ function AppRoot() {
             // measure the scroll container's true content height and add the
             // titlebar that sits above it.
             const scrollRoot = document.getElementById('checker-scroll-root');
+            // Add 2px to absorb subpixel rounding on high-DPR devices (e.g. Samsung
+            // phones with DPR 2.625). scrollHeight is an integer rounded down from the
+            // true physical-pixel height, which can leave the iframe 1px short and
+            // produce a hairline scrollbar only visible on real hardware.
             const height = scrollRoot
-                ? TITLEBAR_HEIGHT + scrollRoot.scrollHeight
-                : document.documentElement.scrollHeight;
+                ? TITLEBAR_HEIGHT + scrollRoot.scrollHeight + 2
+                : document.documentElement.scrollHeight + 2;
             window.parent.postMessage({ type: 'checker-height', height }, '*');
         };
 
