@@ -42,6 +42,17 @@ type server struct {
 	judges    *judges.Judges
 	blists    *blacklist.Blacklist
 	geoWorker *geoworker.Client
+	// mode is "desktop", "server", or "guest". Handlers use it to apply
+	// mode-specific logic (e.g. session-scoped clears in guest mode).
+	mode string
+	// guestInFlightLimit is the maximum number of proxies that may be actively
+	// checked within a single guest session at once. Set at startup from the
+	// --guest-max-proxies-in-flight CLI flag; 0 means no limit.
+	guestInFlightLimit int
+	// guestSessionInFlight maps guest session ID → *atomic.Int64, tracking
+	// the number of proxies currently being checked for that session. Each
+	// session has its own counter so one user cannot affect another's quota.
+	guestSessionInFlight sync.Map
 }
 
 // NewServer builds the HTTP API router.
@@ -52,12 +63,15 @@ type server struct {
 //              (NewSSEAuthMiddleware — Bearer header OR ?token= query param,
 //              required because browser EventSource cannot set custom headers)
 //   - REST:    all other /api/* routes (NewAuthMiddleware — Bearer header only)
-func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, geoWorker *geoworker.Client) http.Handler {
+// NewServer builds the HTTP API router for desktop and server modes.
+// For guest mode use NewGuestServer instead.
+func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, geoWorker *geoworker.Client, mode string) http.Handler {
 	s := &server{
 		store:     db,
 		settings:  mgr,
 		verify:    verifier,
 		geoWorker: geoWorker,
+		mode:      mode,
 	}
 
 	r := chi.NewRouter()
@@ -74,6 +88,9 @@ func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, g
 	}))
 
 	r.Route("/api", func(r chi.Router) {
+		// Public — no auth required.
+		r.Get("/mode", s.handleGetMode)
+
 		// Public — no token required.
 		r.Group(func(r chi.Router) {
 			r.Use(loginRateLimit)
@@ -102,7 +119,7 @@ func NewServer(verifier TokenVerifier, db *store.Store, mgr *settings.Manager, g
 			r.Get("/settings", s.handleGetSettings)
 			r.Put("/settings", s.handleUpdateSettings)
 
-			r.Post("/judges/refresh", s.handleJudgesRefresh)
+			r.Get("/judges/refresh", s.handleJudgesRefresh)
 
 			r.Get("/blacklist/status", s.handleBlacklistStatus)
 			r.Post("/blacklist/refresh", s.handleBlacklistRefresh)

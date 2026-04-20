@@ -47,7 +47,7 @@ export const pingJudgesWithOverlay = protocols => async (dispatch, getState) => 
 
     let statusMap = {};
     try {
-        const statuses = await apiFetch('/api/judges/refresh', { method: 'POST' });
+        const statuses = await apiFetch('/api/judges/refresh');
         if (Array.isArray(statuses)) {
             statuses.forEach(s => { statusMap[s.url] = s; });
         }

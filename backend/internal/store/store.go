@@ -29,10 +29,19 @@ type User struct {
 	CreatedAt    time.Time
 }
 
-// Session represents an authenticated browser session.
+// Session represents an authenticated browser session (server mode).
 type Session struct {
 	Token     string
 	UserID    string
+	ExpiresAt time.Time
+}
+
+// GuestSession represents an anonymous browser session (guest mode).
+// Sessions are identified by a 32-byte crypto/rand ID stored in an HttpOnly cookie.
+type GuestSession struct {
+	ID        string
+	CreatedAt time.Time
+	LastSeen  time.Time
 	ExpiresAt time.Time
 }
 
@@ -45,6 +54,9 @@ type Check struct {
 	TimeoutMs  int64     `json:"timeout_ms"`
 	DurationMs int64     `json:"duration_ms"`
 	Protocols  []string  `json:"protocols"`
+	// SessionID is set in guest mode to scope checks to a single browser session.
+	// Empty in desktop and server modes.
+	SessionID string `json:"-"`
 }
 
 // CheckResult is a single proxy result within a Check.
@@ -88,14 +100,22 @@ CREATE TABLE IF NOT EXISTS sessions (
   FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
-CREATE TABLE IF NOT EXISTS checks (
-  id TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS guest_sessions (
+  id         TEXT PRIMARY KEY,
   created_at INTEGER NOT NULL,
-  total INTEGER NOT NULL,
-  working INTEGER NOT NULL,
-  timeout_ms INTEGER NOT NULL,
+  last_seen  INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS checks (
+  id         TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  total      INTEGER NOT NULL,
+  working    INTEGER NOT NULL,
+  timeout_ms  INTEGER NOT NULL,
   duration_ms INTEGER NOT NULL,
-  protocols TEXT NOT NULL
+  protocols  TEXT NOT NULL,
+  session_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS check_results (
@@ -216,6 +236,45 @@ var migrations = []migration{
 			return err
 		},
 		down: nil, // intentionally irreversible
+	},
+	{
+		// v5: add session_id to checks for guest-mode per-session data isolation,
+		// and create guest_sessions table for anonymous browser sessions.
+		// Fresh installs already have both from baseSchema; existing DBs get
+		// the column and table added idempotently.
+		up: func(tx *sql.Tx) error {
+			// Add session_id column to checks if not already present.
+			var colCount int
+			if err := tx.QueryRow(
+				`SELECT COUNT(*) FROM pragma_table_info('checks') WHERE name='session_id'`,
+			).Scan(&colCount); err != nil {
+				return err
+			}
+			if colCount == 0 {
+				if _, err := tx.Exec(`ALTER TABLE checks ADD COLUMN session_id TEXT`); err != nil {
+					return err
+				}
+			}
+			// Index for fast per-session listing (WHERE session_id = ?).
+			if _, err := tx.Exec(
+				`CREATE INDEX IF NOT EXISTS idx_checks_session_id ON checks (session_id)`,
+			); err != nil {
+				return err
+			}
+			// Create guest_sessions table if not already present.
+			_, err := tx.Exec(`
+				CREATE TABLE IF NOT EXISTS guest_sessions (
+				  id         TEXT PRIMARY KEY,
+				  created_at INTEGER NOT NULL,
+				  last_seen  INTEGER NOT NULL,
+				  expires_at INTEGER NOT NULL
+				)`)
+			return err
+		},
+		down: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`DROP INDEX IF EXISTS idx_checks_session_id`)
+			return err
+		},
 	},
 }
 
@@ -497,24 +556,43 @@ func (s *Store) PurgeExpiredSessions(ctx context.Context) error {
 // --- Checks ---
 
 // SaveCheck inserts a check run record.
-func (s *Store) SaveCheck(ctx context.Context, c Check) error {
+// Returns (true, nil) on success, (false, nil) when a guest session has already
+// been pruned (the row is simply not inserted — no orphan, no error), or
+// (false, err) on a real database error.
+func (s *Store) SaveCheck(ctx context.Context, c Check) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	protocols, err := marshalJSON(c.Protocols)
 	if err != nil {
-		return fmt.Errorf("store: marshal protocols: %w", err)
+		return false, fmt.Errorf("store: marshal protocols: %w", err)
 	}
 
-	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO checks (id, created_at, total, working, timeout_ms, duration_ms, protocols)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		c.ID, c.CreatedAt.Unix(), c.Total, c.Working, c.TimeoutMs, c.DurationMs, protocols,
-	)
-	if err != nil {
-		return fmt.Errorf("store: save check: %w", err)
+	var result sql.Result
+	if c.SessionID != "" {
+		// Guest mode: only insert if the session still exists.
+		// Uses a conditional SELECT so that an expired/pruned session
+		// produces 0 rows affected with no error — preventing orphaned rows
+		// when the prune goroutine runs between check completion and SaveCheck.
+		result, err = s.db.ExecContext(ctx,
+			`INSERT INTO checks (id, created_at, total, working, timeout_ms, duration_ms, protocols, session_id)
+			 SELECT ?, ?, ?, ?, ?, ?, ?, ?
+			 WHERE EXISTS (SELECT 1 FROM guest_sessions WHERE id = ?)`,
+			c.ID, c.CreatedAt.Unix(), c.Total, c.Working, c.TimeoutMs, c.DurationMs, protocols, c.SessionID,
+			c.SessionID,
+		)
+	} else {
+		result, err = s.db.ExecContext(ctx,
+			`INSERT INTO checks (id, created_at, total, working, timeout_ms, duration_ms, protocols, session_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
+			c.ID, c.CreatedAt.Unix(), c.Total, c.Working, c.TimeoutMs, c.DurationMs, protocols,
+		)
 	}
-	return nil
+	if err != nil {
+		return false, fmt.Errorf("store: save check: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	return rows > 0, nil
 }
 
 // SaveCheckResults bulk-inserts proxy check results within a single transaction.
@@ -588,12 +666,26 @@ func (s *Store) SaveCheckResults(ctx context.Context, results []CheckResult) err
 	return nil
 }
 
-// ListChecks returns all check runs ordered by created_at descending.
-func (s *Store) ListChecks(ctx context.Context) ([]Check, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, created_at, total, working, timeout_ms, duration_ms, protocols
-		 FROM checks ORDER BY created_at DESC`,
+// ListChecks returns check runs ordered by created_at descending.
+// When sessionID is non-empty only checks for that session are returned;
+// when empty all checks are returned (desktop / server modes).
+func (s *Store) ListChecks(ctx context.Context, sessionID string) ([]Check, error) {
+	var (
+		rows *sql.Rows
+		err  error
 	)
+	if sessionID != "" {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, created_at, total, working, timeout_ms, duration_ms, protocols
+			 FROM checks WHERE session_id = ? ORDER BY created_at DESC`,
+			sessionID,
+		)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, created_at, total, working, timeout_ms, duration_ms, protocols
+			 FROM checks ORDER BY created_at DESC`,
+		)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("store: list checks: %w", err)
 	}
@@ -609,7 +701,6 @@ func (s *Store) ListChecks(ctx context.Context) ([]Check, error) {
 		}
 		c.CreatedAt = time.Unix(ts, 0)
 		if c.Protocols, err = unmarshalStrings(protocols); err != nil {
-			// Skip rows with invalid/legacy protocol JSON rather than aborting the list.
 			c.Protocols = []string{}
 		}
 		checks = append(checks, c)
@@ -618,21 +709,32 @@ func (s *Store) ListChecks(ctx context.Context) ([]Check, error) {
 }
 
 // GetCheckResults returns a paginated page of results for a given check, plus the total count.
-func (s *Store) GetCheckResults(ctx context.Context, checkID string, page, limit int) ([]CheckResult, int, error) {
+//
+// When sessionID is non-empty the query joins with the checks table and
+// requires the check's session_id to match, so a caller cannot retrieve
+// another session's results by guessing a check UUID. Pass "" in desktop and
+// server modes to skip the filter (ownership is not session-scoped there).
+func (s *Store) GetCheckResults(ctx context.Context, checkID, sessionID string, page, limit int) ([]CheckResult, int, error) {
 	var total int
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM check_results WHERE check_id = ?`, checkID,
+		`SELECT COUNT(*)
+		 FROM check_results cr
+		 JOIN checks c ON c.id = cr.check_id
+		 WHERE cr.check_id = ? AND (? = '' OR c.session_id = ?)`,
+		checkID, sessionID, sessionID,
 	).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("store: count results: %w", err)
 	}
 
 	offset := (page - 1) * limit
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, check_id, host, port, auth, status, protocols, anon, timeout_ms,
-		        country_code, country_name, country_flag, city, blacklists, errors, server, keep_alive, traces, full_data, geo_status
-		 FROM check_results WHERE check_id = ?
-		 ORDER BY id LIMIT ? OFFSET ?`,
-		checkID, limit, offset,
+		`SELECT cr.id, cr.check_id, cr.host, cr.port, cr.auth, cr.status, cr.protocols, cr.anon, cr.timeout_ms,
+		        cr.country_code, cr.country_name, cr.country_flag, cr.city, cr.blacklists, cr.errors, cr.server, cr.keep_alive, cr.traces, cr.full_data, cr.geo_status
+		 FROM check_results cr
+		 JOIN checks c ON c.id = cr.check_id
+		 WHERE cr.check_id = ? AND (? = '' OR c.session_id = ?)
+		 ORDER BY cr.id LIMIT ? OFFSET ?`,
+		checkID, sessionID, sessionID, limit, offset,
 	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: query results: %w", err)
@@ -676,13 +778,127 @@ func (s *Store) GetCheckResults(ctx context.Context, checkID string, page, limit
 }
 
 // DeleteCheck removes a check and all its results (cascade).
-func (s *Store) DeleteCheck(ctx context.Context, checkID string) error {
+// When sessionID is non-empty the DELETE is scoped to that session so that
+// a guest cannot delete another session's checks.
+// Returns (true, nil) when the row was deleted, (false, nil) when nothing was
+// deleted (not found or owned by a different session), or (false, err) on a
+// database error.
+func (s *Store) DeleteCheck(ctx context.Context, checkID, sessionID string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.db.ExecContext(ctx, `DELETE FROM checks WHERE id = ?`, checkID)
+	var (
+		result sql.Result
+		err    error
+	)
+	if sessionID != "" {
+		result, err = s.db.ExecContext(ctx,
+			`DELETE FROM checks WHERE id = ? AND session_id = ?`, checkID, sessionID)
+	} else {
+		result, err = s.db.ExecContext(ctx, `DELETE FROM checks WHERE id = ?`, checkID)
+	}
 	if err != nil {
-		return fmt.Errorf("store: delete check: %w", err)
+		return false, fmt.Errorf("store: delete check: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	return rows > 0, nil
+}
+
+// ClearSessionChecks deletes all checks (and cascades results) for a single
+// guest session. Used instead of Reset() so that other sessions are unaffected.
+func (s *Store) ClearSessionChecks(ctx context.Context, sessionID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.ExecContext(ctx, `DELETE FROM checks WHERE session_id = ?`, sessionID)
+	if err != nil {
+		return fmt.Errorf("store: clear session checks: %w", err)
+	}
+	return nil
+}
+
+// CheckBelongsToSession reports whether a check exists and its session_id
+// matches the supplied sessionID. Used to prevent guests from accessing
+// other sessions' SSE streams.
+func (s *Store) CheckBelongsToSession(ctx context.Context, checkID, sessionID string) (bool, error) {
+	var storedSession sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT session_id FROM checks WHERE id = ?`, checkID,
+	).Scan(&storedSession)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("store: check session ownership: %w", err)
+	}
+	return storedSession.Valid && storedSession.String == sessionID, nil
+}
+
+// --- Guest Sessions ---
+
+// CreateGuestSession inserts a new anonymous session record.
+func (s *Store) CreateGuestSession(ctx context.Context, id string, expiresAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().Unix()
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO guest_sessions (id, created_at, last_seen, expires_at) VALUES (?, ?, ?, ?)`,
+		id, now, now, expiresAt.Unix(),
+	)
+	if err != nil {
+		return fmt.Errorf("store: create guest session: %w", err)
+	}
+	return nil
+}
+
+// ValidateGuestSession returns true when id exists and has not expired.
+func (s *Store) ValidateGuestSession(ctx context.Context, id string) bool {
+	var expiresAt int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT expires_at FROM guest_sessions WHERE id = ?`, id,
+	).Scan(&expiresAt)
+	if err != nil {
+		return false
+	}
+	return time.Now().Unix() < expiresAt
+}
+
+// TouchGuestSession updates last_seen and extends expires_at for an existing session.
+func (s *Store) TouchGuestSession(ctx context.Context, id string, expiresAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE guest_sessions SET last_seen = ?, expires_at = ? WHERE id = ?`,
+		time.Now().Unix(), expiresAt.Unix(), id,
+	)
+	if err != nil {
+		return fmt.Errorf("store: touch guest session: %w", err)
+	}
+	return nil
+}
+
+// PruneExpiredGuestSessions deletes sessions whose expiry has passed along with
+// all checks (and cascaded results) that belong to those sessions.
+func (s *Store) PruneExpiredGuestSessions(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().Unix()
+	// Delete orphaned checks first (checks whose session is expired).
+	if _, err := s.db.ExecContext(ctx, `
+		DELETE FROM checks
+		WHERE session_id IN (
+		  SELECT id FROM guest_sessions WHERE expires_at <= ?
+		)`, now,
+	); err != nil {
+		return fmt.Errorf("store: prune expired guest checks: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`DELETE FROM guest_sessions WHERE expires_at <= ?`, now,
+	); err != nil {
+		return fmt.Errorf("store: prune expired guest sessions: %w", err)
 	}
 	return nil
 }

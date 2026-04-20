@@ -10,8 +10,9 @@ const dottedSx = {
     cursor: 'help',
 };
 
-const Checkbox = ({ id, name, checked, onChange, text, tip }) => (
+const Checkbox = ({ id, name, checked, onChange, text, tip, disabled }) => (
     <FormControlLabel
+        disabled={disabled}
         control={
             <MuiCheckbox
                 id={id}
@@ -19,6 +20,7 @@ const Checkbox = ({ id, name, checked, onChange, text, tip }) => (
                 checked={checked}
                 onChange={onChange}
                 size="small"
+                disabled={disabled}
             />
         }
         label={

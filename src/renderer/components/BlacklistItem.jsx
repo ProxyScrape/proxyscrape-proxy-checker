@@ -34,7 +34,7 @@ export default class BlacklistItem extends React.PureComponent {
     };
 
     render = () => {
-        const { title, active, path } = this.props;
+        const { title, active, path, readOnly } = this.props;
 
         return (
             <Box sx={{
@@ -50,6 +50,7 @@ export default class BlacklistItem extends React.PureComponent {
                             checked={active}
                             onChange={this.setActive}
                             size="small"
+                            disabled={readOnly}
                         />
                         <Typography
                             variant="body2"
@@ -63,9 +64,11 @@ export default class BlacklistItem extends React.PureComponent {
                             {title}
                         </Typography>
                     </Box>
-                    <IconButton onClick={this.remove} size="small" sx={{ color: 'text.secondary', flexShrink: 0, '&:hover': { color: 'error.main' } }}>
-                        <CloseIcon />
-                    </IconButton>
+                    {!readOnly && (
+                        <IconButton onClick={this.remove} size="small" sx={{ color: 'text.secondary', flexShrink: 0, '&:hover': { color: 'error.main' } }}>
+                            <CloseIcon />
+                        </IconButton>
+                    )}
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
                     <HelpTip title="Path to a local .txt file or a URL containing one IP address per line" placement="bottom">
@@ -75,11 +78,15 @@ export default class BlacklistItem extends React.PureComponent {
                             value={path}
                             onChange={this.changePath}
                             placeholder="URL or Select path"
+                            disabled={readOnly}
+                            slotProps={{ input: { readOnly } }}
                         />
                     </HelpTip>
-                    <IconButton onClick={this.selectPath} sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}>
-                        <DropDocIcon scale="20"/>
-                    </IconButton>
+                    {!readOnly && (
+                        <IconButton onClick={this.selectPath} sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}>
+                            <DropDocIcon scale="20"/>
+                        </IconButton>
+                    )}
                 </Box>
             </Box>
         );

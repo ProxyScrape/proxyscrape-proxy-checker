@@ -4,7 +4,8 @@ import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import { alpha } from '@mui/material/styles';
 import { version as currentVersion } from '../../../package.json';
-import { openLink, psUrl } from '../misc/other';
+import { openLink, openPsLink } from '../misc/links';
+import { psUrl } from '../misc/other';
 import GitIcon from '../components/ui/GitIcon';
 import DocIcon from '../components/ui/DocIcon';
 import LicenseIcon from '../components/ui/LicenseIcon';
@@ -12,8 +13,12 @@ import SupportIcon from '../components/ui/SupportIcon';
 import WhiteLogo from "../../../public/icons/Logo-ProxyScrape-white.png";
 import { FOOTER_BACKGROUND, blueBrand } from '../theme/palette';
 import { openIntercom } from '../misc/intercom';
+
+const isElectron = typeof window !== 'undefined' && !!window.__ELECTRON__;
 import CanaryBanner from './CanaryBanner';
+import GuestModeBannerFooter from './GuestModeBannerFooter';
 import { IS_CANARY } from '@shared/AppConstants';
+import { isGuestMode } from '../misc/mode';
 
 const footerLinkSx = {
     display: 'flex',
@@ -50,7 +55,7 @@ const Footer = ({ toggleModal, closeDrawer }) => (
                 <GitIcon />
                 <span>Github</span>
             </Box>
-            <Box component="a" href={psUrl('/proxy-checker', 'documentation')} title="Official Documentation" onClick={openLink} sx={footerLinkSx}>
+            <Box component="a" href={psUrl('/proxy-checker', 'documentation')} title="Official Documentation" onClick={openPsLink} sx={footerLinkSx}>
                 <DocIcon />
                 <span>Documentation</span>
             </Box>
@@ -58,10 +63,12 @@ const Footer = ({ toggleModal, closeDrawer }) => (
                 <LicenseIcon />
                 <span>License</span>
             </Box>
-            <Box component="a" href="#" title="Live Support" onClick={(e) => { e.preventDefault(); if (closeDrawer) closeDrawer(); openIntercom(); }} sx={footerLinkSx}>
-                <SupportIcon />
-                <span>Support</span>
-            </Box>
+            {isElectron && (
+                <Box component="a" href="#" title="Live Support" onClick={(e) => { e.preventDefault(); if (closeDrawer) closeDrawer(); openIntercom(); }} sx={footerLinkSx}>
+                    <SupportIcon />
+                    <span>Support</span>
+                </Box>
+            )}
         </Stack>
         <Box sx={{
             textAlign: 'center',
@@ -75,7 +82,7 @@ const Footer = ({ toggleModal, closeDrawer }) => (
             <Box
                 component="a"
                 href={psUrl('/premium', 'premium-upsell')}
-                onClick={openLink}
+                onClick={openPsLink}
                 sx={{
                     color: blueBrand[300],
                     textDecoration: 'none',
@@ -89,6 +96,7 @@ const Footer = ({ toggleModal, closeDrawer }) => (
             </Box>
         </Box>
         {IS_CANARY && <CanaryBanner />}
+        {isGuestMode() && <GuestModeBannerFooter />}
         <Box
             sx={{
                 display: 'flex',
@@ -110,7 +118,7 @@ const Footer = ({ toggleModal, closeDrawer }) => (
                 component="a"
                 href={psUrl('/', 'branding')}
                 title="Official Website"
-                onClick={openLink}
+                onClick={openPsLink}
                 sx={{ cursor: 'pointer', lineHeight: 0, transition: 'opacity 0.2s', '&:hover': { opacity: 0.8 } }}
             >
                 <img src={WhiteLogo} width="120" height="15.25"/>

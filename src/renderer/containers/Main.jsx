@@ -17,13 +17,16 @@ import Result from './Result';
 import History from '../components/History';
 import Titlebar from './Titlebar';
 import Protocols from './Protocols';
-import { checkProxy, importProxiesFromLines } from '../actions/InputActions';
+import { importProxiesFromLines } from '../actions/InputActions';
 import { close as closeResult } from '../actions/ResultActions';
+import { USE_TEXTAREA_INPUT } from '../constants/featureFlags';
+import InputV2 from './InputV2';
 import { openDrawer, closeDrawer } from '../actions/UIActions';
 import { trackScreen, trackAction } from '../misc/analytics';
-import { ipcRenderer } from 'electron';
-import { TITLEBAR_HEIGHT, FOOTER_HEIGHT, CANARY_BANNER_HEIGHT } from '../constants/Layout';
+import { TITLEBAR_HEIGHT, FOOTER_HEIGHT, CANARY_BANNER_HEIGHT, GUEST_BANNER_HEIGHT } from '../constants/Layout';
 import { IS_CANARY } from '../../shared/AppConstants';
+import { isGuestMode } from '../misc/mode';
+
 const TAB_SCREENS = ['Core', 'Judges', 'Ip', 'Blacklist', 'History'];
 
 class Main extends React.PureComponent {
@@ -70,20 +73,30 @@ class Main extends React.PureComponent {
 
             const browserLabel = source && source !== 'unknown' ? `${source} Extension` : 'Browser Extension';
 
-            // importProxiesFromLines owns dedup + parse + count + dispatch.
-            const payload = this.props.importProxiesFromLines(rawList, {
-                name: browserLabel,
-                sourceType: 'extension',
-            });
-            if (!payload) return;
-
-            trackAction('proxy_list_imported', { source, proxy_count: payload.list.length, unique_count: payload.unique, error_count: payload.errors.length });
-
             if (this.props.resultIsOpened) {
                 this.props.closeResult();
             }
-
             this.setState({ tabIndex: 0 });
+
+            if (USE_TEXTAREA_INPUT) {
+                // Option A: populate the textarea so the user can review before checking.
+                // InputV2 listens for this event and writes the lines into its textarea ref.
+                window.dispatchEvent(new CustomEvent('proxy-checker:load-lines', {
+                    detail: {
+                        lines: rawList,
+                        meta:  { name: browserLabel, sourceType: 'extension' },
+                    },
+                }));
+                trackAction('proxy_list_imported', { source, proxy_count: rawList.length, unique_count: rawList.length, error_count: 0 });
+            } else {
+                // Original path: parse immediately and jump straight to the checker.
+                const payload = this.props.importProxiesFromLines(rawList, {
+                    name: browserLabel,
+                    sourceType: 'extension',
+                });
+                if (!payload) return;
+                trackAction('proxy_list_imported', { source, proxy_count: payload.list.length, unique_count: payload.unique, error_count: payload.errors.length });
+            }
         } catch { /* ignore malformed deep-link URLs */ }
     };
 
@@ -104,8 +117,7 @@ class Main extends React.PureComponent {
     };
 
     render = () => {
-        const { releases, checkProxy } = this.props;
-
+        const { releases } = this.props;
         return (
             <>
                 <Titlebar toggleInfo={this.toggleInfo}>
@@ -147,12 +159,12 @@ class Main extends React.PureComponent {
                         overflowY: 'auto',
                         height: `calc(100vh - ${TITLEBAR_HEIGHT}px)`,
                         pt: `${TITLEBAR_HEIGHT}px`,
-                        pb: `${FOOTER_HEIGHT + (IS_CANARY ? CANARY_BANNER_HEIGHT : 0)}px`,
+                        pb: `${FOOTER_HEIGHT + (IS_CANARY ? CANARY_BANNER_HEIGHT : 0) + (isGuestMode() ? GUEST_BANNER_HEIGHT : 0)}px`,
                         px: 5,
                     }}>
                         <Box sx={{ pt: 3 }}>
                             {this.state.tabIndex <= 3 && <Settings tabIndex={this.state.tabIndex} />}
-                            {this.state.tabIndex === 0 && <Input />}
+                            {this.state.tabIndex === 0 && (USE_TEXTAREA_INPUT ? <InputV2 /> : <Input />)}
                             {this.state.tabIndex === 0 && <Protocols />}
                             <History visible={this.state.tabIndex === 4} />
                         </Box>
@@ -179,7 +191,6 @@ const mapStateToProps = state => ({
 });
 
 const mapDispatchToProps = {
-    checkProxy,
     closeResult,
     openDrawer,
     closeDrawer,

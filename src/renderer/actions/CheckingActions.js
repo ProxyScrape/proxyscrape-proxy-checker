@@ -1,15 +1,124 @@
 import { apiFetch, openCheckStream } from '../api/client';
-import { wait } from '../misc/wait';
 import { isIP } from '../misc/regexes';
 import { trackAction } from '../misc/analytics';
 import { CHECKING_UP_COUNTER_STATUS, CHECKING_OPEN, CHECKING_OTHER_CHANGES, CORE_SET_PROTOCOL_WARNING } from '../constants/ActionTypes';
-import { showError } from '../store/reducers/app';
+import { showError, showErrorWithCta } from '../store/reducers/app';
+import { psUrl } from '../misc/other';
 import { showResult, mapResultItem } from './ResultActions';
 import { pingJudgesWithOverlay } from './OverlayJudgesActions';
 
 let currentCheckId = null;
 let closeCurrentStream = null;
 let resolveProtocolWarning = null;
+
+const buildInBlacklists = items => {
+    const seen = {};
+    const list = [];
+    items.forEach(item => {
+        if (Array.isArray(item.blacklist)) {
+            item.blacklist.forEach(bl => {
+                if (!seen[bl]) {
+                    seen[bl] = true;
+                    list.push({ title: bl, active: true });
+                }
+            });
+        }
+    });
+    return list;
+};
+
+/**
+ * Attach an SSE stream to a running check and open the checking overlay.
+ *
+ * `initialCounter` sets the counter state shown immediately when the overlay
+ * opens. Pass `{ all: total, done: 0 }` for a fresh check and
+ * `{ all: total, done: <snapshot length> }` when reconnecting so the user
+ * sees the correct progress instantly rather than starting from zero.
+ *
+ * The server replays all snapshot results before streaming new ones, so
+ * `bufferedResults` will be populated in full regardless of when the client
+ * connected or reconnected.
+ */
+function attachCheckStream(dispatch, id, initialCounter) {
+    currentCheckId = id;
+    const bufferedResults = [];
+
+    const finalise = () => {
+        if (closeCurrentStream) {
+            closeCurrentStream();
+            closeCurrentStream = null;
+        }
+        currentCheckId = null;
+    };
+
+    const displayResults = () => {
+        finalise();
+        dispatch(otherChanges({ finalizingMessage: null }));
+        dispatch(showResult({
+            items: bufferedResults,
+            inBlacklists: buildInBlacklists(bufferedResults),
+        }));
+    };
+
+    dispatch(openChecking(initialCounter));
+
+    closeCurrentStream = openCheckStream(id, {
+        onResult: event => {
+            bufferedResults.push(mapResultItem(event));
+        },
+        onProgress: event => {
+            dispatch(upCounterStatus({
+                all: event.total,
+                done: event.done,
+                working: event.working,
+                threads: event.threads,
+                protocols: {},
+            }));
+        },
+        onEnriching: () => {
+            dispatch(otherChanges({ finalizingMessage: 'Enriching location data...' }));
+        },
+        onGeoBatch: data => {
+            const patchMap = new Map((data?.results ?? []).map(r => [r.host, r]));
+            bufferedResults.forEach(item => {
+                const patch = patchMap.get(item.host);
+                if (!patch) return;
+                item.country = {
+                    code: patch.countryCode || '',
+                    name: patch.countryName || '',
+                    flag: patch.countryFlag || '',
+                    city: patch.city || '',
+                };
+                item.geoStatus = 'done';
+            });
+        },
+        onComplete: displayResults,
+        onStopped: displayResults,
+        onBackendError: displayResults,
+    });
+}
+
+/**
+ * On startup, check whether a check is still running on the server for the
+ * current guest session. If one is found, reconnect to it automatically.
+ *
+ * The backend replays all results produced so far before streaming new ones,
+ * so the client receives the complete result set regardless of when it joins.
+ * The overlay counter is initialised from the server's snapshot length so it
+ * shows the real progress immediately rather than starting from zero.
+ *
+ * Only called in guest mode (from index.jsx after bootstrapGuestSession).
+ */
+export const reconnectIfRunning = () => async (dispatch) => {
+    try {
+        const data = await apiFetch('/api/check/active');
+        if (data && data.id) {
+            attachCheckStream(dispatch, data.id, { all: data.total, done: data.done, protocols: {} });
+        }
+    } catch {
+        // No active check, network error, or non-guest mode — proceed normally.
+    }
+};
 
 export const respondToProtocolWarning = choice => dispatch => {
     dispatch({ type: CORE_SET_PROTOCOL_WARNING, warning: { open: false } });
@@ -161,88 +270,18 @@ export const start = () => async (dispatch, getState) => {
             body: JSON.stringify(payload),
         });
 
-        currentCheckId = data.id;
-
-        dispatch(openChecking({ all: input.list.length, done: 0, protocols: {} }));
-
-        const bufferedResults = [];
-
-        const buildInBlacklists = items => {
-            const seen = {};
-            const list = [];
-            items.forEach(item => {
-                if (Array.isArray(item.blacklist)) {
-                    item.blacklist.forEach(bl => {
-                        if (!seen[bl]) {
-                            seen[bl] = true;
-                            list.push({ title: bl, active: true });
-                        }
-                    });
-                }
-            });
-            return list;
-        };
-
-        const finalise = () => {
-            if (closeCurrentStream) {
-                closeCurrentStream();
-                closeCurrentStream = null;
-            }
-            currentCheckId = null;
-        };
-
-        const displayResults = () => {
-            finalise();
-            dispatch(otherChanges({ finalizingMessage: null }));
-            dispatch(showResult({
-                items: bufferedResults,
-                inBlacklists: buildInBlacklists(bufferedResults),
-            }));
-        };
-
-        closeCurrentStream = openCheckStream(currentCheckId, {
-            onResult: event => {
-                bufferedResults.push(mapResultItem(event));
-            },
-            onProgress: event => {
-                dispatch(upCounterStatus({
-                    all: event.total,
-                    done: event.done,
-                    working: event.working,
-                    threads: event.threads,
-                    protocols: {},
-                }));
-            },
-            // Backend signals it is about to call the geo worker.
-            onEnriching: () => {
-                dispatch(otherChanges({ finalizingMessage: 'Enriching location data...' }));
-            },
-            // Backend resolved country data for all working proxies.
-            // Patch bufferedResults in-place so showResult() has countries ready.
-            onGeoBatch: data => {
-                const patchMap = new Map((data?.results ?? []).map(r => [r.host, r]));
-                bufferedResults.forEach(item => {
-                    const patch = patchMap.get(item.host);
-                    if (!patch) return;
-                    item.country = {
-                        code: patch.countryCode || '',
-                        name: patch.countryName || '',
-                        flag: patch.countryFlag || '',
-                        city: patch.city || '',
-                    };
-                    item.geoStatus = 'done';
-                });
-            },
-            // All proxies were checked — natural finish.
-            onComplete: displayResults,
-            // User cancelled the run mid-way via the Stop button.
-            onStopped: displayResults,
-            // Backend sent an SSE error frame (e.g. store read failed); show whatever was collected.
-            onBackendError: displayResults,
-        });
+        attachCheckStream(dispatch, data.id, { all: input.list.length, done: 0, protocols: {} });
     } catch (error) {
         dispatch(otherChanges({ starting: false }));
-        dispatch(showError(error.message));
+        if (error.status === 429) {
+            dispatch(showErrorWithCta(error.message, {
+                subtitle: 'The online checker limits concurrent runs. Wait for your current checks to finish, or use the desktop app for unlimited concurrent checking.',
+                label: 'Get the free desktop app',
+                href: psUrl('/proxy-checker', 'guest-limit-error'),
+            }));
+        } else {
+            dispatch(showError(error.message));
+        }
     }
 };
 

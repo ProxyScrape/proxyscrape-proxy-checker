@@ -68,7 +68,7 @@ export default class JudgesItem extends React.PureComponent {
     };
 
     render = () => {
-        const { url, active, validate, status, refreshing } = this.props;
+        const { url, active, validate, status, refreshing, readOnly } = this.props;
 
         return (
             <Box sx={{
@@ -84,6 +84,7 @@ export default class JudgesItem extends React.PureComponent {
                             checked={active}
                             onChange={this.toggleActive}
                             size="small"
+                            disabled={readOnly}
                         />
                         <StatusDot status={status} refreshing={refreshing} />
                         <Typography
@@ -108,9 +109,11 @@ export default class JudgesItem extends React.PureComponent {
                             </Typography>
                         )}
                     </Box>
-                    <IconButton onClick={this.remove} size="small" sx={{ color: 'text.secondary', flexShrink: 0, '&:hover': { color: 'error.main' } }}>
-                        <CloseIcon />
-                    </IconButton>
+                    {!readOnly && (
+                        <IconButton onClick={this.remove} size="small" sx={{ color: 'text.secondary', flexShrink: 0, '&:hover': { color: 'error.main' } }}>
+                            <CloseIcon />
+                        </IconButton>
+                    )}
                 </Box>
                 <HelpTip title="Regular expression to validate the judge response. The response body must match this pattern for the check to succeed. Leave empty to accept any response." placement="bottom">
                     <TextField
@@ -120,6 +123,8 @@ export default class JudgesItem extends React.PureComponent {
                         onChange={this.changeValidateString}
                         placeholder="Validate RegExp or String"
                         sx={{ mt: 1 }}
+                        disabled={readOnly}
+                        slotProps={{ input: { readOnly } }}
                     />
                 </HelpTip>
             </Box>

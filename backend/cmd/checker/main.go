@@ -30,10 +30,11 @@ import (
 )
 
 var (
-	serveMode    string
-	servePort    int
-	serveDataDir string
-	serveBind    []string
+	serveMode                   string
+	servePort                   int
+	serveDataDir                string
+	serveBind                   []string
+	serveGuestMaxProxiesInFlight int
 )
 
 func main() {
@@ -59,10 +60,11 @@ var serveCmd = &cobra.Command{
 }
 
 func init() {
-	serveCmd.Flags().StringVar(&serveMode, "mode", "desktop", "Run mode: desktop or server")
+	serveCmd.Flags().StringVar(&serveMode, "mode", "desktop", "Run mode: desktop, server, or guest")
 	serveCmd.Flags().IntVar(&servePort, "port", 0, "TCP port (0 = random)")
 	serveCmd.Flags().StringVar(&serveDataDir, "data-dir", defaultDataDir(), "Directory for SQLite and settings (Electron userData in production)")
 	serveCmd.Flags().StringSliceVar(&serveBind, "bind", []string{"127.0.0.1"}, "Addresses to listen on (repeatable); desktop mode always uses 127.0.0.1")
+	serveCmd.Flags().IntVar(&serveGuestMaxProxiesInFlight, "guest-max-proxies-in-flight", 5000, "Per-session cap on proxies actively checking at once; each guest session is tracked independently (guest mode only)")
 }
 
 func defaultDataDir() string {
@@ -75,8 +77,8 @@ func defaultDataDir() string {
 
 func runServe(cmd *cobra.Command, _ []string) error {
 	mode := strings.ToLower(strings.TrimSpace(serveMode))
-	if mode != "desktop" && mode != "server" {
-		return fmt.Errorf("--mode must be desktop or server, got %q", serveMode)
+	if mode != "desktop" && mode != "server" && mode != "guest" {
+		return fmt.Errorf("--mode must be desktop, server, or guest, got %q", serveMode)
 	}
 
 	db, err := store.Open(serveDataDir)
@@ -116,6 +118,9 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	if mode == "desktop" {
 		return serveDesktop(db, mgr, geoWorkerClient)
 	}
+	if mode == "guest" {
+		return serveGuest(db, mgr, geoWorkerClient, serveGuestMaxProxiesInFlight)
+	}
 	return serveServer(db, mgr, geoWorkerClient)
 }
 
@@ -131,7 +136,7 @@ func serveDesktop(db *store.Store, mgr *settings.Manager, geoWorker *geoworker.C
 		}
 		return subtle.ConstantTimeCompare([]byte(token), []byte(tokenStr)) == 1
 	}
-	handler := api.NewServer(verify, db, mgr, geoWorker)
+	handler := api.NewServer(verify, db, mgr, geoWorker, "desktop")
 
 	addr := "127.0.0.1:0"
 	if servePort > 0 {
@@ -178,7 +183,7 @@ func serveServer(db *store.Store, mgr *settings.Manager, geoWorker *geoworker.Cl
 	verify := func(ctx context.Context, token string) bool {
 		return db.ValidateSession(ctx, token)
 	}
-	handler := api.NewServer(verify, db, mgr, geoWorker)
+	handler := api.NewServer(verify, db, mgr, geoWorker, "server")
 
 	binds := serveBind
 	if len(binds) == 0 {
@@ -212,6 +217,74 @@ func serveServer(db *store.Store, mgr *settings.Manager, geoWorker *geoworker.Cl
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
 	}
+
+	errCh := make(chan error, len(listeners))
+	for _, ln := range listeners {
+		ln := ln
+		go func() {
+			errCh <- srv.Serve(ln)
+		}()
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case <-sigCh:
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+		return nil
+	case err := <-errCh:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	}
+}
+
+func serveGuest(db *store.Store, mgr *settings.Manager, geoWorker *geoworker.Client, inFlightLimit int) error {
+	handler := api.NewGuestServer(db, mgr, geoWorker, inFlightLimit)
+
+	binds := serveBind
+	if len(binds) == 0 {
+		binds = []string{"0.0.0.0"}
+	}
+
+	port := servePort
+	if port == 0 {
+		port = 8080
+	}
+
+	var listeners []net.Listener
+	for _, host := range binds {
+		ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))
+		if err != nil {
+			for _, l := range listeners {
+				_ = l.Close()
+			}
+			return err
+		}
+		listeners = append(listeners, ln)
+	}
+	log.Printf("[guest] listening on port %d", port)
+
+	srv := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+	}
+
+	// Background: prune expired guest sessions every 30 minutes.
+	go func() {
+		t := time.NewTicker(30 * time.Minute)
+		defer t.Stop()
+		for range t.C {
+			if err := db.PruneExpiredGuestSessions(context.Background()); err != nil {
+				log.Printf("[guest] prune sessions: %v", err)
+			}
+		}
+	}()
 
 	errCh := make(chan error, len(listeners))
 	for _, ln := range listeners {

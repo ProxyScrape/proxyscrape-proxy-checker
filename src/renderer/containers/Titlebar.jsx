@@ -3,7 +3,8 @@ import { ipcRenderer } from 'electron';
 
 // Read platform from the preload bridge — process.platform is not reliably
 // available in the renderer under contextIsolation.
-const isMac = typeof window !== 'undefined' && window.__ELECTRON__?.platform === 'darwin';
+const isElectron = typeof window !== 'undefined' && !!window.__ELECTRON__;
+const isMac = isElectron && window.__ELECTRON__?.platform === 'darwin';
 
 export default class Titlebar extends React.PureComponent {
     state = {
@@ -52,7 +53,7 @@ export default class Titlebar extends React.PureComponent {
                             <path d="M519.614,254.663L386.567,121.619c-1.902-1.902-4.093-2.857-6.563-2.857c-2.478,0-4.661,0.955-6.57,2.857l-14.271,14.275    c-1.902,1.903-2.851,4.09-2.851,6.567s0.948,4.665,2.851,6.567l112.206,112.204L359.163,373.442    c-1.902,1.902-2.851,4.093-2.851,6.563c0,2.478,0.948,4.668,2.851,6.57l14.271,14.268c1.909,1.906,4.093,2.854,6.57,2.854    c2.471,0,4.661-0.951,6.563-2.854L519.614,267.8c1.903-1.902,2.854-4.096,2.854-6.57    C522.468,258.755,521.517,256.565,519.614,254.663z" />
                         </svg>
                     </li>
-                    {!isMac && (
+                    {isElectron && !isMac && (
                         <>
                             <li onClick={this.minimize}>
                                 <svg viewBox="0 0 512 512" className="minimize">

@@ -30,6 +30,9 @@ REQUIRED_ENV.forEach(key => {
 
 const rendererDefine = {
     '__IS_CANARY__': JSON.stringify(isCanary),
+    // Polyfill process.env for shared code written for Electron/Node
+    'process.env.NODE_ENV': JSON.stringify('development'),
+    'process.env.PORTABLE_EXECUTABLE_DIR': JSON.stringify(''),
 }
 REQUIRED_ENV.forEach(key => {
     rendererDefine[`__${key}__`] = JSON.stringify(process.env[key] || '')
@@ -55,6 +58,13 @@ export default defineConfig({
             '/api': {
                 target: GO_BACKEND,
                 changeOrigin: true,
+                // Don't proxy requests for static assets (e.g. /api/client.js
+                // is a frontend module, not a backend route).
+                bypass(req) {
+                    if (req.url && /\.[a-z0-9]+$/i.test(req.url)) {
+                        return req.url
+                    }
+                },
             },
         },
     },

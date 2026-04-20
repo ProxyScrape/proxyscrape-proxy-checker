@@ -5,6 +5,7 @@ import Checkbox from '../components/ui/Checkbox';
 import { HelpTip, InfoIcon } from '../components/ui/HelpTip';
 import { splitByKK } from '../misc/text';
 import { getMaxThreads } from '../misc/other';
+import { openLink } from '../misc/links';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Slider from '@mui/material/Slider';
@@ -160,8 +161,7 @@ const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceSt
                                     variant="caption"
                                     component="a"
                                     href={info.link.url}
-                                    target="_blank"
-                                    rel="noreferrer"
+                                    onClick={openLink}
                                     sx={{ color: blueBrand[300], fontSize: '0.68rem', display: 'inline-block', mt: 0.75, '&:hover': { textDecoration: 'underline' } }}
                                 >
                                     {info.link.label} ↗

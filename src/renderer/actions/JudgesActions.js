@@ -31,7 +31,7 @@ export const refreshJudges = (protocols = ['http', 'https', 'socks4', 'socks5'])
     dispatch({ type: JUDGES_SET_REFRESHING, refreshing: true });
     dispatch({ type: JUDGES_SET_STATUSES, statuses: {} });
     try {
-        const statuses = await apiFetch('/api/judges/refresh', { method: 'POST' });
+        const statuses = await apiFetch('/api/judges/refresh');
         const map = {};
         if (Array.isArray(statuses)) {
             statuses.forEach(s => { map[s.url] = s; });

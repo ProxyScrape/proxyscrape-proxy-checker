@@ -1,11 +1,14 @@
 import React, { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { openLink, psUrl } from '../misc/other';
+import { openLink, openPsLink } from '../misc/links';
+import { psUrl } from '../misc/other';
 import WhiteLogo from '../../../public/icons/Logo-ProxyScrape-white.png';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { FOOTER_BACKGROUND, CARD_BACKGROUND, blueBrand } from '../theme/palette';
 import { openIntercom } from '../misc/intercom';
+
+const isElectron = typeof window !== 'undefined' && !!window.__ELECTRON__;
 import SideDrawer from './ui/SideDrawer';
 
 const FacebookIcon = () => (
@@ -94,7 +97,7 @@ const Info = memo(({ show, releases, toggleInfo }) => {
             zIndex={1200}
             panelSx={{ maxWidth: { xs: '100vw', sm: '85vw' } }}
             headerLeft={
-                <Box component="a" href={psUrl('/', 'branding')} onClick={openLink} sx={{ lineHeight: 0 }}>
+                <Box component="a" href={psUrl('/', 'branding')} onClick={openPsLink} sx={{ lineHeight: 0 }}>
                     <img src={WhiteLogo} width="150" height="19"/>
                 </Box>
             }
@@ -108,21 +111,32 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                     border: `1px solid ${FOOTER_BACKGROUND}`,
                 }}>
                     <Typography variant="body2" sx={{ color: 'text.primary', mb: 1, lineHeight: 1.6 }}>
-                        Need help? Contact us via our{' '}
-                        <Box component="a" href="#" onClick={(e) => { e.preventDefault(); toggleInfo(); openIntercom(); }} sx={linkSx}>
-                            24/7 live chat
-                        </Box>
-                        {' '}or via{' '}
-                        <Box component="a" href={psUrl('/contact', 'support')} onClick={openLink} sx={linkSx}>
-                            email
-                        </Box>
+                        {isElectron ? (
+                            <>
+                                Need help? Contact us via our{' '}
+                                <Box component="a" href="#" onClick={(e) => { e.preventDefault(); toggleInfo(); openIntercom(); }} sx={linkSx}>
+                                    24/7 live chat
+                                </Box>
+                                {' '}or via{' '}
+                                <Box component="a" href={psUrl('/contact', 'support')} onClick={openPsLink} sx={linkSx}>
+                                    email
+                                </Box>
+                            </>
+                        ) : (
+                            <>
+                                Need help? Contact us via our 24/7 live chat or via{' '}
+                                <Box component="a" href={psUrl('/contact', 'support')} onClick={openPsLink} sx={linkSx}>
+                                    email
+                                </Box>
+                            </>
+                        )}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.primary', mb: 1, lineHeight: 1.6 }}>
                         We are happy to help you with all your proxy needs!
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.primary', lineHeight: 1.6 }}>
                         Looking for datacenter proxies with 99% uptime?{' '}
-                        <Box component="a" href={psUrl('/premium', 'premium-upsell')} onClick={openLink}
+                        <Box component="a" href={psUrl('/premium', 'premium-upsell')} onClick={openPsLink}
                             sx={{ ...linkSx, fontWeight: 600 }}>
                             Try ProxyScrape Premium
                         </Box>
@@ -157,54 +171,58 @@ const Info = memo(({ show, releases, toggleInfo }) => {
                     </Box>
                 </Box>
 
-                <Typography variant="caption" sx={{ ...sectionLabelSx, mb: 1.5, mt: 1 }}>
-                    Releases
-                </Typography>
-                <Box>
-                    {releaseList.length === 0 && (
-                        <Typography variant="body2" sx={{ color: 'text.disabled', fontSize: '0.8rem' }}>
-                            No releases found.
+                {isElectron && (
+                    <>
+                        <Typography variant="caption" sx={{ ...sectionLabelSx, mb: 1.5, mt: 1 }}>
+                            Releases
                         </Typography>
-                    )}
-                    {releaseList.map(release => (
-                        <Box key={release.tagName} sx={{
-                            mb: 2,
-                            pb: 2,
-                            borderBottom: `1px solid ${FOOTER_BACKGROUND}`,
-                            '&:last-child': { borderBottom: 'none', mb: 0, pb: 0 },
-                        }}>
-                            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5 }}>
-                                <Typography variant="body2" sx={{ fontWeight: 700, color: blueBrand[300] }}>
-                                    {release.tagName}
+                        <Box>
+                            {releaseList.length === 0 && (
+                                <Typography variant="body2" sx={{ color: 'text.disabled', fontSize: '0.8rem' }}>
+                                    No releases found.
                                 </Typography>
-                                <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-                                    {new Date(release.publishedAt).toLocaleDateString()}
-                                </Typography>
-                            </Box>
-                            <Box sx={{
-                                '& p': { m: 0, mb: 0.5, fontSize: '0.8rem', color: 'text.secondary', lineHeight: 1.6 },
-                                '& ul': { pl: 2.5, m: 0, mb: 0.5 },
-                                '& li': { fontSize: '0.8rem', color: 'text.secondary', lineHeight: 1.7 },
-                                '& h1, & h2, & h3': { fontSize: '0.85rem', fontWeight: 600, color: 'text.primary', mt: 1, mb: 0.5 },
-                                '& a': { color: blueBrand[300], textDecoration: 'none' },
-                                '& code': {
-                                    bgcolor: FOOTER_BACKGROUND,
-                                    px: 0.5,
-                                    py: 0.25,
-                                    borderRadius: 0.5,
-                                    fontSize: '0.75rem',
-                                    fontFamily: '"Roboto Mono", monospace',
-                                    color: 'text.primary',
-                                },
-                            }}>
-                                {release.body
-                                    ? <ReactMarkdown>{release.body}</ReactMarkdown>
-                                    : <Typography variant="body2" component="a" href={release.htmlUrl} onClick={openLink} sx={{ fontSize: '0.8rem', color: blueBrand[300] }}>View on GitHub</Typography>
-                                }
-                            </Box>
+                            )}
+                            {releaseList.map(release => (
+                                <Box key={release.tagName} sx={{
+                                    mb: 2,
+                                    pb: 2,
+                                    borderBottom: `1px solid ${FOOTER_BACKGROUND}`,
+                                    '&:last-child': { borderBottom: 'none', mb: 0, pb: 0 },
+                                }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5 }}>
+                                        <Typography variant="body2" sx={{ fontWeight: 700, color: blueBrand[300] }}>
+                                            {release.tagName}
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+                                            {new Date(release.publishedAt).toLocaleDateString()}
+                                        </Typography>
+                                    </Box>
+                                    <Box sx={{
+                                        '& p': { m: 0, mb: 0.5, fontSize: '0.8rem', color: 'text.secondary', lineHeight: 1.6 },
+                                        '& ul': { pl: 2.5, m: 0, mb: 0.5 },
+                                        '& li': { fontSize: '0.8rem', color: 'text.secondary', lineHeight: 1.7 },
+                                        '& h1, & h2, & h3': { fontSize: '0.85rem', fontWeight: 600, color: 'text.primary', mt: 1, mb: 0.5 },
+                                        '& a': { color: blueBrand[300], textDecoration: 'none' },
+                                        '& code': {
+                                            bgcolor: FOOTER_BACKGROUND,
+                                            px: 0.5,
+                                            py: 0.25,
+                                            borderRadius: 0.5,
+                                            fontSize: '0.75rem',
+                                            fontFamily: '"Roboto Mono", monospace',
+                                            color: 'text.primary',
+                                        },
+                                    }}>
+                                        {release.body
+                                            ? <ReactMarkdown>{release.body}</ReactMarkdown>
+                                            : <Typography variant="body2" component="a" href={release.htmlUrl} onClick={openLink} sx={{ fontSize: '0.8rem', color: blueBrand[300] }}>View on GitHub</Typography>
+                                        }
+                                    </Box>
+                                </Box>
+                            ))}
                         </Box>
-                    ))}
-                </Box>
+                    </>
+                )}
             </Box>
         </SideDrawer>
     );

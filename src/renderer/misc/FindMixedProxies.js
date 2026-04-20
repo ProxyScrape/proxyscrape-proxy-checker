@@ -98,7 +98,7 @@ const getParseErrorReason = string => {
 
     if (/\s/.test(s)) return 'Contains unexpected whitespace';
 
-    return 'Unrecognized format — expected ip:port or protocol://ip:port';
+    return 'Unrecognized format — expected ip:port, user:pass@ip:port, ip:port:user:pass, or protocol://ip:port';
 };
 
 const findMixedProxies = array => {

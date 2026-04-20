@@ -9,14 +9,24 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import { isGuestMode } from '../misc/mode';
+import { GuestModeBannerV3Option5 as GuestModeBanner } from '../components/ui/GuestModeBannerV3';
 
 const Judges = ({ items, swap, statuses, refreshing, change, add, remove, toggleOption, refreshJudges }) => {
+    const guestMode = isGuestMode();
+
     useEffect(() => {
         refreshJudges();
     }, []);
 
     return (
         <>
+            {guestMode && (
+                <GuestModeBanner
+                    feature="Judge settings"
+                    description="Judges are target URLs the checker sends requests through. They detect anonymity level and let you test proxies against any custom target. Configuring judges requires the desktop app."
+                />
+            )}
             <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, mb: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
@@ -27,7 +37,7 @@ const Judges = ({ items, swap, statuses, refreshing, change, add, remove, toggle
                         size="small"
                         variant="outlined"
                         onClick={() => refreshJudges()}
-                        disabled={refreshing}
+                        disabled={refreshing || guestMode}
                         startIcon={refreshing ? <CircularProgress size={12} color="inherit" /> : null}
                         sx={{ minWidth: 80, fontSize: '0.7rem' }}
                     >
@@ -39,10 +49,11 @@ const Judges = ({ items, swap, statuses, refreshing, change, add, remove, toggle
                         <JudgesItem
                             {...item}
                             key={item.url}
-                            change={change}
-                            remove={remove}
+                            change={guestMode ? () => {} : change}
+                            remove={guestMode ? () => {} : remove}
                             status={statuses[item.url]}
                             refreshing={refreshing}
+                            readOnly={guestMode}
                         />
                     ))}
                 </Box>
@@ -50,15 +61,17 @@ const Judges = ({ items, swap, statuses, refreshing, change, add, remove, toggle
             <Box sx={{ display: 'flex', gap: 2 }}>
                 <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, flex: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>Options</Typography>
-                    <Checkbox id="swap" name="swap" checked={swap} onChange={toggleOption} text="Swap" tip="Rotate between active judges for each request instead of always using the same one. Helps distribute load when you have multiple judges." />
+                    <Checkbox id="swap" name="swap" checked={swap} onChange={guestMode ? () => {} : toggleOption} text="Swap" tip="Rotate between active judges for each request instead of always using the same one. Helps distribute load when you have multiple judges." disabled={guestMode} />
                 </Box>
-                <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, flex: 1 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1.5 }}>
-                        Add new
-                        <InfoIcon title="Add a new judge URL. The URL should return your IP address in the response body so the checker can determine proxy anonymity." />
-                    </Typography>
-                    <JudgesAddNew add={add} />
-                </Box>
+                {!guestMode && (
+                    <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, flex: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1.5 }}>
+                            Add new
+                            <InfoIcon title="Add a new judge URL. The URL should return your IP address in the response body so the checker can determine proxy anonymity." />
+                        </Typography>
+                        <JudgesAddNew add={add} />
+                    </Box>
+                )}
             </Box>
         </>
     );

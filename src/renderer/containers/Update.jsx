@@ -2,7 +2,7 @@ import React from 'react';
 import { connect } from 'react-redux';
 import { AnimatePresence, motion } from 'framer-motion';
 import { checkAtAvailable } from '../actions/UpdateActions';
-import { openLink } from '../misc/other';
+import { openLink } from '../misc/links';
 import { isPortable, IS_CANARY, isDev } from '../../shared/AppConstants';
 import { ipcRenderer } from 'electron';
 import Box from '@mui/material/Box';

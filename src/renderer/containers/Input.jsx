@@ -10,6 +10,9 @@ import { splitByKK } from '../misc/text';
 import { toggleOption } from '../actions/CoreActions';
 import DropDocIcon from '../components/ui/DropDocIcon';
 import { InfoIcon } from '../components/ui/HelpTip';
+import { getGuestLimits } from '../misc/mode';
+import { openPsLink } from '../misc/links';
+import { psUrl } from '../misc/other';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
@@ -116,7 +119,46 @@ const ClearIcon = () => (
     </svg>
 );
 
-const Input = ({ loaded, total, errors, unique, name, size, sourceType, loadFromTxt, onFileDrop, overrideEventDefaults, pasteFromClipboard, clearInput, shuffle, toggleOption }) => {
+const GuestProxyLimitWarning = ({ proxyCount, limit }) => (
+    <Box sx={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 1.25,
+        px: 1.5,
+        py: 1.25,
+        bgcolor: 'rgba(255, 152, 0, 0.08)',
+        border: '1px solid rgba(255, 152, 0, 0.3)',
+        borderRadius: 2,
+    }}>
+        <Typography sx={{ fontSize: '1rem', lineHeight: 1, mt: '1px', flexShrink: 0 }}>⚠</Typography>
+        <Box>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: 'warning.main', fontSize: '0.8rem' }}>
+                Too many proxies for guest mode
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.25, lineHeight: 1.5 }}>
+                You've imported {proxyCount.toLocaleString()} proxies but guest mode supports up to {limit.toLocaleString()} per run.{' '}
+                <Box
+                    component="a"
+                    href={psUrl('/proxy-checker', 'guest-limit-warning')}
+                    onClick={openPsLink}
+                    sx={{
+                        color: 'primary.main',
+                        textDecoration: 'none',
+                        fontWeight: 600,
+                        '&:hover': { textDecoration: 'underline' },
+                    }}
+                >
+                    Download the desktop app
+                </Box>
+                {' '}for unlimited proxies.
+            </Typography>
+        </Box>
+    </Box>
+);
+
+const Input = ({ loaded, total, errors, unique, name, size, sourceType, proxyCount, loadFromTxt, onFileDrop, overrideEventDefaults, pasteFromClipboard, clearInput, shuffle, toggleOption }) => {
+    const limits = getGuestLimits();
+    const overLimit = limits !== null && proxyCount > limits.inFlightProxies;
     const [errorsExpanded, setErrorsExpanded] = useState(false);
 
     // Both inner panels share the same fixed height so the card doesn't
@@ -272,6 +314,12 @@ const Input = ({ loaded, total, errors, unique, name, size, sourceType, loadFrom
                     </Box>
                 )}
 
+                {loaded && overLimit && (
+                    <Box sx={{ mt: 1.5 }}>
+                        <GuestProxyLimitWarning proxyCount={proxyCount} limit={limits.inFlightProxies} />
+                    </Box>
+                )}
+
                 <Box sx={{ mt: 1.5 }}>
                     <Checkbox id='core-shuffle' name='shuffle' checked={shuffle} onChange={toggleOption} text='Shuffle' tip="Randomize the order of proxies before checking begins" />
                 </Box>
@@ -282,7 +330,8 @@ const Input = ({ loaded, total, errors, unique, name, size, sourceType, loadFrom
 
 const mapStateToProps = state => ({
     ...state.input,
-    shuffle: state.core.shuffle
+    proxyCount: state.input.list.length,
+    shuffle: state.core.shuffle,
 });
 
 const mapDispatchToProps = {

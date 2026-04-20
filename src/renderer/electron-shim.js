@@ -17,7 +17,6 @@ const warn = (method, channel) =>
 export const shell = {
     openExternal(url) {
         if (E) return E.openExternal(url);
-        // Web mode fallback — open in a new tab
         window.open(url, '_blank', 'noopener,noreferrer');
     },
 };

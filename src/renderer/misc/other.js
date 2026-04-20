@@ -1,14 +1,8 @@
-import { shell } from 'electron';
-
-export const openLink = e => {
-    e.preventDefault();
-    shell.openExternal(e.currentTarget.href);
-};
-
 export const psUrl = (path, campaign) => {
     const base = 'https://proxyscrape.com' + path;
     const sep = path.includes('?') ? '&' : '?';
-    return base + sep + 'utm_source=proxy-checker&utm_medium=desktop-app&utm_campaign=' + campaign;
+    const medium = (typeof window !== 'undefined' && window.__ELECTRON__) ? 'desktop-app' : 'web-app';
+    return base + sep + `utm_source=proxy-checker&utm_medium=${medium}&utm_campaign=${campaign}`;
 };
 
 export const getMaxThreads = protocols => {

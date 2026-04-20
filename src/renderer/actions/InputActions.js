@@ -29,6 +29,13 @@ const setLoadedData = nextState => ({
 export const clearInput = () => ({ type: INPUT_CLEAR });
 
 /**
+ * Applies a fully-parsed result payload directly to the input state.
+ * Used by InputV2 after the parse Web Worker returns results, so the
+ * expensive findMixedProxies work stays off the main thread.
+ */
+export const applyParsedResult = payload => setLoadedData(payload);
+
+/**
  * The single canonical pipeline for importing proxies into the checker.
  *
  * All import paths (file, drag-drop, clipboard, extension deep-link) must go
@@ -90,24 +97,6 @@ export const loadFromTxt = event => async dispatch => {
     }
 };
 
-export const checkProxy = event => async dispatch => {
-    try {
-        if (event.target.dataset.file != "") {
-            const filePath = pathJoin(await getDownloadsPath(), event.target.dataset.file);
-            const filesText = await window.__ELECTRON__.readFile(filePath);
-            const rawLines = filesText.split(/\r?\n/).filter(s => s.length > 0);
-            const payload = dispatch(importProxiesFromLines(rawLines, {
-                name: pathBasename(filePath),
-                sourceType: 'file',
-                size: filesText.length,
-            }));
-
-            if (!payload) throw new Error('No proxies found');
-        }
-    } catch (error) {
-        dispatch(showError(error.message));
-    }
-};
 
 export const overrideEventDefaults = event => async dispatch => {
     try {
@@ -128,9 +117,16 @@ export const onFileDrop = event => async dispatch => {
             const names = [];
 
             for await (const file of event.dataTransfer.files) {
-                const filePath = getFilePath(file);
-                filesText += await window.__ELECTRON__.readFile(filePath);
-                names.push(pathBasename(filePath));
+                if (window.__ELECTRON__?.readFile) {
+                    // Electron: read via native filesystem path
+                    const filePath = getFilePath(file);
+                    filesText += await window.__ELECTRON__.readFile(filePath);
+                    names.push(pathBasename(filePath));
+                } else {
+                    // Web: read directly from the browser File object
+                    filesText += await file.text();
+                    names.push(file.name);
+                }
             }
 
             const rawLines = filesText.split(/\r?\n/).filter(s => s.length > 0);
@@ -151,7 +147,12 @@ export const onFileDrop = event => async dispatch => {
 
 export const pasteFromClipboard = event => async dispatch => {
     try {
-        const text = await window.__ELECTRON__.readClipboard();
+        let text;
+        if (window.__ELECTRON__?.readClipboard) {
+            text = await window.__ELECTRON__.readClipboard();
+        } else {
+            text = await navigator.clipboard.readText();
+        }
         const rawLines = text.split(/\r?\n/).filter(s => s.length > 0);
         const payload = dispatch(importProxiesFromLines(rawLines, {
             name: 'Clipboard',

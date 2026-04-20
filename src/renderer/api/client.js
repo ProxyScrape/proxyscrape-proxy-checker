@@ -1,7 +1,8 @@
 /**
  * Single entry point for HTTP + SSE calls to the Go checker API.
  * Desktop: base URL and token come from contextBridge ({@link window.__ELECTRON__}).
- * Web: same-origin relative URLs and session token in localStorage.
+ * Server web mode: same-origin relative URLs and session token in localStorage.
+ * Guest web mode: same-origin relative URLs, session via HttpOnly cookie (no token needed).
  */
 
 /** @returns {boolean} True when running inside Electron with the preload bridge. */
@@ -94,7 +95,10 @@ export async function apiFetch(path, options = {}) {
   try {
     response = await fetch(url, {
       ...options,
-      headers
+      headers,
+      // Ensure cookies are sent for same-origin requests (required in guest mode
+      // where auth is via HttpOnly cookie rather than a Bearer token).
+      credentials: options.credentials || 'same-origin',
     });
   } catch (err) {
     const msg = err && err.message ? err.message : 'Network error';

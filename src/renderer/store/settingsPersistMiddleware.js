@@ -1,4 +1,5 @@
 import { saveSettings } from '../actions/SettingsActions';
+import { isGuestMode } from '../misc/mode';
 
 // Action types that represent a user-initiated settings change.
 // Any of these trigger a debounced persist to the Go backend.
@@ -25,7 +26,7 @@ let debounceTimer = null;
 const settingsPersistMiddleware = store => next => action => {
     const result = next(action);
 
-    if (SETTINGS_ACTIONS.has(action.type)) {
+    if (SETTINGS_ACTIONS.has(action.type) && !isGuestMode()) {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
             store.dispatch(saveSettings());

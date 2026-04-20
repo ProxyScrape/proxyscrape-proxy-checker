@@ -111,6 +111,26 @@ docker run -p 8080:8080 -v checker-data:/data proxyscrape/checker serve --mode=s
 
 The server refuses to start in server mode if no users exist.
 
+## Guest mode
+
+Guest mode is the anonymous, public-facing variant used by the online proxy checker at [proxyscrape.com/online-proxy-checker](https://proxyscrape.com/online-proxy-checker). No login is required — sessions are managed via HttpOnly cookies. Settings, judges, and blacklists are read-only; all check history is scoped to the requesting session.
+
+```bash
+./bin/checker-webserver-linux-x64 serve --mode=guest --port=8080 --bind=0.0.0.0
+```
+
+Or with Docker:
+
+```bash
+docker run -p 8080:8080 -v checker-data:/data proxyscrape/checker serve --mode=guest --port=8080 --bind=0.0.0.0
+```
+
+### Guest mode flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--guest-max-proxies-in-flight` | `5000` | Per-session cap on the number of proxies a single guest session may have actively checking at once. Each browser session is tracked independently — one user cannot affect another's quota. When a session hits the limit, new check requests receive `429 Too Many Requests` until its running checks finish. Set to `0` to disable the limit. |
+
 ## User management
 
 These commands are for server mode only. Run them on the host (or inside the container) before or after starting the server.

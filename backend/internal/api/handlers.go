@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,11 +31,38 @@ import (
 
 // runningCheck holds live state for an in-progress proxy check.
 type runningCheck struct {
-	cancel    context.CancelFunc
-	results   chan checker.Result   // tee output; buffered = len(proxies); SSE reads from here
+	cancel context.CancelFunc
+
+	// mu guards snapshot. The tee goroutine holds a write lock while appending;
+	// SSE handlers hold a read lock while copying a batch to send.
+	mu       sync.RWMutex
+	snapshot []checker.Result // append-only; one entry per checked proxy; survives client disconnects
+	// newItem is a 1-buffered channel used by the tee goroutine to wake SSE
+	// readers. It is closed when the tee goroutine finishes, signalling that no
+	// more results will be added to snapshot.
+	newItem chan struct{}
+
+	// geoResults is written by the check goroutine after geo enrichment
+	// completes and before close(rc.done). SSE handlers read it after
+	// receiving from rc.done. No mutex needed: the happens-before relationship
+	// through close/receive on rc.done is sufficient.
+	geoResults []geoworker.Result
+
 	progress  chan checker.Progress // passed to checker.Run; SSE reads from here
-	done      chan struct{}         // closed after check goroutine fully finishes (store saved)
+	done      chan struct{}         // closed after check goroutine fully finishes (store saved + geo enriched)
 	cancelled int32                // atomic; 1 when user requested cancellation via DELETE /check/{id}, 0 on natural finish
+	// sessionID is non-empty in guest mode; used to prevent cross-session SSE access.
+	sessionID string
+	// total is the number of proxies in this check run; used in guest mode to
+	// decrement the global in-flight counter when the check finishes.
+	total int
+}
+
+// guestSessionCounter returns the in-flight proxy counter for the given guest
+// session, creating it on first access. Safe for concurrent use.
+func (s *server) guestSessionCounter(sid string) *atomic.Int64 {
+	v, _ := s.guestSessionInFlight.LoadOrStore(sid, &atomic.Int64{})
+	return v.(*atomic.Int64)
 }
 
 // --- Request/response types for POST /api/check ---
@@ -138,6 +166,18 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enforce the per-session in-flight proxy limit for guest mode.
+	if s.mode == "guest" && s.guestInFlightLimit > 0 {
+		sid := guestSessionIDFromCtx(r.Context())
+		incoming := int64(len(req.Proxies))
+		counter := s.guestSessionCounter(sid)
+		if counter.Add(incoming) > int64(s.guestInFlightLimit) {
+			counter.Add(-incoming)
+			jsonError(w, http.StatusTooManyRequests, "Too many proxies being checked at once — wait for your current runs to finish.")
+			return
+		}
+	}
+
 	// Build judge items; fall back to settings if the request provides none.
 	judgeItems := make([]judges.JudgeItem, len(req.JudgeURLs))
 	for i, it := range req.JudgeURLs {
@@ -235,12 +275,16 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 
 	checkID := uuid.New().String()
 	ctx, cancel := context.WithCancel(context.Background())
+	sessionID := guestSessionIDFromCtx(r.Context())
 
 	rc := &runningCheck{
-		cancel:   cancel,
-		results:  make(chan checker.Result, len(proxies)),
-		progress: make(chan checker.Progress, 100),
-		done:     make(chan struct{}),
+		cancel:    cancel,
+		snapshot:  make([]checker.Result, 0, len(proxies)),
+		newItem:   make(chan struct{}, 1),
+		progress:  make(chan checker.Progress, 100),
+		done:      make(chan struct{}),
+		sessionID: sessionID,
+		total:     len(proxies),
 	}
 	s.checks.Store(checkID, rc)
 
@@ -253,45 +297,55 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 		defer s.checks.Delete(checkID)
 		defer cancel()
 		defer close(rc.done)
+		if s.mode == "guest" && s.guestInFlightLimit > 0 {
+			defer s.guestSessionCounter(rc.sessionID).Add(-int64(rc.total))
+		}
 
 		startTime := time.Now()
 
-		// rawCh is what checker.Run writes to; tee goroutine fans it out.
+		// rawCh is what checker.Run writes to; tee goroutine fans it out to the
+		// in-memory snapshot and wakes any connected SSE handler.
 		rawCh := make(chan checker.Result, total)
 
-		var collected []checker.Result
 		teeDone := make(chan struct{})
 
 		go func() {
 			defer close(teeDone)
-			defer close(rc.results)
+			defer close(rc.newItem) // signals SSE readers that no more results are coming
 			for result := range rawCh {
-				collected = append(collected, result)
-				// Non-blocking send: rc.results has capacity = total, so this
-				// almost never drops, but we protect against a disconnected SSE.
+				rc.mu.Lock()
+				rc.snapshot = append(rc.snapshot, result)
+				rc.mu.Unlock()
+				// Wake any waiting SSE reader. Non-blocking: if a notification
+				// is already pending the reader will drain the new item on its
+				// next pass, so dropping the signal here is safe.
 				select {
-				case rc.results <- result:
+				case rc.newItem <- struct{}{}:
 				default:
 				}
 			}
 		}()
 
 		_ = c.Run(ctx, rawCh, rc.progress)
-		<-teeDone
+		<-teeDone // snapshot is complete; no lock needed (only reader from here)
 
 		elapsed := time.Since(startTime).Milliseconds()
 
 		working := 0
-		storeResults := make([]store.CheckResult, len(collected))
-		for i, res := range collected {
+		var workingHosts []string
+		storeResults := make([]store.CheckResult, len(rc.snapshot))
+		for i, res := range rc.snapshot {
 			if res.Status == "working" {
 				working++
+				if res.Proxy.Host != "" {
+					workingHosts = append(workingHosts, res.Proxy.Host)
+				}
 			}
 			storeResults[i] = resultToStore(checkID, res)
 		}
 
 		bgCtx := context.Background()
-		if saveErr := s.store.SaveCheck(bgCtx, store.Check{
+		saved, saveErr := s.store.SaveCheck(bgCtx, store.Check{
 			ID:         checkID,
 			CreatedAt:  time.Now(),
 			Total:      total,
@@ -299,11 +353,33 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 			TimeoutMs:  timeout,
 			DurationMs: elapsed,
 			Protocols:  protocols,
-		}); saveErr != nil {
+			SessionID:  sessionID,
+		})
+		if saveErr != nil {
 			log.Printf("save check %s: %v", checkID, saveErr)
 		}
-		if saveErr := s.store.SaveCheckResults(bgCtx, storeResults); saveErr != nil {
-			log.Printf("save check results %s: %v", checkID, saveErr)
+		// Only persist results when the parent check row was actually inserted.
+		// For guest mode, saved==false means the session expired mid-run and
+		// was already pruned — discarding results here avoids orphaned rows.
+		if saved {
+			if saveErr := s.store.SaveCheckResults(bgCtx, storeResults); saveErr != nil {
+				log.Printf("save check results %s: %v", checkID, saveErr)
+			}
+		}
+
+		// Geo enrichment runs here — inside the check goroutine and before
+		// close(rc.done) — so that rc.geoResults is written exactly once and
+		// every SSE client (including reconnecting ones) sees the same data
+		// after receiving from rc.done. bgCtx ensures enrichment always runs
+		// to completion regardless of whether any SSE client is connected.
+		if s.geoWorker != nil && len(workingHosts) > 0 {
+			geoRes, err := s.geoWorker.LookupBatch(bgCtx, workingHosts)
+			if err != nil {
+				log.Printf("[geoworker] enrichment %s: %v", checkID, err)
+			} else {
+				inlineUpdateGeo(s.store.DB(), checkID, geoRes)
+				rc.geoResults = geoRes
+			}
 		}
 	}()
 
@@ -489,6 +565,32 @@ func marshalJSON(v interface{}) string {
 func (s *server) handleCheckEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
+	// In guest mode verify that this check belongs to the requesting session
+	// before emitting any events. We check both the in-flight runningCheck
+	// (not yet persisted) and the stored record.
+	if s.mode == "guest" {
+		sid := guestSessionIDFromCtx(r.Context())
+		if v, ok := s.checks.Load(id); ok {
+			rc := v.(*runningCheck)
+			if rc.sessionID != sid {
+				jsonUnauthorized(w)
+				return
+			}
+		} else {
+			// Check might be fully stored already.
+			ok, err := s.store.CheckBelongsToSession(r.Context(), id, sid)
+			if err != nil {
+				log.Printf("check events ownership: %v", err)
+				jsonError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if !ok {
+				jsonUnauthorized(w)
+				return
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -505,75 +607,119 @@ func (s *server) handleCheckEvents(w http.ResponseWriter, r *http.Request) {
 	s.sendStoredResults(w, r, id)
 }
 
-// streamLiveEvents consumes the results and progress channels of an active check
-// and writes SSE events until completion or client disconnect.
+// streamLiveEvents streams results and progress for an active check to the
+// client until the check completes or the client disconnects.
 //
-// After all proxies are checked and SQLite is flushed (rc.done), if a geo
-// worker is configured it performs inline enrichment before signalling the
-// client. This guarantees that the renderer receives country data alongside
-// — rather than after — the completion event, eliminating race conditions.
+// It reads from rc.snapshot by index rather than consuming a channel, so
+// multiple concurrent SSE connections (e.g. reconnects) can each read the full
+// result history independently. The tee goroutine signals rc.newItem whenever
+// a new result is appended, and closes it when no more results will arrive.
+//
+// On initial connect nextIdx=0 so the client gets everything from the start.
+// On reconnect nextIdx=0 equally, so the full snapshot is replayed first —
+// giving the client all results it missed while disconnected.
+//
+// Progress events with a done count below the number of results already
+// delivered are skipped to avoid the reconnecting client's counter going
+// backwards (stale events may still be buffered in rc.progress).
+//
+// Geo enrichment is performed by the check goroutine before close(rc.done),
+// so rc.geoResults is already populated when finalize reads it. This means
+// every SSE client — regardless of when it connected — receives the same
+// geo-batch data, and enrichment always runs exactly once.
 func (s *server) streamLiveEvents(w http.ResponseWriter, r *http.Request, rc *runningCheck, checkID string) {
-	resultsCh := rc.results
 	progressCh := rc.progress
+	nextIdx := 0 // number of snapshot entries already sent to this client
 
-	// Collect working proxy hosts as results stream through so we can enrich
-	// them in one batch call after the check finishes.
+	// Collect working proxy hosts for geo enrichment after the check finishes.
 	var workingHosts []string
 
-	for {
-		select {
-		case result, ok := <-resultsCh:
-			if !ok {
-				// Results channel closed; wait for the goroutine to finish
-				// persisting before signalling the client.
-				select {
-				case <-rc.done:
-				case <-r.Context().Done():
-				}
+	// drainSnapshot copies and sends any snapshot entries not yet delivered to
+	// this client. Called on every newItem notification and once before the
+	// select loop to replay historical results for reconnecting clients.
+	drainSnapshot := func() {
+		rc.mu.RLock()
+		batch := make([]checker.Result, len(rc.snapshot)-nextIdx)
+		copy(batch, rc.snapshot[nextIdx:])
+		rc.mu.RUnlock()
 
-				// Inline geo enrichment — runs synchronously so every row is
-				// updated in SQLite and the geo-batch event reaches the renderer
-				// before the terminal complete/stopped event.
-				if s.geoWorker != nil && len(workingHosts) > 0 {
-					writeSSEEvent(w, "enriching", map[string]string{"message": "Enriching location data"})
-					geoResults, err := s.geoWorker.LookupBatch(r.Context(), workingHosts)
-					if err != nil {
-						log.Printf("[geoworker] inline enrichment: %v", err)
-					} else {
-						inlineUpdateGeo(s.store.DB(), checkID, geoResults)
-						enriched := make([]enrichedRow, 0, len(geoResults))
-						for _, gr := range geoResults {
-							enriched = append(enriched, enrichedRow{
-								Host:        gr.Host,
-								CountryCode: gr.CountryCode,
-								CountryName: gr.CountryName,
-								CountryFlag: gr.CountryFlag,
-								City:        gr.City,
-							})
-						}
-						writeSSEEvent(w, "geo-batch", map[string]interface{}{"results": enriched})
-					}
-				}
-
-				// "complete" = all proxies were checked naturally.
-				// "stopped"  = user cancelled the run mid-way via DELETE /check/{id}.
-				if atomic.LoadInt32(&rc.cancelled) == 1 {
-					writeSSEEvent(w, "stopped", map[string]string{"status": "stopped"})
-				} else {
-					writeSSEEvent(w, "complete", map[string]string{"status": "complete"})
-				}
-				return
-			}
+		for _, result := range batch {
 			writeSSEEvent(w, "result", resultToAPI(result))
 			if result.Status == "working" && result.Proxy.Host != "" {
 				workingHosts = append(workingHosts, result.Proxy.Host)
+			}
+			nextIdx++
+		}
+	}
+
+	// Replay any results already in the snapshot. On a fresh connect this is a
+	// no-op; on reconnect it catches the client up instantly.
+	drainSnapshot()
+
+	finalize := func() {
+		// Send "enriching" before blocking — the spinner should be visible while
+		// the check goroutine runs geo enrichment. We predict enrichment will
+		// happen if the geo worker is configured and the check produced working
+		// proxies; this is the same condition the goroutine uses.
+		if s.geoWorker != nil && len(workingHosts) > 0 {
+			writeSSEEvent(w, "enriching", map[string]string{"message": "Enriching location data"})
+		}
+
+		// Wait for the check goroutine to finish: SQLite persist + geo enrichment.
+		// rc.geoResults is safe to read without a lock after this receive because
+		// the goroutine writes it before close(rc.done) (happens-before).
+		select {
+		case <-rc.done:
+		case <-r.Context().Done():
+			return
+		}
+
+		// Forward the geo results written by the check goroutine. Every SSE
+		// client — including reconnecting ones — sees the same enriched data.
+		if len(rc.geoResults) > 0 {
+			enriched := make([]enrichedRow, 0, len(rc.geoResults))
+			for _, gr := range rc.geoResults {
+				enriched = append(enriched, enrichedRow{
+					Host:        gr.Host,
+					CountryCode: gr.CountryCode,
+					CountryName: gr.CountryName,
+					CountryFlag: gr.CountryFlag,
+					City:        gr.City,
+				})
+			}
+			writeSSEEvent(w, "geo-batch", map[string]interface{}{"results": enriched})
+		}
+
+		// "complete" = all proxies were checked naturally.
+		// "stopped"  = user cancelled the run mid-way via DELETE /check/{id}.
+		if atomic.LoadInt32(&rc.cancelled) == 1 {
+			writeSSEEvent(w, "stopped", map[string]string{"status": "stopped"})
+		} else {
+			writeSSEEvent(w, "complete", map[string]string{"status": "complete"})
+		}
+	}
+
+	for {
+		select {
+		case _, ok := <-rc.newItem:
+			// Always drain after a newItem signal: the notification may have been
+			// coalesced (dropped when the buffer was full), so there could be
+			// more entries in snapshot than a single item.
+			drainSnapshot()
+			if !ok {
+				// Tee goroutine finished — no more results will be written.
+				finalize()
+				return
 			}
 
 		case prog, ok := <-progressCh:
 			if !ok {
 				// Set to nil so this case is never selected again.
 				progressCh = nil
-			} else {
+			} else if prog.Done >= nextIdx {
+				// Skip stale progress events (done count below what has already
+				// been delivered from the snapshot) to prevent the reconnecting
+				// client's counter from jumping backwards.
 				writeSSEEvent(w, "progress", prog)
 			}
 
@@ -581,6 +727,45 @@ func (s *server) streamLiveEvents(w http.ResponseWriter, r *http.Request, rc *ru
 			return
 		}
 	}
+}
+
+// handleActiveCheck returns the currently running check for the requesting guest
+// session (HTTP 200 + JSON), or 204 No Content when no check is in flight.
+//
+// Security: it only exposes checks whose sessionID matches the cookie-authenticated
+// session from the request context. A guest cannot discover or connect to another
+// session's check even if they know or guess its UUID.
+func (s *server) handleActiveCheck(w http.ResponseWriter, r *http.Request) {
+	sid := guestSessionIDFromCtx(r.Context())
+
+	type activeCheckResp struct {
+		ID    string `json:"id"`
+		Total int    `json:"total"`
+		Done  int    `json:"done"`
+	}
+
+	var found *activeCheckResp
+	s.checks.Range(func(k, v interface{}) bool {
+		rc := v.(*runningCheck)
+		if rc.sessionID != sid {
+			return true // not ours — keep ranging
+		}
+		rc.mu.RLock()
+		done := len(rc.snapshot)
+		rc.mu.RUnlock()
+		found = &activeCheckResp{
+			ID:    k.(string),
+			Total: rc.total,
+			Done:  done,
+		}
+		return false // stop — one active check per session
+	})
+
+	if found == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeJSON(w, found)
 }
 
 // inlineUpdateGeo updates geo fields for working proxies of a single check
@@ -608,17 +793,27 @@ func inlineUpdateGeo(db *sql.DB, checkID string, results []geoworker.Result) {
 	}
 }
 
-// sendStoredResults loads all results for a finished check from the store
-// and sends them as SSE events, then sends a "complete" event.
+// sendStoredResults streams all results for a finished check as SSE events,
+// paginating the DB reads so that checks with arbitrarily many results are
+// delivered without truncation or excessive memory use.
 func (s *server) sendStoredResults(w http.ResponseWriter, r *http.Request, checkID string) {
-	items, _, err := s.store.GetCheckResults(r.Context(), checkID, 1, 100000)
-	if err != nil {
-		log.Printf("sse: get check results %s: %v", checkID, err)
-		writeSSEEvent(w, "error", map[string]string{"error": "failed to load results"})
-		return
-	}
-	for _, item := range items {
-		writeSSEEvent(w, "result", storeResultToAPI(item))
+	const pageSize = 1000
+	sid := guestSessionIDFromCtx(r.Context())
+	for page := 1; ; page++ {
+		items, total, err := s.store.GetCheckResults(r.Context(), checkID, sid, page, pageSize)
+		if err != nil {
+			log.Printf("sse: get check results %s page %d: %v", checkID, page, err)
+			writeSSEEvent(w, "error", map[string]string{"error": "failed to load results"})
+			return
+		}
+		for _, item := range items {
+			writeSSEEvent(w, "result", storeResultToAPI(item))
+		}
+		// Stop when we have fetched all rows or when an empty page is returned
+		// (safety guard in case total is stale).
+		if len(items) == 0 || page*pageSize >= total {
+			break
+		}
 	}
 	writeSSEEvent(w, "complete", map[string]string{"status": "complete"})
 }
@@ -640,6 +835,11 @@ func (s *server) handleStopCheck(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if v, ok := s.checks.Load(id); ok {
 		rc := v.(*runningCheck)
+		// In guest mode only the owning session may cancel a check.
+		if s.mode == "guest" && rc.sessionID != guestSessionIDFromCtx(r.Context()) {
+			jsonUnauthorized(w)
+			return
+		}
 		atomic.StoreInt32(&rc.cancelled, 1)
 		rc.cancel()
 	}
@@ -647,7 +847,7 @@ func (s *server) handleStopCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleListChecks(w http.ResponseWriter, r *http.Request) {
-	checks, err := s.store.ListChecks(r.Context())
+	checks, err := s.store.ListChecks(r.Context(), guestSessionIDFromCtx(r.Context()))
 	if err != nil {
 		log.Printf("list checks: %v", err)
 		jsonError(w, http.StatusInternalServerError, "failed to list checks")
@@ -661,8 +861,25 @@ func (s *server) handleListChecks(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleGetCheckResults(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+
+	// In guest mode enforce that the check belongs to the requesting session
+	// to prevent IDOR (reading another session's results by guessing a check UUID).
+	if s.mode == "guest" {
+		sid := guestSessionIDFromCtx(r.Context())
+		belongs, err := s.store.CheckBelongsToSession(r.Context(), id, sid)
+		if err != nil {
+			log.Printf("get check results ownership %s: %v", id, err)
+			jsonError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if !belongs {
+			jsonUnauthorized(w)
+			return
+		}
+	}
+
 	page, limit := parsePagination(r)
-	items, total, err := s.store.GetCheckResults(r.Context(), id, page, limit)
+	items, total, err := s.store.GetCheckResults(r.Context(), id, guestSessionIDFromCtx(r.Context()), page, limit)
 	if err != nil {
 		log.Printf("get check results %s: %v", id, err)
 		jsonError(w, http.StatusInternalServerError, "failed to get results")
@@ -677,19 +894,37 @@ func (s *server) handleGetCheckResults(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleDeleteCheck(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := s.store.DeleteCheck(r.Context(), id); err != nil {
+	deleted, err := s.store.DeleteCheck(r.Context(), id, guestSessionIDFromCtx(r.Context()))
+	if err != nil {
 		log.Printf("delete check %s: %v", id, err)
 		jsonError(w, http.StatusInternalServerError, "failed to delete check")
+		return
+	}
+	if !deleted {
+		// 0 rows affected: check does not exist or (in guest mode) belongs to a
+		// different session. Return 404 rather than 204 so the caller knows
+		// nothing was removed.
+		jsonError(w, http.StatusNotFound, "check not found")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) handleClearChecks(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.Reset(); err != nil {
-		log.Printf("clear checks: %v", err)
-		jsonError(w, http.StatusInternalServerError, "failed to clear history")
-		return
+	if s.mode == "guest" {
+		// In guest mode only clear the requesting session's checks.
+		sid := guestSessionIDFromCtx(r.Context())
+		if err := s.store.ClearSessionChecks(r.Context(), sid); err != nil {
+			log.Printf("clear session checks: %v", err)
+			jsonError(w, http.StatusInternalServerError, "failed to clear history")
+			return
+		}
+	} else {
+		if err := s.store.Reset(); err != nil {
+			log.Printf("clear checks: %v", err)
+			jsonError(w, http.StatusInternalServerError, "failed to clear history")
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -801,6 +1036,20 @@ func (s *server) handleGetIP(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleGetVersion(w http.ResponseWriter, r *http.Request) {
 	info := updater.Check(r.Context(), appVersion)
 	writeJSON(w, info)
+}
+
+// handleGetMode returns the server run mode so the frontend can adapt its UI.
+// This endpoint is intentionally unauthenticated — the mode is not sensitive.
+// In guest mode a "limits" object is included so the frontend can enforce them
+// proactively (e.g. disabling the Check button before a request is even made).
+func (s *server) handleGetMode(w http.ResponseWriter, r *http.Request) {
+	resp := map[string]interface{}{"mode": s.mode}
+	if s.mode == "guest" && s.guestInFlightLimit > 0 {
+		resp["limits"] = map[string]int{
+			"inFlightProxies": s.guestInFlightLimit,
+		}
+	}
+	writeJSON(w, resp)
 }
 
 // =============================================================================
