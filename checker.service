@@ -4,6 +4,7 @@ After=network.target
 
 [Service]
 ExecStart=/usr/local/bin/checker serve --mode=server --port=8080 --data-dir=/var/lib/checker
+Environment=CHECKER_HTTPS=true
 Restart=always
 User=checker
 

@@ -171,11 +171,16 @@ func pathMatchesPattern(path, pattern string) bool {
 	return true
 }
 
-// validateGuestRoutes walks r and panics if any registered (method, pattern) pair
-// is absent from both guestAllowed and guestBlocked. Call once at startup.
+// validateGuestRoutes walks r and panics if any registered /api/* route is absent
+// from both guestAllowed and guestBlocked. Non-/api/ routes (e.g. the SPA
+// catch-all) are intentionally skipped — the guest guard middleware is scoped
+// exclusively to the /api/ subrouter, so non-API routes are public by design.
 func validateGuestRoutes(r chi.Router) {
 	var uncovered []string
 	_ = chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if !strings.HasPrefix(route, "/api/") {
+			return nil
+		}
 		key := routeKey{method: method, pattern: route}
 		_, inAllowed := guestAllowed[key]
 		_, inBlocked := guestBlocked[key]
@@ -290,8 +295,11 @@ func setGuestCookie(w http.ResponseWriter, sid string, expiresAt time.Time) {
 // CLI flag; 0 disables the limit.
 func NewGuestServer(db *store.Store, mgr *settings.Manager, geoWorker *geoworker.Client, inFlightLimit int) http.Handler {
 	r := newGuestRouter(db, mgr, geoWorker, inFlightLimit)
-	// Panic at startup if any registered route is missing from guestAllowed/guestBlocked.
-	// This ensures every future route addition is a conscious policy decision.
+	// Register the SPA catch-all after all /api/* routes so chi's more-specific
+	// patterns always take priority. No-op on non-webserver builds.
+	registerSPAHandler(r)
+	// Panic at startup if any /api/* route is missing from guestAllowed/guestBlocked.
+	// This ensures every future API route addition is a conscious policy decision.
 	validateGuestRoutes(r)
 	return r
 }
