@@ -16,6 +16,8 @@ electron.vite.config.[0-9]*.mjs
 bin/
 # Air (Go hot-reload) build output
 backend/.air_tmp/
+# Renderer bundle copied into the Go embed target by build-webserver.sh — generated, never commit
+backend/internal/api/web/
 workers/ip-geo/scripts/verify-geofeed.py
 
 workers/ip-geo/scripts/load-test-10k.py

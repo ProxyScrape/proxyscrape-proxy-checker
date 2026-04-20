@@ -1,3 +1,5 @@
+//go:build !webserver
+
 package checker
 
 import (
@@ -13,6 +15,12 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
+
+// captureHandleSet holds the pcap handles opened for a single proxy check.
+// On desktop builds this is a concrete []*pcap.Handle; on webserver builds it
+// is a zero-size stub (see capture_stub.go) so the webserver binary can be
+// compiled without libpcap / CGO.
+type captureHandleSet = []*pcap.Handle
 
 // openHandleOnIface opens a BPF-filtered pcap handle on a single named interface.
 // A 10ms read timeout is used instead of pcap.BlockForever so that drain

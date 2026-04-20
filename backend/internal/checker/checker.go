@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/gopacket/pcap"
 	"github.com/proxyscrape/checker-backend/internal/blacklist"
 	"github.com/proxyscrape/checker-backend/internal/geo"
 	"github.com/proxyscrape/checker-backend/internal/judges"
@@ -332,7 +331,7 @@ func (c *Checker) checkProxy(ctx context.Context, p Proxy) Result {
 	// independently resolves to a different IP than the pcap filter was set to.
 	var (
 		captureStart    time.Time
-		captureHandles  []*pcap.Handle
+		captureHandles  captureHandleSet
 		packetsDone     = make(chan []capturedPacket, 1)
 	)
 
