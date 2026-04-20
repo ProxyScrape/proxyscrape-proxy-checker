@@ -247,3 +247,7 @@ CI detects the existing entry and skips the AI call, preserving your notes.
 ## Architecture
 
 For system design, authentication model, API reference, and Go package responsibilities, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+## Production deployment
+
+For the hosted web deployment at `checker.proxyscrape.com` — server setup, Nginx config, systemd service, SSL, firewall, and the deploy process — see [DEPLOYMENT.md](./DEPLOYMENT.md).
