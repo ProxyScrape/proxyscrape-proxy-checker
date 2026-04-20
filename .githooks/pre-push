@@ -15,44 +15,47 @@ export PATH="$PATH:$HOME/go/bin"
 
 # 1. gosec G201/G202 — detects SQL built with fmt.Sprintf or string concatenation.
 #    Scans only our own packages; vendor/ is excluded automatically by gosec.
-if command -v gosec &>/dev/null; then
-    echo "[pre-push] running SQL-injection checks (gosec G201/G202)..."
-    if ! (cd "$BACKEND_DIR" && gosec -quiet -include=G201,G202 ./cmd/... ./internal/... 2>&1); then
-        echo ""
-        echo "ERROR: gosec found potential SQL-injection issues in backend/."
-        echo "  Use parameterized queries (?) instead of fmt.Sprintf / string concat."
-        exit 1
-    fi
-    echo "[pre-push] ✓ SQL-injection checks passed"
-else
-    echo "[pre-push] WARNING: gosec not installed — skipping SQL-injection scan."
+if ! command -v gosec &>/dev/null; then
+    echo ""
+    echo "ERROR: gosec is required for SQL-injection checks but is not installed."
     echo "  Install with: go install github.com/securego/gosec/v2/cmd/gosec@latest"
+    exit 1
 fi
+echo "[pre-push] running SQL-injection checks (gosec G201/G202)..."
+if ! (cd "$BACKEND_DIR" && gosec -quiet -include=G201,G202 ./cmd/... ./internal/... 2>&1); then
+    echo ""
+    echo "ERROR: gosec found potential SQL-injection issues in backend/."
+    echo "  Use parameterized queries (?) instead of fmt.Sprintf / string concat."
+    exit 1
+fi
+echo "[pre-push] ✓ SQL-injection checks passed"
 
 # 2. Custom rg check — detects unsafe PRAGMA statements built with %s format verbs.
 #    gosec does not flag PRAGMA because it is not a DML/DQL query, but a PRAGMA
 #    built with a %s verb (string interpolation) can still be exploited if the
 #    value originates from user input.  Integer-only (%d) PRAGMA usage is safe and
 #    intentionally excluded.  vendor/ is skipped because it is third-party code.
-if command -v rg &>/dev/null; then
-    echo "[pre-push] checking for string-interpolated PRAGMA construction..."
-    # Scan only our own source trees (cmd/ and internal/) — vendor/ is third-party.
-    PRAGMA_HITS=$(rg --with-filename --line-number -i \
-        'fmt\.(Sprintf|Fprintf)\s*\([^)]*pragma[^)]*%s' \
-        "$BACKEND_DIR/cmd" "$BACKEND_DIR/internal" 2>/dev/null || true)
-    if [ -n "$PRAGMA_HITS" ]; then
-        echo ""
-        echo "ERROR: Potentially unsafe dynamic PRAGMA construction detected:"
-        echo "$PRAGMA_HITS"
-        echo ""
-        echo "  A PRAGMA built with a %s verb can be exploited if the value comes"
-        echo "  from user input.  Use hard-coded strings or integer (%d) values only."
-        exit 1
-    fi
-    echo "[pre-push] ✓ No unsafe PRAGMA construction found"
-else
-    echo "[pre-push] WARNING: rg (ripgrep) not installed — skipping PRAGMA check."
+if ! command -v rg &>/dev/null; then
+    echo ""
+    echo "ERROR: rg (ripgrep) is required for PRAGMA checks but is not installed."
+    echo "  Install with: brew install ripgrep  (or see https://github.com/BurntSushi/ripgrep)"
+    exit 1
 fi
+echo "[pre-push] checking for string-interpolated PRAGMA construction..."
+# Scan only our own source trees (cmd/ and internal/) — vendor/ is third-party.
+PRAGMA_HITS=$(rg --with-filename --line-number -i \
+    'fmt\.(Sprintf|Fprintf)\s*\([^)]*pragma[^)]*%s' \
+    "$BACKEND_DIR/cmd" "$BACKEND_DIR/internal" 2>/dev/null || true)
+if [ -n "$PRAGMA_HITS" ]; then
+    echo ""
+    echo "ERROR: Potentially unsafe dynamic PRAGMA construction detected:"
+    echo "$PRAGMA_HITS"
+    echo ""
+    echo "  A PRAGMA built with a %s verb can be exploited if the value comes"
+    echo "  from user input.  Use hard-coded strings or integer (%d) values only."
+    exit 1
+fi
+echo "[pre-push] ✓ No unsafe PRAGMA construction found"
 
 # ── Version / tag checks ──────────────────────────────────────────────────────
 
