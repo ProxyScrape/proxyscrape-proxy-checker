@@ -3,26 +3,10 @@ import { wait } from '../misc/wait';
 import { UPDATE_CHANGE_STATE } from '../constants/ActionTypes';
 import { isDev, IS_CANARY } from '../../shared/AppConstants';
 
-const ONLINE_URL = 'https://api.proxyscrape.com/v2/analytics/proxy-checker.php';
-
-const sendOnlineInfo = () => {
-    const body = JSON.stringify({ user_online: true });
-    try {
-        fetch(ONLINE_URL, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } });
-        setInterval(() => {
-            fetch(ONLINE_URL, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } });
-        }, 60000);
-    } catch {
-        // non-critical, ignore
-    }
-};
-
 export const checkAtAvailable = () => async dispatch => {
     try {
         // Go backend handles the GitHub API call and version comparison.
         const versionData = await apiFetch('/api/version');
-
-        if (!isDev) sendOnlineInfo();
         await wait(500);
 
         if (IS_CANARY) {
