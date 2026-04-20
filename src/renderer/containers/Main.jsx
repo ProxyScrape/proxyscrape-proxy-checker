@@ -288,7 +288,7 @@ class Main extends React.PureComponent {
                         pb: `${FOOTER_HEIGHT + (IS_CANARY ? CANARY_BANNER_HEIGHT : 0) + (isGuestMode() ? GUEST_BANNER_HEIGHT : 0)}px`,
                         px: { xs: 2, sm: 5 },
                     }}>
-                        <Box sx={{ pt: 3 }}>
+                        <Box id="checker-content-root" sx={{ pt: 3 }}>
                             {this.state.tabIndex <= 3 && <Settings tabIndex={this.state.tabIndex} />}
                             {this.state.tabIndex === 0 && <InputV2 />}
                             {this.state.tabIndex === 0 && <Protocols />}

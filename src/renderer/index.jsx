@@ -116,26 +116,42 @@ function AppRoot() {
         if (appState !== 'ready') return;
 
         const sendHeight = () => {
-            // The app uses a fixed-height inner scroll container, so
-            // document.documentElement.scrollHeight always equals the iframe's
-            // current height (not the content's natural height). Instead we
-            // measure the scroll container's true content height and add the
-            // titlebar that sits above it.
+            // Measure the true content height via the inner content element.
+            // Using scrollRoot.scrollHeight would create a ResizeObserver loop:
+            // when content fits, scrollHeight === clientHeight === calc(100vh-38px),
+            // so every time the parent grows the iframe by our +2px buffer, 100vh
+            // increases, clientHeight grows, scrollHeight grows, we report a larger
+            // height, parent grows the iframe again — ad infinitum.
+            //
+            // Instead we measure #checker-content-root (the inner content Box)
+            // whose height is driven purely by its children, not by the container's
+            // 100vh constraint. The ResizeObserver is also attached to this element
+            // so it only fires when content actually changes, not when the iframe
+            // is resized by the parent.
             const scrollRoot = document.getElementById('checker-scroll-root');
-            // Add 2px to absorb subpixel rounding on high-DPR devices (e.g. Samsung
-            // phones with DPR 2.625). scrollHeight is an integer rounded down from the
-            // true physical-pixel height, which can leave the iframe 1px short and
-            // produce a hairline scrollbar only visible on real hardware.
-            const height = scrollRoot
-                ? TITLEBAR_HEIGHT + scrollRoot.scrollHeight + 2
-                : document.documentElement.scrollHeight + 2;
+            const contentRoot = document.getElementById('checker-content-root');
+
+            let height;
+            if (scrollRoot && contentRoot) {
+                const styles = window.getComputedStyle(scrollRoot);
+                const pt = parseFloat(styles.paddingTop) || 0;
+                const pb = parseFloat(styles.paddingBottom) || 0;
+                const contentH = contentRoot.getBoundingClientRect().height;
+                // +2px absorbs subpixel rounding on high-DPR devices (e.g. Samsung
+                // phones with DPR 2.625) that can leave the iframe 1px short.
+                height = Math.ceil(TITLEBAR_HEIGHT + pt + contentH + pb) + 2;
+            } else {
+                height = Math.ceil(document.documentElement.scrollHeight) + 2;
+            }
             window.parent.postMessage({ type: 'checker-height', height }, '*');
         };
 
-        // ResizeObserver fires when the rendered content changes size (e.g. after
-        // fonts/images load). window resize also triggers a new measurement.
+        // Observe the inner content element — its height changes only when the
+        // actual content changes (tab switch, data load, resize reflow), not when
+        // the parent simply adjusts the iframe height. This breaks the loop.
+        const contentRoot = document.getElementById('checker-content-root');
         const ro = new ResizeObserver(sendHeight);
-        ro.observe(document.documentElement);
+        ro.observe(contentRoot || document.documentElement);
         window.addEventListener('resize', sendHeight);
 
         return () => {
