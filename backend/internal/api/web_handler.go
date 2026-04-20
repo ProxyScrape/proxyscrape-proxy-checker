@@ -6,13 +6,22 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
 
+// Vite content-hashes static assets with an 8-character hex suffix, e.g.
+// "assets/index-DuijEYuQ.js". These are safe to cache forever.
+var hashedAssetRe = regexp.MustCompile(`-[A-Za-z0-9]{8}\.[a-z0-9]+$`)
+
 //go:embed all:web
 var webFS embed.FS
+
+func isHashedAsset(path string) bool {
+	return hashedAssetRe.MatchString(path)
+}
 
 // registerSPAHandler mounts the embedded React SPA on the router.
 //
@@ -38,11 +47,20 @@ func registerSPAHandler(r chi.Router) {
 		// Serve the file if it exists in the embedded FS.
 		if f, err := sub.Open(path); err == nil {
 			f.Close()
+			// Hashed assets (e.g. index-abc123.js) are content-addressed and
+			// safe to cache indefinitely. index.html and the SPA fallback must
+			// never be cached so browsers always fetch the latest entry point.
+			if isHashedAsset(path) {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			} else {
+				w.Header().Set("Cache-Control", "no-cache")
+			}
 			fileServer.ServeHTTP(w, r)
 			return
 		}
 
 		// SPA fallback — unknown paths are handled by React Router client-side.
+		w.Header().Set("Cache-Control", "no-cache")
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/"
 		fileServer.ServeHTTP(w, r2)
