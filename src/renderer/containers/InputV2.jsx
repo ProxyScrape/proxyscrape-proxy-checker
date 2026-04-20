@@ -1,5 +1,8 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { connect } from 'react-redux';
+import { EditorState } from '@codemirror/state';
+import { EditorView, keymap, drawSelection } from '@codemirror/view';
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { applyParsedResult, clearInput } from '../actions/InputActions';
 import { toggleOption } from '../actions/CoreActions';
 import { showError } from '../store/reducers/app';
@@ -14,7 +17,6 @@ import { InfoIcon } from '../components/ui/HelpTip';
 import DropDocIcon from '../components/ui/DropDocIcon';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import Stack from '@mui/material/Stack';
 import Collapse from '@mui/material/Collapse';
 import { alpha } from '@mui/material/styles';
 import { blueBrand, palette } from '../theme/palette';
@@ -26,14 +28,14 @@ import { blueBrand, palette } from '../theme/palette';
 const PARSE_DEBOUNCE_MS = 400;
 
 // ---------------------------------------------------------------------------
-// Helpers (inlined from InputActions — not exported there)
+// Helpers
 // ---------------------------------------------------------------------------
 
 const pathBasename = (p) => (p ? p.replace(/^.*[\\/]/, '') : '');
 const getFilePath  = (file) => window.__ELECTRON__?.getPathForFile(file) ?? '';
 
 // ---------------------------------------------------------------------------
-// Small icons
+// Icons
 // ---------------------------------------------------------------------------
 
 const ChevronIcon = ({ open }) => (
@@ -155,24 +157,14 @@ const ParseErrorList = ({ errors }) => {
     );
 };
 
-// ---------------------------------------------------------------------------
-// ActionButton — small header button used for Browse / Paste
-// ---------------------------------------------------------------------------
-
 const ActionButton = ({ onClick, icon, label }) => (
     <Box
         onClick={onClick}
         sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.5,
-            color: blueBrand[300],
-            cursor: 'pointer',
-            fontSize: '0.8rem',
-            fontWeight: 500,
-            px: 1,
-            py: 0.5,
-            borderRadius: 1,
+            display: 'flex', alignItems: 'center', gap: 0.5,
+            color: blueBrand[300], cursor: 'pointer',
+            fontSize: '0.8rem', fontWeight: 500,
+            px: 1, py: 0.5, borderRadius: 1,
             transition: 'color 0.15s, background-color 0.15s',
             userSelect: 'none',
             '&:hover': { color: '#fff', bgcolor: alpha(blueBrand[500], 0.12) },
@@ -188,23 +180,23 @@ const ActionButton = ({ onClick, icon, label }) => (
 // ---------------------------------------------------------------------------
 
 const InputV2 = ({
-    // Redux state
-    loaded, list, errors, unique, proxyCount, shuffle,
-    // Redux actions
+    loaded, list, errors, unique, total, proxyCount, shuffle,
     applyParsedResult, clearInput, showError, toggleOption,
 }) => {
-    const limits   = getGuestLimits();
+    const limits    = getGuestLimits();
     const overLimit = limits !== null && proxyCount > limits.inFlightProxies;
 
     // ── Refs ──────────────────────────────────────────────────────────────
-    const textareaRef    = useRef(null);
-    const workerRef      = useRef(null);
-    const requestIdRef   = useRef(0);
-    const parseTimerRef  = useRef(null);
-    const sourceMetaRef  = useRef({ name: 'Manual Input', sourceType: 'textarea' });
-    // Stable ref to the message handler so we can update it without
-    // re-creating the worker when Redux props change.
-    const handlerRef     = useRef(null);
+    const editorContainerRef = useRef(null);   // DOM node CodeMirror mounts into
+    const editorViewRef      = useRef(null);   // CodeMirror EditorView instance
+    const workerRef          = useRef(null);
+    const requestIdRef       = useRef(0);
+    const parseTimerRef      = useRef(null);
+    const sourceMetaRef      = useRef({ name: 'Manual Input', sourceType: 'textarea' });
+    const handlerRef         = useRef(null);   // stable ref to worker message handler
+    // Stable refs for CM extension closures — avoids stale-closure bugs
+    const triggerParseNowRef = useRef(null);
+    const scheduleParseRef   = useRef(null);
 
     // ── Local state ───────────────────────────────────────────────────────
     const [lineCount,      setLineCount]      = useState(0);
@@ -213,38 +205,53 @@ const InputV2 = ({
     const [errorsExpanded, setErrorsExpanded] = useState(false);
     const [isEmpty,        setIsEmpty]        = useState(true);
 
-    // ── Core parse trigger (immediate) ────────────────────────────────────
-    const triggerParseNow = useCallback(() => {
-        clearTimeout(parseTimerRef.current);
-        if (!textareaRef.current || !workerRef.current) return;
-
-        const text  = textareaRef.current.value;
-        const lines = text.split(/\r?\n/).filter(Boolean);
-
-        setLineCount(lines.length);
-        setIsEmpty(lines.length === 0);
-
-        if (lines.length === 0) {
-            setIsParsing(false);
-            clearInput();
-            return;
-        }
-
-        setIsParsing(true);
-        const id = ++requestIdRef.current;
-        workerRef.current.postMessage({ id, lines });
+    // ── Reset helper ──────────────────────────────────────────────────────
+    const clearInputAndState = useCallback(() => {
+        setIsParsing(false);
+        setIsEmpty(true);
+        setLineCount(0);
+        clearInput();
     }, [clearInput]);
+
+    // ── Core parse trigger ────────────────────────────────────────────────
+    // rawText is the clipboard/file string when available (avoids doc.toString()
+    // on the main thread for large documents).
+    const triggerParseNow = useCallback((rawText) => {
+        clearTimeout(parseTimerRef.current);
+        if (!workerRef.current) return;
+
+        const text = rawText !== undefined
+            ? rawText
+            : (editorViewRef.current?.state.doc.toString() ?? '');
+
+        if (!text.trim()) { clearInputAndState(); return; }
+
+        setIsEmpty(false);
+        setIsParsing(true);
+
+        const id = ++requestIdRef.current;
+        // Encode to UTF-8 bytes and transfer zero-copy to the worker.
+        // The worker does the split/dedup/parse entirely off the main thread.
+        const buffer = new TextEncoder().encode(text).buffer;
+        workerRef.current.postMessage({ id, buffer }, [buffer]);
+    }, [clearInputAndState]);
+
+    useEffect(() => { triggerParseNowRef.current = triggerParseNow; }, [triggerParseNow]);
 
     // ── Debounced parse trigger (for typing) ──────────────────────────────
     const scheduleParse = useCallback(() => {
         clearTimeout(parseTimerRef.current);
-        parseTimerRef.current = setTimeout(triggerParseNow, PARSE_DEBOUNCE_MS);
-    }, [triggerParseNow]);
+        parseTimerRef.current = setTimeout(
+            () => triggerParseNowRef.current?.(),
+            PARSE_DEBOUNCE_MS,
+        );
+    }, []);
+
+    useEffect(() => { scheduleParseRef.current = scheduleParse; }, [scheduleParse]);
 
     // ── Worker message handler ─────────────────────────────────────────────
     const handleWorkerMessage = useCallback(({ data }) => {
-        // Discard stale responses from superseded requests
-        if (data.id !== requestIdRef.current) return;
+        if (data.id !== requestIdRef.current) return; // stale result
 
         setIsParsing(false);
         setErrorsExpanded(false);
@@ -254,86 +261,129 @@ const InputV2 = ({
             return;
         }
 
-        const text = textareaRef.current?.value ?? '';
         applyParsedResult({
             loaded:       true,
             list:         data.list,
             errors:       data.errors,
-            total:        text.split(/\r?\n/).filter(Boolean).length,
+            total:        data.totalLines,
             unique:       data.unique,
             name:         sourceMetaRef.current.name,
-            size:         text.length,
+            size:         data.byteLength,
             hasProtocols: data.hasProtocols,
             sourceType:   sourceMetaRef.current.sourceType,
         });
 
         trackAction('proxy_list_imported', {
-            source:        sourceMetaRef.current.sourceType,
-            proxy_count:   data.list.length,
-            unique_count:  data.unique,
-            error_count:   data.errors.length,
+            source:       sourceMetaRef.current.sourceType,
+            proxy_count:  data.list.length,
+            unique_count: data.unique,
+            error_count:  data.errors.length,
         });
     }, [applyParsedResult, clearInput]);
 
-    // Keep the handler ref current so the worker listener always calls the
-    // latest version without needing to be re-registered.
     useEffect(() => { handlerRef.current = handleWorkerMessage; }, [handleWorkerMessage]);
 
     // ── Worker lifecycle ───────────────────────────────────────────────────
     useEffect(() => {
         const worker = new Worker(
             new URL('../workers/parseWorker.js', import.meta.url),
-            { type: 'module' }
+            { type: 'module' },
         );
         worker.onmessage = (e) => handlerRef.current(e);
         workerRef.current = worker;
-
-        return () => {
-            worker.terminate();
-            clearTimeout(parseTimerRef.current);
-        };
+        return () => { worker.terminate(); clearTimeout(parseTimerRef.current); };
     }, []);
 
+    // ── CodeMirror lifecycle ───────────────────────────────────────────────
+    useEffect(() => {
+        if (!editorContainerRef.current) return;
+
+        const view = new EditorView({
+            state: EditorState.create({
+                doc: '',
+                extensions: [
+                    history(),
+                    drawSelection(),
+                    keymap.of([...defaultKeymap, ...historyKeymap]),
+
+                    // Disable browser spell-check / autocorrect on the editor surface
+                    EditorView.contentAttributes.of({
+                        autocomplete:    'off',
+                        autocorrect:     'off',
+                        autocapitalize:  'off',
+                        spellcheck:      'false',
+                    }),
+
+                    // React to typing — update line count and schedule a re-parse.
+                    // Programmatic dispatches (paste handler, file load, clear) are
+                    // NOT user events, so they won't double-trigger the parse.
+                    EditorView.updateListener.of((update) => {
+                        if (!update.docChanged) return;
+                        const doc   = update.state.doc;
+                        const empty = doc.length === 0;
+                        setIsEmpty(empty);
+                        setLineCount(empty ? 0 : doc.lines);
+
+                        if (update.transactions.some(
+                            tr => tr.isUserEvent('input')  ||
+                                  tr.isUserEvent('delete') ||
+                                  tr.isUserEvent('undo')   ||
+                                  tr.isUserEvent('redo'),
+                        )) {
+                            sourceMetaRef.current = { name: 'Manual Input', sourceType: 'textarea' };
+                            scheduleParseRef.current?.();
+                        }
+                    }),
+
+                    // Intercept Cmd+V / right-click paste.
+                    // We call triggerParseNow with the raw clipboard string so the
+                    // TextEncoder → ArrayBuffer transfer happens before CodeMirror
+                    // even inserts the text, keeping the main thread maximally free.
+                    EditorView.domEventHandlers({
+                        paste(event, view) {
+                            event.preventDefault();
+                            const text = event.clipboardData?.getData('text/plain') ?? '';
+                            if (!text) return true;
+
+                            const { from, to } = view.state.selection.main;
+                            // updateListener fires synchronously here, updating isEmpty + lineCount.
+                            view.dispatch({
+                                changes:   { from, to, insert: text },
+                                selection: { anchor: from + text.length },
+                            });
+
+                            sourceMetaRef.current = { name: 'Clipboard', sourceType: 'clipboard' };
+                            triggerParseNowRef.current?.(text);
+                            return true;
+                        },
+                    }),
+                ],
+            }),
+            parent: editorContainerRef.current,
+        });
+
+        editorViewRef.current = view;
+        return () => { view.destroy(); editorViewRef.current = null; };
+    }, []); // intentionally run once — extensions use refs for fresh callbacks
+
     // ── Extension deep-link listener (Option A) ────────────────────────────
-    // Main.jsx dispatches this event when a deep link arrives and the
-    // textarea input is active — populates the textarea so the user can
-    // review before checking.
     useEffect(() => {
         const handler = (e) => {
             const { lines, meta } = e.detail;
-            if (!textareaRef.current) return;
-            textareaRef.current.value = lines.join('\n');
-            setIsEmpty(false);
+            const view = editorViewRef.current;
+            if (!view) return;
+            const text = lines.join('\n');
+            // updateListener fires synchronously here, updating isEmpty + lineCount.
+            view.dispatch({
+                changes:   { from: 0, to: view.state.doc.length, insert: text },
+                selection: { anchor: text.length },
+            });
             sourceMetaRef.current = meta ?? { name: 'Extension', sourceType: 'extension' };
-            triggerParseNow();
+            triggerParseNowRef.current?.(text);
         };
         window.addEventListener('proxy-checker:load-lines', handler);
         return () => window.removeEventListener('proxy-checker:load-lines', handler);
-    }, [triggerParseNow]);
-
-    // ── Textarea event handlers ───────────────────────────────────────────
-
-    const handleChange = useCallback(() => {
-        if (!textareaRef.current) return;
-        const text = textareaRef.current.value;
-        setIsEmpty(!text);
-        setLineCount(text ? text.split(/\r?\n/).filter(Boolean).length : 0);
-        sourceMetaRef.current = { name: 'Manual Input', sourceType: 'textarea' };
-        scheduleParse();
-    }, [scheduleParse]);
-
-    // Intercept native paste: use setRangeText so the browser's spellchecker
-    // never sees the full text before we insert it.
-    const handlePaste = useCallback((e) => {
-        e.preventDefault();
-        const text = e.clipboardData.getData('text/plain');
-        if (!text) return;
-        const { selectionStart, selectionEnd } = textareaRef.current;
-        textareaRef.current.setRangeText(text, selectionStart, selectionEnd, 'end');
-        setIsEmpty(false);
-        sourceMetaRef.current = { name: 'Clipboard', sourceType: 'clipboard' };
-        triggerParseNow();
-    }, [triggerParseNow]);
+    }, []);
 
     // ── Drag and drop ─────────────────────────────────────────────────────
 
@@ -370,15 +420,16 @@ const InputV2 = ({
                 }
             }
 
-            if (!textareaRef.current) return;
-            textareaRef.current.value = text;
-            setIsEmpty(!text);
+            const view = editorViewRef.current;
+            if (!view || !text) return;
+            // updateListener fires synchronously here, updating isEmpty + lineCount.
+            view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
             sourceMetaRef.current = { name: names.join(', '), sourceType: 'drag_drop' };
-            triggerParseNow();
+            triggerParseNowRef.current?.(text);
         } catch (err) {
             showError(err.message);
         }
-    }, [triggerParseNow, showError]);
+    }, [showError]);
 
     // ── Toolbar actions ───────────────────────────────────────────────────
 
@@ -394,15 +445,16 @@ const InputV2 = ({
                 names.push(entry.name);
             }
 
-            if (!textareaRef.current) return;
-            textareaRef.current.value = text;
-            setIsEmpty(!text);
+            const view = editorViewRef.current;
+            if (!view) return;
+            // updateListener fires synchronously here, updating isEmpty + lineCount.
+            view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
             sourceMetaRef.current = { name: names.join(', '), sourceType: 'file' };
-            triggerParseNow();
+            triggerParseNowRef.current?.(text);
         } catch (err) {
             showError(err.message);
         }
-    }, [triggerParseNow, showError]);
+    }, [showError]);
 
     const handleClipboardPaste = useCallback(async () => {
         try {
@@ -410,24 +462,29 @@ const InputV2 = ({
                 ? await window.__ELECTRON__.readClipboard()
                 : await navigator.clipboard.readText();
 
-            if (!textareaRef.current) return;
-            textareaRef.current.value = text ?? '';
-            setIsEmpty(!text);
+            const view = editorViewRef.current;
+            if (!view || !text) return;
+            // updateListener fires synchronously here, updating isEmpty + lineCount.
+            view.dispatch({
+                changes:   { from: 0, to: view.state.doc.length, insert: text ?? '' },
+                selection: { anchor: (text ?? '').length },
+            });
             sourceMetaRef.current = { name: 'Clipboard', sourceType: 'clipboard' };
-            triggerParseNow();
+            triggerParseNowRef.current?.(text ?? '');
         } catch (err) {
             showError(err.message);
         }
-    }, [triggerParseNow, showError]);
+    }, [showError]);
 
     const handleClear = useCallback(() => {
-        if (!textareaRef.current) return;
-        textareaRef.current.value = '';
+        const view = editorViewRef.current;
+        if (!view) return;
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '' } });
         setIsEmpty(true);
         setLineCount(0);
         setIsParsing(false);
         setErrorsExpanded(false);
-        requestIdRef.current++;          // invalidate any in-flight worker result
+        requestIdRef.current++;    // invalidate any in-flight worker result
         sourceMetaRef.current = { name: 'Manual Input', sourceType: 'textarea' };
         clearInput();
     }, [clearInput]);
@@ -450,53 +507,72 @@ const InputV2 = ({
                         } />
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <ActionButton onClick={handleBrowseFile}        icon={<BrowseIcon />}    label="Browse"  />
-                        <ActionButton onClick={handleClipboardPaste}    icon={<ClipboardIcon />} label="Paste"   />
+                        <ActionButton onClick={handleBrowseFile}     icon={<BrowseIcon />}    label="Browse" />
+                        <ActionButton onClick={handleClipboardPaste} icon={<ClipboardIcon />} label="Paste"  />
                     </Box>
                 </Box>
 
-                {/* ── Textarea + overlays ── */}
+                {/* ── CodeMirror editor + overlays ── */}
                 <Box
-                    sx={{ position: 'relative', borderRadius: 2 }}
+                    sx={{
+                        position: 'relative',
+                        // Use a fixed initial height so height:100% propagates to
+                        // CodeMirror's scroller, enabling virtual rendering for large docs.
+                        // resize:vertical lets users drag the box taller.
+                        height: 200,
+                        resize: 'vertical',
+                        overflow: 'hidden',
+                        borderRadius: 2,
+                        // Border reacts to drag-over and focus-within
+                        border: isDragOver
+                            ? `2px solid ${blueBrand[500]}`
+                            : `2px dashed ${alpha('#fff', 0.12)}`,
+                        bgcolor: alpha('#000', 0.2),
+                        transition: 'border-color 0.15s',
+                        '&:focus-within': {
+                            borderColor: isDragOver ? blueBrand[500] : alpha('#fff', 0.25),
+                            borderStyle: 'solid',
+                        },
+                        // ── CodeMirror inner styling ──────────────────────
+                        '& .cm-editor': {
+                            height: '100%',
+                            outline: 'none',
+                        },
+                        '& .cm-scroller': {
+                            height: '100%',
+                            overflow: 'auto',
+                            fontFamily: '"Roboto Mono", monospace',
+                            fontSize: '0.75rem',
+                            lineHeight: '1.6',
+                        },
+                        '& .cm-content': {
+                            padding: '12px',
+                            caretColor: '#fff',
+                            minHeight: '196px',
+                        },
+                        '& .cm-line': { padding: '0' },
+                        '& .cm-cursor, & .cm-dropCursor': {
+                            borderLeftColor: 'rgba(255,255,255,0.8)',
+                        },
+                        // Selection background (drawSelection extension)
+                        '& .cm-selectionBackground': {
+                            backgroundColor: 'rgba(99,136,210,0.3) !important',
+                        },
+                        '& .cm-focused .cm-selectionBackground': {
+                            backgroundColor: 'rgba(99,136,210,0.45) !important',
+                        },
+                        // No active-line highlight — keeps it looking like a plain textarea
+                        '& .cm-activeLine': { backgroundColor: 'transparent' },
+                        '& .cm-focused': { outline: 'none' },
+                    }}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                 >
-                    <Box
-                        component="textarea"
-                        ref={textareaRef}
-                        spellCheck={false}
-                        autoComplete="off"
-                        autoCorrect="off"
-                        autoCapitalize="off"
-                        placeholder=""
-                        onChange={handleChange}
-                        onPaste={handlePaste}
-                        sx={{
-                            display: 'block',
-                            width: '100%',
-                            minHeight: 200,
-                            resize: 'vertical',
-                            boxSizing: 'border-box',
-                            bgcolor: alpha('#000', 0.2),
-                            color: 'text.primary',
-                            border: `2px dashed ${isDragOver ? blueBrand[500] : alpha('#fff', 0.12)}`,
-                            borderRadius: 2,
-                            p: 1.5,
-                            fontFamily: '"Roboto Mono", monospace',
-                            fontSize: '0.75rem',
-                            lineHeight: 1.6,
-                            outline: 'none',
-                            transition: 'border-color 0.15s',
-                            overflowY: 'auto',
-                            '&:focus': {
-                                borderColor: isDragOver ? blueBrand[500] : alpha('#fff', 0.25),
-                                borderStyle: 'solid',
-                            },
-                        }}
-                    />
+                    {/* CodeMirror mounts here */}
+                    <div ref={editorContainerRef} style={{ height: '100%' }} />
 
-                    {/* Empty-state ghost — pointer-events none so clicks go to textarea */}
+                    {/* Empty-state ghost — pointer-events none so clicks reach the editor */}
                     {isEmpty && !isDragOver && (
                         <Box sx={{
                             position: 'absolute',
@@ -559,7 +635,7 @@ const InputV2 = ({
                             </Typography>
                         )}
 
-                        {!isParsing && loaded && !isEmpty && (
+                        {!isParsing && loaded && list.length > 0 && (
                             <>
                                 <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.72rem' }}>·</Typography>
                                 <Typography variant="caption" sx={{ color: 'success.main', fontSize: '0.72rem', fontWeight: 600 }}>
@@ -573,11 +649,11 @@ const InputV2 = ({
                                         </Typography>
                                     </>
                                 )}
-                                {unique != null && lineCount - unique > 0 && (
+                                {total > unique && (
                                     <>
                                         <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.72rem' }}>·</Typography>
                                         <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.72rem' }}>
-                                            {splitByKK(lineCount - unique)} dupes removed
+                                            {splitByKK(total - unique)} dupes removed
                                         </Typography>
                                     </>
                                 )}
@@ -589,16 +665,10 @@ const InputV2 = ({
                         <Box
                             onClick={handleClear}
                             sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 0.5,
-                                color: 'text.secondary',
-                                cursor: 'pointer',
-                                fontSize: '0.8rem',
-                                fontWeight: 500,
-                                px: 1,
-                                py: 0.5,
-                                borderRadius: 1,
+                                display: 'flex', alignItems: 'center', gap: 0.5,
+                                color: 'text.secondary', cursor: 'pointer',
+                                fontSize: '0.8rem', fontWeight: 500,
+                                px: 1, py: 0.5, borderRadius: 1,
                                 transition: 'color 0.15s, background-color 0.15s',
                                 '&:hover': { color: 'error.main', bgcolor: alpha('#f44', 0.08) },
                             }}
@@ -610,19 +680,14 @@ const InputV2 = ({
                 </Box>
 
                 {/* ── Parse errors (expandable) ── */}
-                {!isEmpty && loaded && errors.length > 0 && (
+                {loaded && errors.length > 0 && (
                     <Box sx={{ mt: 0.5 }}>
                         <Box
                             onClick={() => setErrorsExpanded(v => !v)}
                             sx={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                cursor: 'pointer',
-                                borderRadius: 1.5,
-                                mx: -1,
-                                px: 1,
-                                py: 0.5,
+                                display: 'flex', justifyContent: 'space-between',
+                                alignItems: 'center', cursor: 'pointer',
+                                borderRadius: 1.5, mx: -1, px: 1, py: 0.5,
                                 transition: 'background-color 0.15s',
                                 '&:hover': { bgcolor: alpha(palette.error.main, 0.08) },
                             }}
@@ -673,6 +738,7 @@ const mapStateToProps = state => ({
     list:       state.input.list,
     errors:     state.input.errors,
     unique:     state.input.unique,
+    total:      state.input.total,
     proxyCount: state.input.list.length,
     shuffle:    state.core.shuffle,
 });

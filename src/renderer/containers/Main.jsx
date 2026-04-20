@@ -3,7 +3,6 @@ import Box from '@mui/material/Box';
 import MuiTabs from '@mui/material/Tabs';
 import MuiTab from '@mui/material/Tab';
 import Settings from '../components/Settings';
-import Input from './Input';
 import { connect } from 'react-redux';
 import Checking from './Checking';
 import Overlay from './Overlay';
@@ -17,9 +16,7 @@ import Result from './Result';
 import History from '../components/History';
 import Titlebar from './Titlebar';
 import Protocols from './Protocols';
-import { importProxiesFromLines } from '../actions/InputActions';
 import { close as closeResult } from '../actions/ResultActions';
-import { USE_TEXTAREA_INPUT } from '../constants/featureFlags';
 import InputV2 from './InputV2';
 import { openDrawer, closeDrawer } from '../actions/UIActions';
 import { trackScreen, trackAction } from '../misc/analytics';
@@ -78,25 +75,15 @@ class Main extends React.PureComponent {
             }
             this.setState({ tabIndex: 0 });
 
-            if (USE_TEXTAREA_INPUT) {
-                // Option A: populate the textarea so the user can review before checking.
-                // InputV2 listens for this event and writes the lines into its textarea ref.
-                window.dispatchEvent(new CustomEvent('proxy-checker:load-lines', {
-                    detail: {
-                        lines: rawList,
-                        meta:  { name: browserLabel, sourceType: 'extension' },
-                    },
-                }));
-                trackAction('proxy_list_imported', { source, proxy_count: rawList.length, unique_count: rawList.length, error_count: 0 });
-            } else {
-                // Original path: parse immediately and jump straight to the checker.
-                const payload = this.props.importProxiesFromLines(rawList, {
-                    name: browserLabel,
-                    sourceType: 'extension',
-                });
-                if (!payload) return;
-                trackAction('proxy_list_imported', { source, proxy_count: payload.list.length, unique_count: payload.unique, error_count: payload.errors.length });
-            }
+            // Populate the editor so the user can review before checking.
+            // InputV2 listens for this event and writes the lines into its CodeMirror editor.
+            window.dispatchEvent(new CustomEvent('proxy-checker:load-lines', {
+                detail: {
+                    lines: rawList,
+                    meta:  { name: browserLabel, sourceType: 'extension' },
+                },
+            }));
+            trackAction('proxy_list_imported', { source, proxy_count: rawList.length, unique_count: rawList.length, error_count: 0 });
         } catch { /* ignore malformed deep-link URLs */ }
     };
 
@@ -164,7 +151,7 @@ class Main extends React.PureComponent {
                     }}>
                         <Box sx={{ pt: 3 }}>
                             {this.state.tabIndex <= 3 && <Settings tabIndex={this.state.tabIndex} />}
-                            {this.state.tabIndex === 0 && (USE_TEXTAREA_INPUT ? <InputV2 /> : <Input />)}
+                            {this.state.tabIndex === 0 && <InputV2 />}
                             {this.state.tabIndex === 0 && <Protocols />}
                             <History visible={this.state.tabIndex === 4} />
                         </Box>
@@ -194,7 +181,6 @@ const mapDispatchToProps = {
     closeResult,
     openDrawer,
     closeDrawer,
-    importProxiesFromLines,
 };
 
 export default connect(

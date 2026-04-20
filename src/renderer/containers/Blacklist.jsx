@@ -42,7 +42,15 @@ const Blacklist = ({ filter, items, changePath, add, remove, setActive, toggleOp
             <Box sx={{ display: 'flex', gap: 2 }}>
                 <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, flex: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>Options</Typography>
-                    <Checkbox id="filter" name="filter" checked={filter} onChange={guestMode ? () => {} : toggleOption} text="Filtering" tip="Enable blacklist checking during proxy verification. When off, blacklists are ignored entirely." disabled={guestMode} />
+                    <Checkbox
+                        id="filter"
+                        name="filter"
+                        checked={filter}
+                        onChange={toggleOption}
+                        text="Filtering"
+                        tip="Enable blacklist checking during proxy verification. When off, blacklists are ignored entirely."
+                        lockedTip={guestMode ? { feature: 'Blacklist filtering', description: 'Enabling and managing blacklists requires the free desktop app.' } : undefined}
+                    />
                 </Box>
                 {!guestMode && (
                     <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, flex: 1 }}>

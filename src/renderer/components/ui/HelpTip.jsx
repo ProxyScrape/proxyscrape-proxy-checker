@@ -4,7 +4,7 @@ import Box from '@mui/material/Box';
 import { alpha } from '@mui/material/styles';
 import { FOOTER_BACKGROUND, TOOLTIP_BACKGROUND } from '../../theme/palette';
 
-const tooltipSx = {
+export const tooltipSx = {
     tooltip: {
         bgcolor: TOOLTIP_BACKGROUND,
         color: 'text.primary',

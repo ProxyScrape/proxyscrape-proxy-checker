@@ -22,7 +22,7 @@ import (
 
 const (
 	guestCookieName = "checker_guest_session"
-	guestSessionTTL = 24 * time.Hour
+	guestSessionTTL = 30 * 24 * time.Hour // 30 days, sliding window
 )
 
 // guestSessionKey is the context key used to pass the validated guest session ID

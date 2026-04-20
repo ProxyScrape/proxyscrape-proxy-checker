@@ -166,6 +166,15 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Strip desktop-only options in guest mode. PUT /api/settings is blocked so
+	// these can never be persisted, but they can still be sent in the request
+	// body directly. Zero them here so the restriction is enforced server-side.
+	if s.mode == "guest" {
+		req.KeepAlive    = false
+		req.LocalDNS     = false
+		req.CaptureTrace = false
+	}
+
 	// Enforce the per-session in-flight proxy limit for guest mode.
 	if s.mode == "guest" && s.guestInFlightLimit > 0 {
 		sid := guestSessionIDFromCtx(r.Context())

@@ -66,6 +66,9 @@
     "vite-plugin-electron-renderer": "^0.14.6"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.41.1",
     "@intercom/messenger-js-sdk": "^0.0.19",
     "@posthog/react": "^1.9.0",
     "framer-motion": "^12.38.0",

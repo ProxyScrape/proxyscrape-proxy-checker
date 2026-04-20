@@ -6,6 +6,7 @@ import { HelpTip, InfoIcon } from '../components/ui/HelpTip';
 import { splitByKK } from '../misc/text';
 import { getMaxThreads } from '../misc/other';
 import { openLink } from '../misc/links';
+import { isGuestMode } from '../misc/mode';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Slider from '@mui/material/Slider';
@@ -118,6 +119,8 @@ const CommandBlock = ({ cmd }) => {
 };
 
 const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceStatus, localDns, threads, timeout, retries, keepAlive, changeOption, toggleOption, toggleCaptureTrace, recheckTraceStatus }) => {
+    const guestMode = isGuestMode();
+    const guestLock = (feature, description) => guestMode ? { feature, description } : undefined;
     const handleSliderChange = (name) => (e, value) => {
         changeOption({ target: { name, value } });
     };
@@ -132,7 +135,7 @@ const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceSt
                 <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
                     <Checkbox id='captureFullData' name='captureFullData' checked={captureFullData} onChange={toggleOption} text='Full Data' tip="Capture the full judge response (body and headers) for each protocol tested. Useful for debugging proxy behavior." />
                     <Checkbox id='captureServer' name='captureServer' checked={captureServer} onChange={toggleOption} text='Server' tip="Capture the web server name from proxy responses. Adds a Server column to results." />
-                    <Checkbox id='captureTrace' name='captureTrace' checked={captureTrace} onChange={toggleCaptureTrace} text='Traces' tip="Record TCP packet events and connection timing for every proxy. Adds a Trace button to each result row. Requires libpcap (macOS/Linux) or Npcap (Windows)." />
+                    <Checkbox id='captureTrace' name='captureTrace' checked={captureTrace} onChange={toggleCaptureTrace} text='Traces' tip="Record TCP packet events and connection timing for every proxy. Adds a Trace button to each result row. Requires libpcap (macOS/Linux) or Npcap (Windows)." lockedTip={guestLock('Traces', 'TCP packet capture is only available in the free desktop app.')} />
                 </Box>
                 {captureTrace && traceStatus && !traceStatus.available && (() => {
                     const info = TRACE_SETUP[traceStatus.reason] || TRACE_SETUP.unavailable;
@@ -181,8 +184,8 @@ const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceSt
             <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, mb: 2 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>Options</Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                    <Checkbox id='core-k-a' name='keepAlive' checked={keepAlive} onChange={toggleOption} text='Keep-Alive' tip="Send keep-alive headers and detect if proxies support persistent connections. Adds a Keep-Alive filter to results." />
-                    <Checkbox id='core-local-dns' name='localDns' checked={localDns} onChange={toggleOption} text='Local DNS' tip="Resolve target hostnames locally before sending to the proxy (classic SOCKS4/SOCKS5 behaviour). Off by default — not recommended, as it causes DNS leaks and may produce false negatives." />
+                    <Checkbox id='core-k-a' name='keepAlive' checked={keepAlive} onChange={toggleOption} text='Keep-Alive' tip="Send keep-alive headers and detect if proxies support persistent connections. Adds a Keep-Alive filter to results." lockedTip={guestLock('Keep-Alive', 'Persistent connection detection is only available in the free desktop app.')} />
+                    <Checkbox id='core-local-dns' name='localDns' checked={localDns} onChange={toggleOption} text='Local DNS' tip="Resolve target hostnames locally before sending to the proxy (classic SOCKS4/SOCKS5 behaviour). Off by default — not recommended, as it causes DNS leaks and may produce false negatives." lockedTip={guestLock('Local DNS', 'Local DNS resolution is only available in the free desktop app.')} />
                 </Box>
             </Box>
             <Box sx={{ display: 'flex', gap: 2 }}>

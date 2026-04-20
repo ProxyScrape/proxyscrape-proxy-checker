@@ -61,7 +61,15 @@ const Judges = ({ items, swap, statuses, refreshing, change, add, remove, toggle
             <Box sx={{ display: 'flex', gap: 2 }}>
                 <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, flex: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>Options</Typography>
-                    <Checkbox id="swap" name="swap" checked={swap} onChange={guestMode ? () => {} : toggleOption} text="Swap" tip="Rotate between active judges for each request instead of always using the same one. Helps distribute load when you have multiple judges." disabled={guestMode} />
+                    <Checkbox
+                        id="swap"
+                        name="swap"
+                        checked={swap}
+                        onChange={toggleOption}
+                        text="Swap"
+                        tip="Rotate between active judges for each request instead of always using the same one. Helps distribute load when you have multiple judges."
+                        lockedTip={guestMode ? { feature: 'Judge swap', description: 'Configuring judge rotation requires the free desktop app.' } : undefined}
+                    />
                 </Box>
                 {!guestMode && (
                     <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, flex: 1 }}>
