@@ -13,3 +13,14 @@ cp -r src/renderer/dist/renderer/* backend/internal/api/web/
 # target Linux host (or with a CGO-capable cross-compiler toolchain).
 CGO_ENABLED=1 go build -C backend -tags webserver -o ../bin/checker-webserver-linux-x64 ./cmd/checker
 echo "Web server binary built: bin/checker-webserver-linux-x64"
+
+# 4. Install to system path if running as root (production server deploy).
+#    The service must be stopped first because Linux cannot overwrite a running binary.
+INSTALL_PATH="/usr/local/bin/checker-webserver"
+if [ -f "$INSTALL_PATH" ] && [ "$(id -u)" -eq 0 ]; then
+    echo "Installing binary to $INSTALL_PATH..."
+    systemctl stop checker 2>/dev/null || true
+    cp bin/checker-webserver-linux-x64 "$INSTALL_PATH"
+    systemctl start checker 2>/dev/null || true
+    echo "Installed and service restarted ✓"
+fi
