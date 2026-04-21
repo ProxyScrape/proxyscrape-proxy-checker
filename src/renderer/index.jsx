@@ -120,6 +120,16 @@ function AppRoot() {
 
         let rafId = null;
 
+        // document.fonts.ready resolves once all @font-face rules in the
+        // document have finished downloading. Until then, text renders with
+        // fallback system fonts whose metrics differ from Montserrat, so any
+        // height measured before this point would be wrong.
+        //
+        // On repeat visits fonts are already cached: document.fonts.status is
+        // 'loaded' synchronously, so fontsReady starts true and there is no
+        // extra delay on those loads.
+        let fontsReady = document.fonts.status === 'loaded';
+
         const sendHeight = () => {
             // Debounce: cancel any pending frame before scheduling a new one.
             // This prevents stale measurements when multiple resize events fire
@@ -127,6 +137,11 @@ function AppRoot() {
             if (rafId !== null) cancelAnimationFrame(rafId);
             rafId = requestAnimationFrame(() => {
                 rafId = null;
+
+                // Suppress measurement until web fonts are available. The
+                // document.fonts.ready handler below will call sendHeight() once
+                // they are, so no measurement is lost — it is just deferred.
+                if (!fontsReady) return;
 
                 const contentRoot = document.getElementById('checker-content-root');
                 if (!contentRoot) return;
@@ -164,6 +179,14 @@ function AppRoot() {
                 window.parent.postMessage({ type: 'checker-height', height }, '*');
             });
         };
+
+        // Once fonts are ready, mark them as loaded and trigger a measurement.
+        // This fires the first accurate height message on initial page load when
+        // fonts are not yet cached, replacing any suppressed early measurement.
+        document.fonts.ready.then(() => {
+            fontsReady = true;
+            sendHeight();
+        });
 
         // Observe the inner content element so the observer fires only when
         // content changes size, not when the parent adjusts the iframe height.
