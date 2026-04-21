@@ -1,31 +1,60 @@
 #!/usr/bin/env bash
-# Validates version discipline on the master branch before every commit.
-#
-# On master:
-#   - Blocks commits where package.json still has a -canary version
-#     (you must bump to stable before committing the merge result).
-#   - Blocks commits where the stable version X does not match the latest
-#     canary cycle X (e.g. committing 2.3.0 when canary was 2.2.x).
-#
-# All other branches: passes through immediately.
+# Pre-commit checks for proxyscrape-proxy-checker.
 # Activated automatically via: git config core.hooksPath .githooks
 # (set by `npm install` via the prepare script in package.json)
 
 set -euo pipefail
 
+ROOT="$(git rev-parse --show-toplevel)"
 BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
 
-# Only enforce on master.
+# ── Renderer: bare target attribute check (all branches) ─────────────────────
+# All link-opening must go through the helpers in src/renderer/misc/links.js:
+#   openPsLink  ->  proxyscrape.com URLs  (same tab / parent frame in web mode)
+#   openLink    ->  third-party URLs      (new tab)
+
+RENDERER_DIR="src/renderer"
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep "^${RENDERER_DIR}/.*\.\(jsx\|js\|tsx\|ts\)$" || true)
+
+if [ -n "$STAGED" ]; then
+    VIOLATIONS=""
+    while IFS= read -r file; do
+        LINES=$(grep -nE 'target=("(_blank|_top|_self)"|'"'"'(_blank|_top|_self)'"'"')' "$file" 2>/dev/null || true)
+        if [ -n "$LINES" ]; then
+            while IFS= read -r line; do
+                VIOLATIONS="${VIOLATIONS}    ${file}: ${line}"$'\n'
+            done <<< "$LINES"
+        fi
+    done <<< "$STAGED"
+
+    if [ -n "$VIOLATIONS" ]; then
+        echo ""
+        echo "ERROR: Bare target attribute found in renderer source:"
+        echo ""
+        echo "$VIOLATIONS"
+        echo "    Use the helpers in src/renderer/misc/links.js instead:"
+        echo "      openPsLink  ->  proxyscrape.com links (same tab / iframe-safe)"
+        echo "      openLink    ->  third-party links (GitHub, social, docs...)"
+        echo ""
+        echo "    Example:"
+        echo '      <Box component="a" href={psUrl("/premium", "upsell")} onClick={openPsLink}>...</Box>'
+        echo '      <Box component="a" href="https://github.com/..."        onClick={openLink}>...</Box>'
+        echo ""
+        exit 1
+    fi
+fi
+
+# ── Version discipline (master only) ─────────────────────────────────────────
+# Blocks commits where package.json still has a -canary version, or where the
+# stable version X does not match the latest canary cycle X.
+
 if [ "$BRANCH" != "master" ]; then
     exit 0
 fi
 
-ROOT="$(git rev-parse --show-toplevel)"
 PKG_VERSION=$(python3 -c "import json; print(json.load(open('$ROOT/package.json'))['version'])")
-
 echo "pre-commit (master): checking version '$PKG_VERSION'..."
 
-# ── 1. No -canary versions on master ─────────────────────────────────────────
 if [[ "$PKG_VERSION" == *"-canary"* ]]; then
     echo ""
     echo "ERROR: package.json version '$PKG_VERSION' still has a -canary suffix."
@@ -39,12 +68,10 @@ if [[ "$PKG_VERSION" == *"-canary"* ]]; then
     exit 1
 fi
 
-# ── 2. Stable version X must match the latest canary cycle X ─────────────────
 if [[ "$PKG_VERSION" =~ ^2\.([0-9]+)\.([0-9]+)$ ]]; then
     PKG_X="${BASH_REMATCH[1]}"
     PKG_Y="${BASH_REMATCH[2]}"
 
-    # Y must be 0 on master (stable releases only).
     if [ "$PKG_Y" != "0" ]; then
         echo ""
         echo "ERROR: Stable version '$PKG_VERSION' has Y=$PKG_Y — stable releases must have Y=0."
@@ -52,7 +79,6 @@ if [[ "$PKG_VERSION" =~ ^2\.([0-9]+)\.([0-9]+)$ ]]; then
         exit 1
     fi
 
-    # X must match the latest canary cycle.
     LATEST_CANARY=$(git tag --list 'v2.*-canary' --sort=-version:refname 2>/dev/null | head -1)
     if [ -n "$LATEST_CANARY" ] && [[ "$LATEST_CANARY" =~ ^v2\.([0-9]+)\.[0-9]+-canary$ ]]; then
         CANARY_X="${BASH_REMATCH[1]}"
