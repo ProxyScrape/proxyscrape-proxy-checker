@@ -493,10 +493,13 @@ const InputV2 = ({
     // ── Render ────────────────────────────────────────────────────────────
 
     return (
-        <Box sx={fillHeight ? { display: 'flex', flexDirection: 'column', height: '100%' } : {}}>
+        <Box sx={fillHeight ? { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 } : {}}>
             <Box sx={{
                 bgcolor: 'background.paper', borderRadius: 3, p: 3, pb: 2,
-                ...(fillHeight ? { display: 'flex', flexDirection: 'column', flex: 1 } : {}),
+                // minHeight:0 overrides the CSS default min-height:auto on flex items,
+                // which would otherwise let the card grow to fit its content instead of
+                // being capped at the flex allocation (the sidebar row height).
+                ...(fillHeight ? { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 } : {}),
             }}>
 
                 {/* ── Header ── */}
@@ -525,7 +528,12 @@ const InputV2 = ({
                         // Default: fixed 266px (33% more than the original 200px baseline).
                         // resize:vertical lets users drag to a custom height in either mode.
                         ...(fillHeight
-                            ? { flex: 1, minHeight: 200 }
+                            // minHeight:0 is essential here: without it, flex items keep
+                            // min-height:auto and grow to fit CodeMirror's content instead
+                            // of staying at the flex-allocated height. With minHeight:0,
+                            // the box gets a definite height from flex layout, so
+                            // cm-scroller's height:100% resolves correctly and scrolls.
+                            ? { flex: 1, minHeight: 0 }
                             : { height: 266 }
                         ),
                         resize: 'vertical',
