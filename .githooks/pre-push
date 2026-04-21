@@ -57,6 +57,39 @@ if [ -n "$PRAGMA_HITS" ]; then
 fi
 echo "[pre-push] ✓ No unsafe PRAGMA construction found"
 
+# ── Dead code checks ──────────────────────────────────────────────────────────
+# staticcheck U1000 detects unused functions, types, constants, and variables.
+# Run in -matrix mode to cover both build variants simultaneously:
+#   - desktop build (no tags)        → uses capture.go, web_handler_stub.go
+#   - webserver build (-tags=webserver) → uses capture_stub.go, handlers_trace.go
+#
+# To suppress a legitimate false positive (e.g. CGO callbacks, reflection),
+# add an inline directive above the declaration in the source file:
+#   //lint:ignore U1000 <reason>
+# or for a whole file:
+#   //lint:file-ignore U1000 <reason>
+
+if ! command -v staticcheck &>/dev/null; then
+    echo ""
+    echo "ERROR: staticcheck is required for dead code checks but is not installed."
+    echo "  Install with: go install honnef.co/go/tools/cmd/staticcheck@latest"
+    exit 1
+fi
+echo "[pre-push] running dead code checks (staticcheck U1000, both build variants)..."
+if ! (cd "$BACKEND_DIR" && staticcheck -checks=U1000 -matrix - <<'MATRIX'
+desktop:   -tags=''
+webserver: -tags=webserver
+MATRIX
+); then
+    echo ""
+    echo "ERROR: staticcheck found dead code in backend/."
+    echo "  Remove unused code, or suppress with:"
+    echo "    //lint:ignore U1000 <reason>      (single declaration)"
+    echo "    //lint:file-ignore U1000 <reason> (whole file)"
+    exit 1
+fi
+echo "[pre-push] ✓ Dead code checks passed"
+
 # ── Version / tag checks ──────────────────────────────────────────────────────
 
 TAG=""
