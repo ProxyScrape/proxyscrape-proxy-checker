@@ -106,19 +106,31 @@ const CorePage = ({ proxyCount, overLimit, start }) => {
     }
 
     // Desktop: two-column grid.
-    // alignItems defaults to 'stretch' so both columns share the same row height.
-    // fillHeight tells InputV2 to grow its editor to fill the available column
-    // height, matching the bottom of the sliders/protocols in the right sidebar.
+    // The sidebar (right column) has a natural content height that sets the row
+    // height. The editor column uses position:absolute;inset:0 inside a
+    // position:relative grid item — this removes the editor from flow so it
+    // cannot contribute to the row height (which would cause unbounded growth
+    // when proxies are loaded). The absolutely-positioned child then fills the
+    // already-resolved grid area height with no circular dependency.
+    // See CSS Grid spec §8.1: height:% in an auto row is indefinite (treated as
+    // auto), so flex/height:100% chains fail — absolute positioning is the fix.
     return (
         <Box sx={{
             display: 'grid',
             gridTemplateColumns: '1fr 300px',
             gap: 2,
         }}>
-            {/* Left: proxy editor — fills column height to align with sidebar bottom */}
-            <InputV2 fillHeight />
+            {/* Left: position:relative gives the absolute child a definite
+                containing block (the grid area height set by the sidebar).
+                minWidth:0 prevents the column from overflowing its 1fr track. */}
+            <Box sx={{ position: 'relative', minWidth: 0 }}>
+                <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' }}>
+                    <InputV2 fillHeight />
+                </Box>
+            </Box>
 
-            {/* Right: settings sidebar */}
+            {/* Right: sidebar — its natural height is the single source of truth
+                for the grid row height. */}
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <Core />
                 <Protocols
