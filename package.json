@@ -44,6 +44,7 @@
     "prepare": "[ -d .git ] && git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.1.1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@fontsource/montserrat": "^5.2.8",

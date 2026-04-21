@@ -66,6 +66,10 @@ module.exports = {
     icon: './public/icons/icon.icns',
     category: 'public.app-category.utilities',
     artifactName: '${name}-v${version}-${arch}-${os}.${ext}',
+    hardenedRuntime: true,
+    gatekeeperAssess: false,
+    entitlements: 'build/entitlements.mac.plist',
+    entitlementsInherit: 'build/entitlements.mac.inherit.plist',
     binaries: [
       'bin/checker-darwin-arm64',
       'bin/checker-darwin-x64',
@@ -79,6 +83,8 @@ module.exports = {
       { target: 'zip', arch: ['x64', 'arm64'] },
     ],
   },
+
+  afterSign: 'scripts/notarize.js',
 
   win: {
     icon: './public/icons/icon.ico',
