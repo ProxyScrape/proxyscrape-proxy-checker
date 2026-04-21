@@ -21,7 +21,7 @@ import Protocols from './Protocols';
  *   The Check button is rendered as a fixed floating bar just above the footer.
  */
 const CorePage = ({ proxyCount, overLimit, start }) => {
-    const isMobile = useMediaQuery('(max-width:599px)');
+    const isMobile = useMediaQuery('(max-width:839px)');
     const isEmpty = proxyCount === 0;
 
     // Measure the footer's actual rendered height so the floating button always
