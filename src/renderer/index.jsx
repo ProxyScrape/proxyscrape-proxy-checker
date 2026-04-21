@@ -132,28 +132,35 @@ function AppRoot() {
                 if (!contentRoot) return;
 
                 // Only report height while the Core tab (index 0) is active.
-                // Other tabs can be taller; sending their height would permanently
-                // grow the iframe because the parent uses a grow-only policy.
+                // Other tabs can be taller; sending their height would grow the
+                // iframe unnecessarily (the parent now always applies the value).
                 if (contentRoot.dataset.activeTab !== '0') return;
 
                 const scrollRoot = document.getElementById('checker-scroll-root');
                 if (!scrollRoot) return;
 
-                // Only report when content overflows the scroll container.
-                // When content fits, scrollHeight === clientHeight which tracks
-                // 100vh. Sending that value restarts a growth loop: each +2 px
-                // buffer causes 100vh to grow → clientHeight grows → scrollHeight
-                // grows → we report larger → iframe grows → repeat.
+                // Measure content height from checker-content-root, NOT from
+                // scrollRoot.scrollHeight. scrollRoot.scrollHeight is clamped to
+                // clientHeight (i.e. 100vh) when content fits, making it
+                // viewport-dependent and unable to represent a "content is shorter
+                // than the current iframe" state. That caused the iframe to stay
+                // tall with black space when the window narrowed and content
+                // reflowed shorter.
                 //
-                // When content overflows, scrollHeight is content-driven and
-                // independent of 100vh, so it is safe to send.
-                if (scrollRoot.scrollHeight <= scrollRoot.clientHeight) return;
-
-                // TITLEBAR_HEIGHT + scrollRoot.scrollHeight gives the total iframe
-                // height needed to show all content without an internal scrollbar.
-                // +2 px absorbs subpixel rounding on high-DPR devices (e.g. Samsung
-                // phones with DPR 2.625) that can leave the iframe 1 px short.
-                const height = TITLEBAR_HEIGHT + scrollRoot.scrollHeight + 2;
+                // checker-content-root.getBoundingClientRect().height is purely
+                // content-driven: it does not change when the parent resizes the
+                // iframe, so there is no growth loop risk.
+                //
+                // Total needed height = fixed titlebar
+                //   + scrollRoot paddingTop (= TITLEBAR_HEIGHT, gap for fixed bar)
+                //   + contentRoot rendered height (includes its own pt:3 padding)
+                //   + scrollRoot paddingBottom (footer clearance)
+                //   + 2 px subpixel buffer for high-DPR devices
+                const style = getComputedStyle(scrollRoot);
+                const pt = parseFloat(style.paddingTop) || 0;
+                const pb = parseFloat(style.paddingBottom) || 0;
+                const contentH = contentRoot.getBoundingClientRect().height;
+                const height = TITLEBAR_HEIGHT + pt + contentH + pb + 2;
                 window.parent.postMessage({ type: 'checker-height', height }, '*');
             });
         };
