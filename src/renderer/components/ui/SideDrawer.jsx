@@ -40,7 +40,7 @@ const DrawerPanel = forwardRef(({ width, headerLeft, onClose, children, sx }, re
 
 const SideDrawer = ({ open, onClose, width = 320, zIndex = 1100, headerLeft, children, panelSx }) => (
     <>
-        <Fade in={!!open} timeout={200}>
+        <Fade in={!!open} timeout={200} mountOnEnter unmountOnExit>
             <Box
                 onClick={onClose}
                 sx={{
