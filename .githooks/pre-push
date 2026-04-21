@@ -11,6 +11,25 @@ BACKEND_DIR="$ROOT/backend"
 # Include ~/go/bin so gosec is found regardless of how the shell was launched.
 export PATH="$PATH:$HOME/go/bin"
 
+# ── Guest route coverage tests ───────────────────────────────────────────────
+# If a new route is added to NewGuestServer without being declared in
+# guestAllowed or guestBlocked (guest.go), this test fails and the push
+# is blocked. Add the route to the appropriate map, then push again.
+
+if ! command -v go &>/dev/null; then
+    echo "[pre-push] go not found in PATH — skipping guest route coverage check"
+else
+    echo "[pre-push] running guest route coverage tests..."
+    if ! (cd "$BACKEND_DIR" && go test ./internal/api/... -run "TestGuestRoutes|TestGuestBlocked" -count=1 2>&1); then
+        echo ""
+        echo "ERROR: Guest route coverage check failed."
+        echo "  Add the missing route(s) to guestAllowed or guestBlocked in:"
+        echo "  backend/internal/api/guest.go"
+        exit 1
+    fi
+    echo "[pre-push] ✓ Guest route coverage OK"
+fi
+
 # ── SQL-injection safety checks (run on every push) ──────────────────────────
 
 # 1. gosec G201/G202 — detects SQL built with fmt.Sprintf or string concatenation.
