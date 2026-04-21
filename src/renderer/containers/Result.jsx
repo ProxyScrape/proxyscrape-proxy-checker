@@ -169,6 +169,7 @@ class Result extends React.PureComponent {
         };
 
         return (
+            <>
             <Box sx={{
                 position: 'fixed',
                 top: 0,
@@ -484,6 +485,7 @@ class Result extends React.PureComponent {
                 />,
                 document.body
             )}
+            </>
         );
     };
 }
