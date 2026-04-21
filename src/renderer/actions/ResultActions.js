@@ -29,7 +29,7 @@ import { wait } from '../misc/wait';
  * Rows are matched by host (proxy IP). Called when the SSE stream delivers
  * updated rows from the geo enrichment worker.
  *
- * @param {Array<{host, countryCode, countryName, countryFlag, city}>} rows
+ * @param {Array<{id, host, port, auth, countryCode, countryName, countryFlag, city}>} rows
  */
 export const patchGeo = rows => ({ type: RESULT_PATCH_GEO, rows });
 

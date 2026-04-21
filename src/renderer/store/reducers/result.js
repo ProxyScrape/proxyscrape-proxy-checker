@@ -104,13 +104,15 @@ const result = (state = initialState, action) => {
         }
         case RESULT_PATCH_GEO: {
             if (!action.rows || !action.rows.length) return state;
-            // Build a lookup map keyed by host (proxy IP) for O(1) access.
-            const byHost = {};
-            for (const row of action.rows) byHost[row.host] = row;
+            // Key by composite host:port:auth so proxies sharing the same host
+            // but different credentials each receive their own geo data.
+            const proxyKey = r => `${r.host}:${r.port}:${r.auth}`;
+            const byKey = {};
+            for (const row of action.rows) byKey[proxyKey(row)] = row;
             return {
                 ...state,
                 items: state.items.map(item => {
-                    const patch = byHost[item.host];
+                    const patch = byKey[proxyKey(item)];
                     if (!patch) return item;
                     return {
                         ...item,

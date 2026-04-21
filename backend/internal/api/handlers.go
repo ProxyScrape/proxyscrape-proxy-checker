@@ -341,14 +341,11 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 		elapsed := time.Since(startTime).Milliseconds()
 
 		working := 0
-		// geoEntry pairs the configured proxy host (for SSE/DB matching) with
-		// the lookup key sent to the geo worker (exit_ip when available, else
-		// host). This lets rotating/backconnect domain proxies be geolocated
-		// by their true exit IP without breaking frontend host-keyed patching.
-		type geoEntry struct{ displayHost, lookupKey string }
 		var geoEntries []geoEntry
 		storeResults := make([]store.CheckResult, len(rc.snapshot))
 		for i, res := range rc.snapshot {
+			// Assign the UUID before checking status so geoEntries can reference it.
+			storeResults[i] = resultToStore(checkID, res)
 			if res.Status == "working" {
 				working++
 				if res.Proxy.Host != "" {
@@ -356,10 +353,15 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 					if key == "" {
 						key = res.Proxy.Host
 					}
-					geoEntries = append(geoEntries, geoEntry{displayHost: res.Proxy.Host, lookupKey: key})
+					geoEntries = append(geoEntries, geoEntry{
+						id:          storeResults[i].ID,
+						displayHost: res.Proxy.Host,
+						port:        res.Proxy.Port,
+						auth:        res.Proxy.Auth,
+						lookupKey:   key,
+					})
 				}
 			}
-			storeResults[i] = resultToStore(checkID, res)
 		}
 
 		bgCtx := context.Background()
@@ -391,22 +393,22 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 		// after receiving from rc.done. bgCtx ensures enrichment always runs
 		// to completion regardless of whether any SSE client is connected.
 		if s.geoWorker != nil && len(geoEntries) > 0 {
-			lookupKeys := make([]string, len(geoEntries))
-			// keyToHost maps lookup key → display host for entries where they
-			// differ (i.e. when exit_ip is used as the lookup key).
-			keyToHost := make(map[string]string, len(geoEntries))
-			for i, e := range geoEntries {
-				lookupKeys[i] = e.lookupKey
-				if e.lookupKey != e.displayHost {
-					keyToHost[e.lookupKey] = e.displayHost
+			// Collect unique lookup keys (deduplicated so the worker isn't sent
+			// duplicate IPs, which wastes quota and can cause result-count mismatches).
+			seen := make(map[string]struct{}, len(geoEntries))
+			lookupKeys := make([]string, 0, len(geoEntries))
+			for _, e := range geoEntries {
+				if _, ok := seen[e.lookupKey]; !ok {
+					seen[e.lookupKey] = struct{}{}
+					lookupKeys = append(lookupKeys, e.lookupKey)
 				}
 			}
 			geoRes, err := s.geoWorker.LookupBatch(bgCtx, lookupKeys)
 			if err != nil {
 				log.Printf("[geoworker] enrichment %s: %v", checkID, err)
 			} else {
-				enriched := makeEnrichedRows(geoRes, keyToHost)
-				inlineUpdateGeo(s.store.DB(), checkID, enriched)
+				enriched := makeEnrichedRows(geoEntries, geoRes)
+				inlineUpdateGeo(s.store.DB(), enriched)
 				rc.geoResults = enriched
 			}
 		}
@@ -791,19 +793,37 @@ func (s *server) handleActiveCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, found)
 }
 
-// makeEnrichedRows converts geo worker results into enrichedRows for SSE and
-// DB persistence. keyToHost maps a geo lookup key (exit IP) back to the
-// configured proxy host when they differ; entries not in the map keep gr.Host
-// as-is (lookup key == display host, i.e. no exit IP was available).
-func makeEnrichedRows(results []geoworker.Result, keyToHost map[string]string) []enrichedRow {
-	rows := make([]enrichedRow, 0, len(results))
+// geoEntry pairs the unique DB row ID and proxy identity fields with the lookup
+// key sent to the geo worker (exit_ip when available, else host). id/port/auth
+// are forwarded in enrichedRow so the frontend can patch exactly one row even
+// when multiple proxies share the same host (e.g. rotating backconnect proxies).
+type geoEntry struct {
+	id          string // UUID from storeResult — used for DB update (WHERE id = ?)
+	displayHost string
+	port        int
+	auth        string
+	lookupKey   string // exit_ip when available, else host
+}
+
+// makeEnrichedRows builds one enrichedRow per geoEntry by looking up each
+// entry's lookupKey in the geo worker results. Iterating entries (not results)
+// preserves the 1:1 per-proxy relationship: two proxies with the same host but
+// different credentials produce separate rows with distinct ResultIDs, which
+// lets the frontend patch each row individually without collision.
+func makeEnrichedRows(entries []geoEntry, results []geoworker.Result) []enrichedRow {
+	// Index results by the lookup key echoed back by the geo worker.
+	byKey := make(map[string]geoworker.Result, len(results))
 	for _, gr := range results {
-		host := gr.Host
-		if mapped, ok := keyToHost[gr.Host]; ok {
-			host = mapped
-		}
+		byKey[gr.Host] = gr
+	}
+	rows := make([]enrichedRow, 0, len(entries))
+	for _, e := range entries {
+		gr := byKey[e.lookupKey] // zero-value (empty country) if key failed/absent
 		rows = append(rows, enrichedRow{
-			Host:        host,
+			ResultID:    e.id,
+			Host:        e.displayHost,
+			Port:        e.port,
+			Auth:        e.auth,
 			CountryCode: gr.CountryCode,
 			CountryName: gr.CountryName,
 			CountryFlag: gr.CountryFlag,
@@ -813,11 +833,11 @@ func makeEnrichedRows(results []geoworker.Result, keyToHost map[string]string) [
 	return rows
 }
 
-// inlineUpdateGeo updates geo fields for working proxies of a single check
-// in one transaction. Scoped to the check's rows so other checks are unaffected.
-// rows must use the configured proxy host (Proxy.Host) in the Host field so
-// that the WHERE clause matches the stored host column correctly.
-func inlineUpdateGeo(db *sql.DB, checkID string, rows []enrichedRow) {
+// inlineUpdateGeo updates geo fields for a set of enriched rows in one
+// transaction. Each row is targeted by its unique check_results.id so that
+// multiple proxies sharing the same host (e.g. rotating backconnect proxies
+// with per-credential exit IPs) are updated independently.
+func inlineUpdateGeo(db *sql.DB, rows []enrichedRow) {
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("[geoworker] inline update begin tx: %v", err)
@@ -827,8 +847,8 @@ func inlineUpdateGeo(db *sql.DB, checkID string, rows []enrichedRow) {
 		if _, err := tx.Exec(
 			`UPDATE check_results
 			 SET country_code = ?, country_name = ?, country_flag = ?, city = ?, geo_status = 'done'
-			 WHERE check_id = ? AND host = ? AND geo_status = 'pending'`,
-			er.CountryCode, er.CountryName, er.CountryFlag, er.City, checkID, er.Host,
+			 WHERE id = ?`,
+			er.CountryCode, er.CountryName, er.CountryFlag, er.City, er.ResultID,
 		); err != nil {
 			log.Printf("[geoworker] inline update row: %v", err)
 			_ = tx.Rollback()

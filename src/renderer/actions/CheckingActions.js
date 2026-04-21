@@ -79,9 +79,13 @@ function attachCheckStream(dispatch, id, initialCounter) {
             dispatch(otherChanges({ finalizingMessage: 'Enriching location data...' }));
         },
         onGeoBatch: data => {
-            const patchMap = new Map((data?.results ?? []).map(r => [r.host, r]));
+            // Key by composite host:port:auth so proxies sharing the same host
+            // but using different credentials (rotating/backconnect proxies) each
+            // receive their own geo data instead of collapsing to a single entry.
+            const proxyKey = r => `${r.host}:${r.port}:${r.auth}`;
+            const patchMap = new Map((data?.results ?? []).map(r => [proxyKey(r), r]));
             bufferedResults.forEach(item => {
-                const patch = patchMap.get(item.host);
+                const patch = patchMap.get(proxyKey(item));
                 if (!patch) return;
                 item.country = {
                     code: patch.countryCode || '',
