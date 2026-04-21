@@ -287,7 +287,7 @@ class Main extends React.PureComponent {
                         pb: `${FOOTER_HEIGHT + (IS_CANARY ? CANARY_BANNER_HEIGHT : 0) + (isGuestMode() ? GUEST_BANNER_HEIGHT : 0)}px`,
                         px: { xs: 2, sm: 5 },
                     }}>
-                        <Box id="checker-content-root" sx={{ pt: 3 }}>
+                        <Box id="checker-content-root" data-active-tab={this.state.tabIndex} sx={{ pt: 3 }}>
                             {this.state.tabIndex === 0 && <CorePage />}
                             {this.state.tabIndex > 0 && this.state.tabIndex <= 3 && <Settings tabIndex={this.state.tabIndex} />}
                             <History visible={this.state.tabIndex === 4} />

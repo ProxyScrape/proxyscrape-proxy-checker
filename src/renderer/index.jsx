@@ -118,26 +118,44 @@ function AppRoot() {
         if (window.self === window.top) return; // not in an iframe
         if (appState !== 'ready') return;
 
+        let rafId = null;
+
         const sendHeight = () => {
-            const scrollRoot = document.getElementById('checker-scroll-root');
-            if (!scrollRoot) return;
+            // Debounce: cancel any pending frame before scheduling a new one.
+            // This prevents stale measurements when multiple resize events fire
+            // in rapid succession during a layout pass.
+            if (rafId !== null) cancelAnimationFrame(rafId);
+            rafId = requestAnimationFrame(() => {
+                rafId = null;
 
-            // Only report a new height when content actually overflows the scroll
-            // container. When content fits, scrollHeight === clientHeight, which
-            // equals calc(100vh - TITLEBAR_HEIGHT). Sending in that case restarts
-            // the growth loop: each +2 px buffer causes 100vh to grow, clientHeight
-            // grows, scrollHeight grows, we report larger, iframe grows — repeat.
-            //
-            // When content overflows, scrollHeight = pt + content + pb — a fixed
-            // value driven purely by content, independent of 100vh. Safe to send.
-            if (scrollRoot.scrollHeight <= scrollRoot.clientHeight) return;
+                const contentRoot = document.getElementById('checker-content-root');
+                if (!contentRoot) return;
 
-            // TITLEBAR_HEIGHT + scrollRoot.scrollHeight gives the total iframe
-            // height needed to display all content without an internal scrollbar.
-            // +2 px absorbs subpixel rounding on high-DPR devices (e.g. Samsung
-            // phones with DPR 2.625) that can leave the iframe 1 px short.
-            const height = TITLEBAR_HEIGHT + scrollRoot.scrollHeight + 2;
-            window.parent.postMessage({ type: 'checker-height', height }, '*');
+                // Only report height while the Core tab (index 0) is active.
+                // Other tabs can be taller; sending their height would permanently
+                // grow the iframe because the parent uses a grow-only policy.
+                if (contentRoot.dataset.activeTab !== '0') return;
+
+                const scrollRoot = document.getElementById('checker-scroll-root');
+                if (!scrollRoot) return;
+
+                // Only report when content overflows the scroll container.
+                // When content fits, scrollHeight === clientHeight which tracks
+                // 100vh. Sending that value restarts a growth loop: each +2 px
+                // buffer causes 100vh to grow → clientHeight grows → scrollHeight
+                // grows → we report larger → iframe grows → repeat.
+                //
+                // When content overflows, scrollHeight is content-driven and
+                // independent of 100vh, so it is safe to send.
+                if (scrollRoot.scrollHeight <= scrollRoot.clientHeight) return;
+
+                // TITLEBAR_HEIGHT + scrollRoot.scrollHeight gives the total iframe
+                // height needed to show all content without an internal scrollbar.
+                // +2 px absorbs subpixel rounding on high-DPR devices (e.g. Samsung
+                // phones with DPR 2.625) that can leave the iframe 1 px short.
+                const height = TITLEBAR_HEIGHT + scrollRoot.scrollHeight + 2;
+                window.parent.postMessage({ type: 'checker-height', height }, '*');
+            });
         };
 
         // Observe the inner content element so the observer fires only when
@@ -151,6 +169,7 @@ function AppRoot() {
         return () => {
             ro.disconnect();
             window.removeEventListener('resize', sendHeight);
+            if (rafId !== null) cancelAnimationFrame(rafId);
         };
     }, [appState]);
 
