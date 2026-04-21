@@ -25,18 +25,24 @@ export async function initMode() {
         _mode = 'desktop';
         return _mode;
     }
+
+    // Let network errors and non-OK responses propagate so the caller can show
+    // a meaningful error instead of silently falling back to the login screen,
+    // which would also fail when the backend is not running.
+    let res;
     try {
-        const res = await fetch('/api/mode');
-        if (res.ok) {
-            const data = await res.json();
-            _mode = data && data.mode ? String(data.mode) : 'server';
-            _limits = (data && data.limits) ? data.limits : null;
-        } else {
-            _mode = 'server';
-        }
-    } catch {
-        _mode = 'server';
+        res = await fetch('/api/mode');
+    } catch (err) {
+        throw new Error(`Backend unreachable: ${err.message}`);
     }
+
+    if (!res.ok) {
+        throw new Error(`Backend returned unexpected status ${res.status}`);
+    }
+
+    const data = await res.json();
+    _mode = data && data.mode ? String(data.mode) : 'server';
+    _limits = (data && data.limits) ? data.limits : null;
     return _mode;
 }
 

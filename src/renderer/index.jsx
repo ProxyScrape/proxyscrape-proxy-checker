@@ -4,6 +4,8 @@ import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import CircularProgress from '@mui/material/CircularProgress';
 import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
+import Button from '@mui/material/Button';
 import { theme } from './theme/theme';
 import Main from './containers/Main';
 import Login from './containers/Login';
@@ -104,6 +106,7 @@ function AppRoot() {
     const isWeb = typeof window !== 'undefined' && !isDesktop;
 
     // 'loading'  = mode fetch + optional session bootstrap in progress
+    // 'error'    = backend unreachable or returned an unexpected response
     // 'login'    = server mode, no stored token → show Login screen
     // 'ready'    = all auth satisfied, render Main
     const [appState, setAppState] = useState('loading');
@@ -160,9 +163,20 @@ function AppRoot() {
         }
 
         (async () => {
+            // Step 1: identify the backend mode.
+            // If the backend is unreachable or returns an error, show the error
+            // screen — the login screen would also fail in that case, so falling
+            // back silently is misleading.
             try {
                 await initMode();
+            } catch (err) {
+                console.error('[app] backend unreachable:', err.message);
+                setAppState('error');
+                return;
+            }
 
+            // Step 2: mode is known — complete session setup.
+            try {
                 if (isGuestMode()) {
                     // Bootstrap the anonymous session (idempotent — server
                     // reuses existing cookie if it is still valid).
@@ -187,7 +201,6 @@ function AppRoot() {
                 }
             } catch (err) {
                 console.error('[app] startup failed:', err);
-                // Fall back to login screen on unexpected errors.
                 setAppState('login');
             }
         })();
@@ -195,16 +208,26 @@ function AppRoot() {
 
     if (appState === 'loading') {
         return (
-            <Box
-                sx={{
-                    minHeight: '100vh',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bgcolor: 'background.default',
-                }}
-            >
+            <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default' }}>
                 <CircularProgress size={32} />
+            </Box>
+        );
+    }
+
+    if (appState === 'error') {
+        return (
+            <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default', p: 3 }}>
+                <Box sx={{ maxWidth: 360, textAlign: 'center' }}>
+                    <Typography variant="h6" sx={{ mb: 1, fontWeight: 700 }}>
+                        Service Unavailable
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3, lineHeight: 1.7 }}>
+                        The checker service could not be reached. Please try again in a moment.
+                    </Typography>
+                    <Button variant="outlined" onClick={() => window.location.reload()}>
+                        Retry
+                    </Button>
+                </Box>
             </Box>
         );
     }
