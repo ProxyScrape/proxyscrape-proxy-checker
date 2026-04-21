@@ -5,6 +5,8 @@
 # Activated automatically via: git config core.hooksPath .githooks
 # (set by `npm install` via the prepare script in package.json)
 
+set -euo pipefail
+
 ROOT="$(git rev-parse --show-toplevel)"
 BACKEND_DIR="$ROOT/backend"
 
@@ -20,7 +22,7 @@ if ! command -v go &>/dev/null; then
     echo "[pre-push] go not found in PATH — skipping guest route coverage check"
 else
     echo "[pre-push] running guest route coverage tests..."
-    if ! (cd "$BACKEND_DIR" && go test ./internal/api/... -run "TestGuestRoutes|TestGuestBlocked" -count=1 2>&1); then
+    if ! (cd "$BACKEND_DIR" && go test ./internal/api/... -count=1 2>&1); then
         echo ""
         echo "ERROR: Guest route coverage check failed."
         echo "  Add the missing route(s) to guestAllowed or guestBlocked in:"
