@@ -37,8 +37,17 @@ const CorePage = ({ proxyCount, overLimit, start }) => {
     }, []);
 
     const scrollToEditor = () => {
+        // Always scroll the internal container (works in standalone and desktop).
         const scrollRoot = document.getElementById('checker-scroll-root');
         if (scrollRoot) scrollRoot.scrollTo({ top: 0, behavior: 'smooth' });
+
+        // When embedded in an iframe the internal scroll container may not be
+        // scrollable (content fits the sized iframe), and the user's view of the
+        // editor depends on where the parent page is scrolled. Ask the parent to
+        // bring the iframe into view instead.
+        if (window.self !== window.top) {
+            window.parent.postMessage({ type: 'checker-scroll-top' }, '*');
+        }
     };
 
     const handleMobileCheck = () => {
