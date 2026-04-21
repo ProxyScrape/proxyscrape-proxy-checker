@@ -1,12 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { connect } from 'react-redux';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import { start } from '../actions/CheckingActions';
-import { getGuestLimits, isGuestMode } from '../misc/mode';
-import { FOOTER_HEIGHT, CANARY_BANNER_HEIGHT, GUEST_BANNER_HEIGHT } from '../constants/Layout';
-import { IS_CANARY } from '../../shared/AppConstants';
+import { getGuestLimits } from '../misc/mode';
 import InputV2 from './InputV2';
 import Core from './Core';
 import Protocols from './Protocols';
@@ -26,6 +24,18 @@ const CorePage = ({ proxyCount, overLimit, start }) => {
     const isMobile = useMediaQuery('(max-width:599px)');
     const isEmpty = proxyCount === 0;
 
+    // Measure the footer's actual rendered height so the floating button always
+    // clears it, even when links wrap to two lines on narrow screens.
+    const [footerHeight, setFooterHeight] = useState(0);
+    useEffect(() => {
+        const footer = document.querySelector('footer');
+        if (!footer) return;
+        const ro = new ResizeObserver(() => setFooterHeight(footer.offsetHeight));
+        ro.observe(footer);
+        setFooterHeight(footer.offsetHeight); // read immediately
+        return () => ro.disconnect();
+    }, []);
+
     const scrollToEditor = () => {
         const scrollRoot = document.getElementById('checker-scroll-root');
         if (scrollRoot) scrollRoot.scrollTo({ top: 0, behavior: 'smooth' });
@@ -38,11 +48,6 @@ const CorePage = ({ proxyCount, overLimit, start }) => {
         }
         start();
     };
-
-    // Bottom offset for floating button — must clear the fixed footer (and optional banners).
-    const floatingBottom = FOOTER_HEIGHT
-        + (IS_CANARY ? CANARY_BANNER_HEIGHT : 0)
-        + (isGuestMode() ? GUEST_BANNER_HEIGHT : 0);
 
     if (isMobile) {
         return (
@@ -66,7 +71,7 @@ const CorePage = ({ proxyCount, overLimit, start }) => {
                 {/* Floating Check button — fixed just above the footer */}
                 <Box sx={{
                     position: 'fixed',
-                    bottom: floatingBottom,
+                    bottom: footerHeight,
                     left: 0,
                     right: 0,
                     px: { xs: 2, sm: 5 },
