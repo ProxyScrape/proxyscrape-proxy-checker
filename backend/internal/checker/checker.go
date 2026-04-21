@@ -237,7 +237,11 @@ func (c *Checker) Run(ctx context.Context, results chan<- Result, progress chan<
 		}
 	}
 
-	// Progress goroutine
+	// progressQuit is closed by Run to signal the goroutine to stop.
+	// progressDone is closed by the goroutine once it has fully exited,
+	// allowing Run to block until the goroutine is no longer sending to
+	// progress before the deferred close(progress) fires.
+	progressQuit := make(chan struct{})
 	progressDone := make(chan struct{})
 	go func() {
 		defer close(progressDone)
@@ -249,7 +253,7 @@ func (c *Checker) Run(ctx context.Context, results chan<- Result, progress chan<
 				return
 			case <-c.stopped:
 				return
-			case <-progressDone:
+			case <-progressQuit:
 				return
 			}
 		}
@@ -302,13 +306,15 @@ func (c *Checker) Run(ctx context.Context, results chan<- Result, progress chan<
 		emitCancelled(p)
 	}
 
-	// Stop the progress goroutine
-	select {
-	case <-progressDone:
-	default:
-	}
+	// Signal the progress goroutine to stop, then wait until it has fully
+	// exited. This guarantees no further sends to progress can occur before
+	// defer close(progress) fires when Run returns.
+	close(progressQuit)
+	<-progressDone
 
-	// Send final progress
+	// Send one final progress snapshot with the definitive counters. The
+	// goroutine is confirmed done, so Run is now the sole sender and this
+	// cannot race with defer close(progress).
 	sendProgress()
 
 	return nil
