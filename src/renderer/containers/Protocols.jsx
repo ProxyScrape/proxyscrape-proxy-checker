@@ -9,12 +9,31 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 
-const Protocols = ({ protocols, overrideProtocols, hasProtocols, proxyCount, toggleOption, toggleProtocol, start }) => {
+/**
+ * Protocol selection and (optionally) the Check button.
+ *
+ * Props:
+ *   showCheckButton — when false the Check button is omitted; the parent is
+ *                     responsible for rendering it (e.g. as a floating FAB on
+ *                     mobile). Defaults to true.
+ *   onEmptyCheck    — called instead of start() when proxyCount === 0 and the
+ *                     user presses Check. Typically scrolls to the editor.
+ */
+const Protocols = ({ protocols, overrideProtocols, hasProtocols, proxyCount, toggleOption, toggleProtocol, start, showCheckButton = true, onEmptyCheck }) => {
     const limits = getGuestLimits();
     const overLimit = limits !== null && proxyCount > limits.inFlightProxies;
+    const isEmpty = proxyCount === 0;
+
+    const handleCheck = () => {
+        if (isEmpty) {
+            onEmptyCheck?.();
+            return;
+        }
+        start();
+    };
 
     return (
-        <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, mt: 2, mb: 3 }}>
+        <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5 }}>
             <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>
                 Protocols
                 <InfoIcon title="By default, each proxy is tested using the protocol declared in the import list (e.g. http:// → HTTP only). Enable 'Override' to ignore list protocols and test all selected protocols against every proxy." />
@@ -44,16 +63,20 @@ const Protocols = ({ protocols, overrideProtocols, hasProtocols, proxyCount, tog
                 />
             </Box>
 
-            <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                <Button
-                    variant="contained"
-                    fullWidth
-                    onClick={start}
-                    disabled={overLimit}
-                >
-                    Check
-                </Button>
-            </Box>
+            {showCheckButton && (
+                <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Button
+                        variant="contained"
+                        fullWidth
+                        onClick={handleCheck}
+                        disabled={overLimit}
+                        aria-disabled={isEmpty && !overLimit ? true : undefined}
+                        sx={isEmpty && !overLimit ? { opacity: 0.45, cursor: 'default' } : {}}
+                    >
+                        Check
+                    </Button>
+                </Box>
+            )}
         </Box>
     );
 };

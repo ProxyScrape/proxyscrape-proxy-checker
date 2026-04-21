@@ -1,8 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import { connect } from 'react-redux';
 import { changeOption, toggleOption, toggleCaptureTrace, recheckTraceStatus } from '../actions/CoreActions';
-import Checkbox from '../components/ui/Checkbox';
-import { HelpTip, InfoIcon } from '../components/ui/HelpTip';
+import ToggleChip from '../components/ui/ToggleChip';
+import { HelpTip } from '../components/ui/HelpTip';
 import { splitByKK } from '../misc/text';
 import { getMaxThreads } from '../misc/other';
 import { openLink } from '../misc/links';
@@ -127,20 +127,51 @@ const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceSt
 
     return (
         <>
-            <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, mb: 2 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>
-                    Data Capturing
-                    <InfoIcon title="Extra data to collect during checking. Enabling these adds more detail to results but may slow down checks slightly." />
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                    <Checkbox id='captureFullData' name='captureFullData' checked={captureFullData} onChange={toggleOption} text='Full Data' tip="Capture the full judge response (body and headers) for each protocol tested. Useful for debugging proxy behavior." />
-                    <Checkbox id='captureServer' name='captureServer' checked={captureServer} onChange={toggleOption} text='Server' tip="Capture the web server name from proxy responses. Adds a Server column to results." />
-                    <Checkbox id='captureTrace' name='captureTrace' checked={captureTrace} onChange={toggleCaptureTrace} text='Traces' tip="Record TCP packet events and connection timing for every proxy. Adds a Trace button to each result row. Requires libpcap (macOS/Linux) or Npcap (Windows)." lockedTip={guestLock('Traces', 'TCP packet capture is only available in the free desktop app.')} />
+            {/* ── Compact chip bar: Data Capturing + Options in one row ── */}
+            <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2, mb: 2 }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
+                    <ToggleChip
+                        label="Full Data"
+                        active={captureFullData}
+                        onClick={() => toggleOption({ target: { name: 'captureFullData' } })}
+                        tip="Capture the full judge response (body and headers) for each protocol tested. Useful for debugging proxy behavior."
+                    />
+                    <ToggleChip
+                        label="Server"
+                        active={captureServer}
+                        onClick={() => toggleOption({ target: { name: 'captureServer' } })}
+                        tip="Capture the web server name from proxy responses. Adds a Server column to results."
+                    />
+                    <ToggleChip
+                        label="Traces"
+                        active={captureTrace}
+                        onClick={() => toggleCaptureTrace()}
+                        tip="Record TCP packet events and connection timing for every proxy. Adds a Trace button to each result row. Requires libpcap (macOS/Linux) or Npcap (Windows)."
+                        lockedTip={guestLock('Traces', 'TCP packet capture is only available in the free desktop app.')}
+                    />
+                    {/* Visual separator between Data Capturing and Options groups */}
+                    <Box sx={{ width: '1px', height: 20, bgcolor: 'divider', mx: 0.25, flexShrink: 0, alignSelf: 'center' }} />
+                    <ToggleChip
+                        label="Keep-Alive"
+                        active={keepAlive}
+                        onClick={() => toggleOption({ target: { name: 'keepAlive' } })}
+                        tip="Send keep-alive headers and detect if proxies support persistent connections. Adds a Keep-Alive filter to results."
+                        lockedTip={guestLock('Keep-Alive', 'Persistent connection detection is only available in the free desktop app.')}
+                    />
+                    <ToggleChip
+                        label="Local DNS"
+                        active={localDns}
+                        onClick={() => toggleOption({ target: { name: 'localDns' } })}
+                        tip="Resolve target hostnames locally before sending to the proxy (classic SOCKS4/SOCKS5 behaviour). Off by default — not recommended, as it causes DNS leaks and may produce false negatives."
+                        lockedTip={guestLock('Local DNS', 'Local DNS resolution is only available in the free desktop app.')}
+                    />
                 </Box>
+
+                {/* Trace warning panel — only shown when traces are enabled but unavailable */}
                 {captureTrace && traceStatus && !traceStatus.available && (() => {
                     const info = TRACE_SETUP[traceStatus.reason] || TRACE_SETUP.unavailable;
                     return (
-                        <Box sx={{ mt: 1, px: 1.25, py: 1, bgcolor: 'rgba(231,72,86,0.08)', border: '1px solid rgba(231,72,86,0.25)', borderRadius: 1 }}>
+                        <Box sx={{ mt: 1.5, px: 1.25, py: 1, bgcolor: 'rgba(231,72,86,0.08)', border: '1px solid rgba(231,72,86,0.25)', borderRadius: 1 }}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
                                 <Typography variant="caption" sx={{ color: '#e74856', fontSize: '0.72rem', fontWeight: 600, display: 'block' }}>
                                     ⚠ TCP packet capture unavailable
@@ -181,15 +212,10 @@ const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceSt
                     );
                 })()}
             </Box>
-            <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, mb: 2 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>Options</Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                    <Checkbox id='core-k-a' name='keepAlive' checked={keepAlive} onChange={toggleOption} text='Keep-Alive' tip="Send keep-alive headers and detect if proxies support persistent connections. Adds a Keep-Alive filter to results." lockedTip={guestLock('Keep-Alive', 'Persistent connection detection is only available in the free desktop app.')} />
-                    <Checkbox id='core-local-dns' name='localDns' checked={localDns} onChange={toggleOption} text='Local DNS' tip="Resolve target hostnames locally before sending to the proxy (classic SOCKS4/SOCKS5 behaviour). Off by default — not recommended, as it causes DNS leaks and may produce false negatives." lockedTip={guestLock('Local DNS', 'Local DNS resolution is only available in the free desktop app.')} />
-                </Box>
-            </Box>
-            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
-                <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, flex: 1 }}>
+
+            {/* ── Sliders: Threads, Retries, Timeout in one consolidated card ── */}
+            <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2 }}>
+                <Box sx={{ mb: 2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                         <HelpTip title="Number of proxies checked simultaneously. Maximum depends on how many protocols are enabled.">
                             <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', cursor: 'help', borderBottom: '1px dotted', borderColor: 'text.secondary' }}>Threads</Typography>
@@ -205,7 +231,7 @@ const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceSt
                         size="small"
                     />
                 </Box>
-                <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, flex: 1 }}>
+                <Box sx={{ mb: 2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                         <HelpTip title="How many times to retry a failed proxy before marking it as dead. Set to 0 to disable retries.">
                             <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', cursor: 'help', borderBottom: '1px dotted', borderColor: 'text.secondary' }}>Retries</Typography>
@@ -221,7 +247,7 @@ const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceSt
                         size="small"
                     />
                 </Box>
-                <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2.5, flex: 1 }}>
+                <Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                         <HelpTip title="Maximum time in milliseconds to wait for a proxy response before timing out. Also sets the upper bound for the timeout filter on the results page.">
                             <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', cursor: 'help', borderBottom: '1px dotted', borderColor: 'text.secondary' }}>Timeout</Typography>

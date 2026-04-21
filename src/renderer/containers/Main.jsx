@@ -25,9 +25,8 @@ import ProtocolWarningDialog from '../components/ProtocolWarningDialog';
 import Result from './Result';
 import History from '../components/History';
 import Titlebar from './Titlebar';
-import Protocols from './Protocols';
+import CorePage from './CorePage';
 import { close as closeResult } from '../actions/ResultActions';
-import InputV2 from './InputV2';
 import { openDrawer, closeDrawer } from '../actions/UIActions';
 import { trackScreen, trackAction } from '../misc/analytics';
 import { TITLEBAR_HEIGHT, FOOTER_HEIGHT, CANARY_BANNER_HEIGHT, GUEST_BANNER_HEIGHT } from '../constants/Layout';
@@ -289,9 +288,8 @@ class Main extends React.PureComponent {
                         px: { xs: 2, sm: 5 },
                     }}>
                         <Box id="checker-content-root" sx={{ pt: 3 }}>
-                            {this.state.tabIndex <= 3 && <Settings tabIndex={this.state.tabIndex} />}
-                            {this.state.tabIndex === 0 && <InputV2 />}
-                            {this.state.tabIndex === 0 && <Protocols />}
+                            {this.state.tabIndex === 0 && <CorePage />}
+                            {this.state.tabIndex > 0 && this.state.tabIndex <= 3 && <Settings tabIndex={this.state.tabIndex} />}
                             <History visible={this.state.tabIndex === 4} />
                         </Box>
                     </Box>
