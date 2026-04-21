@@ -183,9 +183,22 @@ function AppRoot() {
         // Once fonts are ready, mark them as loaded and trigger a measurement.
         // This fires the first accurate height message on initial page load when
         // fonts are not yet cached, replacing any suppressed early measurement.
+        //
+        // Two additional retries are scheduled at 300 ms and 800 ms as a safety
+        // net for async layout changes that happen after fonts resolve:
+        //   - Redux SETTINGS_LOAD (loadSettings is fire-and-forget before ready)
+        //   - useMediaQuery settling (MUI reads matchMedia after first paint)
+        //   - MUI internal measurements (sliders, chip wrapping)
+        // The ResizeObserver catches intentional size changes, but if the sidebar
+        // happens to return to the same pixel height after one of these updates,
+        // the observer does not fire — the retries cover that gap.
+        // Each call goes through the RAF debounce so no burst of messages is sent.
+        const retryTimers = [];
         document.fonts.ready.then(() => {
             fontsReady = true;
             sendHeight();
+            retryTimers.push(setTimeout(sendHeight, 300));
+            retryTimers.push(setTimeout(sendHeight, 800));
         });
 
         // Observe the inner content element so the observer fires only when
@@ -200,6 +213,7 @@ function AppRoot() {
             ro.disconnect();
             window.removeEventListener('resize', sendHeight);
             if (rafId !== null) cancelAnimationFrame(rafId);
+            retryTimers.forEach(clearTimeout);
         };
     }, [appState]);
 
