@@ -19,19 +19,9 @@ import {
     RESULT_EXPORT_CHANGE_TYPE,
     RESULT_EXPORT_CHANGE_AUTH_TYPE,
     RESULT_TOGGLE_HIDE_STATUS,
-    RESULT_PATCH_GEO,
 } from '../constants/ActionTypes';
 import { otherChanges } from './CheckingActions';
 import { wait } from '../misc/wait';
-
-/**
- * Patches geo fields for a set of enriched rows into the Redux result store.
- * Rows are matched by host (proxy IP). Called when the SSE stream delivers
- * updated rows from the geo enrichment worker.
- *
- * @param {Array<{id, host, port, auth, countryCode, countryName, countryFlag, city}>} rows
- */
-export const patchGeo = rows => ({ type: RESULT_PATCH_GEO, rows });
 
 /**
  * Maps a raw proxy result object (from SSE events or the history API) to the
@@ -39,6 +29,7 @@ export const patchGeo = rows => ({ type: RESULT_PATCH_GEO, rows });
  * check results and null for history items — both callers are safe with this.
  */
 export const mapResultItem = item => ({
+    id: item.id,
     host: item.proxy.host,
     port: item.proxy.port,
     auth: item.proxy.auth,

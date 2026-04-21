@@ -79,13 +79,13 @@ function attachCheckStream(dispatch, id, initialCounter) {
             dispatch(otherChanges({ finalizingMessage: 'Enriching location data...' }));
         },
         onGeoBatch: data => {
-            // Key by composite host:port:auth so proxies sharing the same host
-            // but using different credentials (rotating/backconnect proxies) each
-            // receive their own geo data instead of collapsing to a single entry.
-            const proxyKey = r => `${r.host}:${r.port}:${r.auth}`;
-            const patchMap = new Map((data?.results ?? []).map(r => [proxyKey(r), r]));
+            // Match by the stable UUID that the backend assigned to each result
+            // when it entered the snapshot. This is the only key that is unique
+            // per result even when the same proxy (identical host, port, auth)
+            // appears multiple times in the same check run.
+            const patchMap = new Map((data?.results ?? []).map(r => [r.id, r]));
             bufferedResults.forEach(item => {
-                const patch = patchMap.get(proxyKey(item));
+                const patch = patchMap.get(item.id);
                 if (!patch) return;
                 item.country = {
                     code: patch.countryCode || '',

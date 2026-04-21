@@ -17,7 +17,6 @@ import {
     RESULT_EXPORT_CHANGE_TYPE,
     RESULT_EXPORT_CHANGE_AUTH_TYPE,
     RESULT_TOGGLE_HIDE_STATUS,
-    RESULT_PATCH_GEO,
     SETTINGS_LOAD
 } from '../../constants/ActionTypes';
 
@@ -100,31 +99,6 @@ const result = (state = initialState, action) => {
                 hiddenStatuses: current.includes(status)
                     ? current.filter(s => s !== status)
                     : [...current, status],
-            };
-        }
-        case RESULT_PATCH_GEO: {
-            if (!action.rows || !action.rows.length) return state;
-            // Key by composite host:port:auth so proxies sharing the same host
-            // but different credentials each receive their own geo data.
-            const proxyKey = r => `${r.host}:${r.port}:${r.auth}`;
-            const byKey = {};
-            for (const row of action.rows) byKey[proxyKey(row)] = row;
-            return {
-                ...state,
-                items: state.items.map(item => {
-                    const patch = byKey[proxyKey(item)];
-                    if (!patch) return item;
-                    return {
-                        ...item,
-                        country: {
-                            code: patch.countryCode,
-                            name: patch.countryName,
-                            flag: patch.countryFlag,
-                            city: patch.city,
-                        },
-                        geoStatus: 'done',
-                    };
-                }),
             };
         }
         case RESULT_CHANGE_PORTS_INPUT:

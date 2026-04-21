@@ -28,7 +28,7 @@ let isQuitting = false;
 let pendingDeepLink = null;
 
 // True while a geo-enrich SSE connection is open. Prevents duplicate streams
-// from being created if listenGeoEnrichSSE() is called multiple times.
+// if listenGeoEnrichSSE() is called multiple times (e.g. on app focus).
 let geoEnrichListening = false;
 
 const isMac = process.platform === 'darwin';
@@ -611,15 +611,14 @@ ipcMain.on('window-close', () => {
 // =============================================================================
 
 /**
- * Connect to the Go geo enrichment SSE stream and forward progress events to
- * the renderer via 'geo-enrich-progress'. Stops once the backend reports
- * running=false or the stream closes naturally.
+ * Connect to the Go geo enrichment SSE stream and drain it until the backend
+ * reports running=false or the stream closes. This keeps the singleton guard
+ * active so duplicate streams are never opened, and lets the Go worker run to
+ * completion even when no renderer client is listening.
  */
 function listenGeoEnrichSSE() {
     if (!checkerPort || !checkerToken) return;
-    // Singleton guard — only one SSE connection at a time. If a connection is
-    // already open (e.g. from startup), skip rather than opening a duplicate
-    // that would send every progress event twice to the renderer.
+    // Singleton guard — only one SSE connection at a time.
     if (geoEnrichListening) return;
 
     geoEnrichListening = true;
@@ -641,9 +640,6 @@ function listenGeoEnrichSSE() {
                 if (!line.startsWith('data: ')) continue;
                 try {
                     const payload = JSON.parse(line.slice(6));
-                    if (window && !window.isDestroyed()) {
-                        window.webContents.send('geo-enrich-progress', payload);
-                    }
                     // Stop listening when enrichment is done.
                     if (!payload.running) {
                         res.destroy();
@@ -707,27 +703,3 @@ async function signalAndListenGeoEnrich() {
     return result;
 }
 
-/**
- * geo:enrich:start — trigger background geo enrichment for pending rows and
- * open the SSE stream so the renderer receives progress events.
- * Idempotent: safe to call even if enrichment is already running.
- */
-ipcMain.handle('geo:enrich:start', async () => {
-    return await signalAndListenGeoEnrich();
-});
-
-/**
- * geo:enrich:cancel — cancel any running geo enrichment job.
- */
-ipcMain.handle('geo:enrich:cancel', () => {
-    if (!checkerPort || !checkerToken) return;
-    const req = http.request({
-        hostname: '127.0.0.1',
-        port: checkerPort,
-        path: '/api/geo/enrich',
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${checkerToken}` },
-    }, (res) => { res.resume(); });
-    req.on('error', () => { /* non-fatal */ });
-    req.end();
-});

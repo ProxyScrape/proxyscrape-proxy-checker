@@ -26,6 +26,16 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// resultEntry pairs a pre-assigned UUID with a checker result. The UUID is
+// assigned by the tee goroutine the moment a result enters the snapshot, so it
+// can be included in the live SSE "result" event and later matched by the
+// "geo-batch" event — even when multiple proxies share the same host, port,
+// and auth (e.g. the exact same proxy line listed twice).
+type resultEntry struct {
+	ID     string
+	Result checker.Result
+}
+
 // runningCheck holds live state for an in-progress proxy check.
 type runningCheck struct {
 	cancel context.CancelFunc
@@ -33,7 +43,7 @@ type runningCheck struct {
 	// mu guards snapshot. The tee goroutine holds a write lock while appending;
 	// SSE handlers hold a read lock while copying a batch to send.
 	mu       sync.RWMutex
-	snapshot []checker.Result // append-only; one entry per checked proxy; survives client disconnects
+	snapshot []resultEntry // append-only; one entry per checked proxy; survives client disconnects
 	// newItem is a 1-buffered channel used by the tee goroutine to wake SSE
 	// readers. It is closed when the tee goroutine finishes, signalling that no
 	// more results will be added to snapshot.
@@ -288,7 +298,7 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 
 	rc := &runningCheck{
 		cancel:    cancel,
-		snapshot:  make([]checker.Result, 0, len(proxies)),
+		snapshot:  make([]resultEntry, 0, len(proxies)),
 		newItem:   make(chan struct{}, 1),
 		progress:  make(chan checker.Progress, 100),
 		done:      make(chan struct{}),
@@ -323,7 +333,7 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 			defer close(rc.newItem) // signals SSE readers that no more results are coming
 			for result := range rawCh {
 				rc.mu.Lock()
-				rc.snapshot = append(rc.snapshot, result)
+				rc.snapshot = append(rc.snapshot, resultEntry{ID: uuid.New().String(), Result: result})
 				rc.mu.Unlock()
 				// Wake any waiting SSE reader. Non-blocking: if a notification
 				// is already pending the reader will drain the new item on its
@@ -343,9 +353,9 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 		working := 0
 		var geoEntries []geoEntry
 		storeResults := make([]store.CheckResult, len(rc.snapshot))
-		for i, res := range rc.snapshot {
-			// Assign the UUID before checking status so geoEntries can reference it.
-			storeResults[i] = resultToStore(checkID, res)
+		for i, entry := range rc.snapshot {
+			storeResults[i] = resultToStore(checkID, entry)
+			res := entry.Result
 			if res.Status == "working" {
 				working++
 				if res.Proxy.Host != "" {
@@ -354,10 +364,8 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 						key = res.Proxy.Host
 					}
 					geoEntries = append(geoEntries, geoEntry{
-						id:          storeResults[i].ID,
+						id:          entry.ID,
 						displayHost: res.Proxy.Host,
-						port:        res.Proxy.Port,
-						auth:        res.Proxy.Auth,
 						lookupKey:   key,
 					})
 				}
@@ -436,7 +444,11 @@ type apiResultCountry struct {
 // apiResult is the JSON shape sent to the frontend for every proxy result,
 // whether live (via SSE) or replayed from the store. It must match the shape
 // that mapResultItem() in CheckingActions.js and viewPastCheck() in HistoryActions.js expect.
+// ID is the stable UUID assigned when the result enters the snapshot (live) or
+// read from the DB (stored). The frontend stores it on each result item so the
+// geo-batch event can patch by ID instead of a fragile composite key.
 type apiResult struct {
+	ID        string                           `json:"id"`
 	Proxy     apiResultProxy                   `json:"proxy"`
 	Status    string                           `json:"status"`
 	Protocols []string                         `json:"protocols"`
@@ -495,6 +507,7 @@ func storeResultToAPI(r store.CheckResult) apiResult {
 		_ = json.Unmarshal([]byte(r.FullDataJSON), &fullData)
 	}
 	return apiResult{
+		ID:        r.ID,
 		Proxy:     apiResultProxy{Host: r.Host, Port: r.Port, Auth: r.Auth},
 		Status:    r.Status,
 		Protocols: protocols,
@@ -512,8 +525,11 @@ func storeResultToAPI(r store.CheckResult) apiResult {
 	}
 }
 
-// resultToAPI converts a live checker.Result to the apiResult wire shape.
-func resultToAPI(r checker.Result) apiResult {
+// resultToAPI converts a live resultEntry (checker result + pre-assigned UUID)
+// to the apiResult wire shape. The UUID is included so the frontend can later
+// match geo-batch patches by ID rather than a fragile composite key.
+func resultToAPI(e resultEntry) apiResult {
+	r := e.Result
 	protocols := r.Protocols
 	if protocols == nil {
 		protocols = []string{}
@@ -527,6 +543,7 @@ func resultToAPI(r checker.Result) apiResult {
 		errors = map[string]string{}
 	}
 	return apiResult{
+		ID:        e.ID,
 		Proxy:     apiResultProxy{Host: r.Proxy.Host, Port: r.Proxy.Port, Auth: r.Proxy.Auth},
 		Status:    r.Status,
 		Protocols: protocols,
@@ -544,8 +561,11 @@ func resultToAPI(r checker.Result) apiResult {
 	}
 }
 
-// resultToStore maps a checker.Result to a store.CheckResult.
-func resultToStore(checkID string, r checker.Result) store.CheckResult {
+// resultToStore maps a resultEntry (with its pre-assigned UUID) to a
+// store.CheckResult. Reusing the pre-assigned UUID ensures the DB row ID
+// matches what was already sent to the frontend in the live SSE "result" event.
+func resultToStore(checkID string, e resultEntry) store.CheckResult {
+	r := e.Result
 	protocols := r.Protocols
 	if protocols == nil {
 		protocols = []string{}
@@ -555,7 +575,7 @@ func resultToStore(checkID string, r checker.Result) store.CheckResult {
 		blists = []string{}
 	}
 	return store.CheckResult{
-		ID:           uuid.New().String(),
+		ID:           e.ID,
 		CheckID:      checkID,
 		Host:         r.Proxy.Host,
 		Port:         r.Proxy.Port,
@@ -672,13 +692,13 @@ func (s *server) streamLiveEvents(w http.ResponseWriter, r *http.Request, rc *ru
 	// select loop to replay historical results for reconnecting clients.
 	drainSnapshot := func() {
 		rc.mu.RLock()
-		batch := make([]checker.Result, len(rc.snapshot)-nextIdx)
+		batch := make([]resultEntry, len(rc.snapshot)-nextIdx)
 		copy(batch, rc.snapshot[nextIdx:])
 		rc.mu.RUnlock()
 
-		for _, result := range batch {
-			writeSSEEvent(w, "result", resultToAPI(result))
-			if result.Status == "working" {
+		for _, entry := range batch {
+			writeSSEEvent(w, "result", resultToAPI(entry))
+			if entry.Result.Status == "working" {
 				hasWorking = true
 			}
 			nextIdx++
@@ -793,15 +813,13 @@ func (s *server) handleActiveCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, found)
 }
 
-// geoEntry pairs the unique DB row ID and proxy identity fields with the lookup
-// key sent to the geo worker (exit_ip when available, else host). id/port/auth
-// are forwarded in enrichedRow so the frontend can patch exactly one row even
-// when multiple proxies share the same host (e.g. rotating backconnect proxies).
+// geoEntry pairs the pre-assigned UUID and proxy identity with the lookup key
+// sent to the geo worker (exit_ip when available, else host). The UUID flows
+// into enrichedRow so the frontend can patch results by their stable ID rather
+// than any host-based key.
 type geoEntry struct {
-	id          string // UUID from storeResult — used for DB update (WHERE id = ?)
+	id          string // pre-assigned UUID — same as what the SSE "result" event carried
 	displayHost string
-	port        int
-	auth        string
 	lookupKey   string // exit_ip when available, else host
 }
 
@@ -822,8 +840,6 @@ func makeEnrichedRows(entries []geoEntry, results []geoworker.Result) []enriched
 		rows = append(rows, enrichedRow{
 			ResultID:    e.id,
 			Host:        e.displayHost,
-			Port:        e.port,
-			Auth:        e.auth,
 			CountryCode: gr.CountryCode,
 			CountryName: gr.CountryName,
 			CountryFlag: gr.CountryFlag,

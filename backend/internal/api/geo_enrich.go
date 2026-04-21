@@ -14,17 +14,13 @@ import (
 	"github.com/proxyscrape/checker-backend/internal/store"
 )
 
-// enrichedRow is the per-row payload sent to the renderer after each batch
-// so it can patch geo fields in the Redux result store without a full reload.
-// ResultID is the unique check_results.id (UUID) that lets the frontend patch
-// exactly one row even when multiple proxies share the same host:port.
-// Port and Auth are included so the frontend can form a composite key
-// (host:port:auth) as a fallback when ResultID is not available.
+// enrichedRow is the per-row payload sent to the renderer after each geo-batch
+// so it can patch geo fields in the Redux result store. ResultID matches the
+// UUID sent in the original SSE "result" event, giving the frontend a stable,
+// unique handle per result regardless of duplicate host/port/auth combinations.
 type enrichedRow struct {
 	ResultID    string `json:"id"`
 	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Auth        string `json:"auth"`
 	CountryCode string `json:"countryCode"`
 	CountryName string `json:"countryName"`
 	CountryFlag string `json:"countryFlag"`
@@ -187,12 +183,11 @@ func runGeoEnrichmentWorker(ctx context.Context, st *store.Store, client *geowor
 
 	// Fetch all pending rows at once — no need to loop in batches since the
 	// worker accepts up to 10,000 IPs per call and handles the rest internally.
-	// Select id, host, port, auth (for frontend composite-key matching) and the
-	// effective lookup key (exit_ip when available, else host). This ensures
-	// rotating/backconnect domain proxies are geolocated by their true exit IP
-	// while the SSE enrichedRow.Host remains the configured hostname.
+	// Select id, host, and the effective lookup key (exit_ip when available, else
+	// host). This ensures rotating/backconnect domain proxies are geolocated by
+	// their true exit IP while enrichedRow.Host remains the configured hostname.
 	rows, err := st.DB().QueryContext(ctx,
-		`SELECT id, host, port, auth, COALESCE(NULLIF(exit_ip, ''), host) FROM check_results WHERE geo_status = 'pending'`,
+		`SELECT id, host, COALESCE(NULLIF(exit_ip, ''), host) FROM check_results WHERE geo_status = 'pending'`,
 	)
 	if err != nil {
 		log.Printf("geo enrich worker: query: %v", err)
@@ -202,15 +197,13 @@ func runGeoEnrichmentWorker(ctx context.Context, st *store.Store, client *geowor
 	type pendingRow struct {
 		id        string
 		host      string // configured proxy host — used for enrichedRow.Host
-		port      int
-		auth      string
 		lookupKey string // exit_ip when available, else host — sent to geo worker
 	}
 	var pending []pendingRow
 	hosts := make([]string, 0)
 	for rows.Next() {
 		var r pendingRow
-		if err := rows.Scan(&r.id, &r.host, &r.port, &r.auth, &r.lookupKey); err == nil {
+		if err := rows.Scan(&r.id, &r.host, &r.lookupKey); err == nil {
 			pending = append(pending, r)
 			hosts = append(hosts, r.lookupKey)
 		}
@@ -279,8 +272,6 @@ func runGeoEnrichmentWorker(ctx context.Context, st *store.Store, client *geowor
 			enriched = append(enriched, enrichedRow{
 				ResultID:    p.id,
 				Host:        p.host, // always the configured proxy host, not the lookup key
-				Port:        p.port,
-				Auth:        p.auth,
 				CountryCode: r.CountryCode,
 				CountryName: r.CountryName,
 				CountryFlag: r.CountryFlag,
