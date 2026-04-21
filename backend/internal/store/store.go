@@ -81,6 +81,7 @@ type CheckResult struct {
 	TracesJSON   string // JSON-serialized map[protocol][]TraceEvent, empty when no trace
 	FullDataJSON string // JSON-serialized map[protocol]ProtoFullData, empty when not captured
 	GeoStatus    string // 'done', 'pending', or 'skipped'
+	ExitIP       string // IP seen by the judge; empty when proxy failed or judge gave no IP
 }
 
 // baseSchema creates the initial tables if they don't exist.
@@ -139,6 +140,7 @@ CREATE TABLE IF NOT EXISTS check_results (
   traces TEXT,
   full_data TEXT,
   geo_status TEXT NOT NULL DEFAULT 'done',
+  exit_ip TEXT NOT NULL DEFAULT '',
   FOREIGN KEY(check_id) REFERENCES checks(id) ON DELETE CASCADE
 );
 `
@@ -273,6 +275,31 @@ var migrations = []migration{
 		},
 		down: func(tx *sql.Tx) error {
 			_, err := tx.Exec(`DROP INDEX IF EXISTS idx_checks_session_id`)
+			return err
+		},
+	},
+	{
+		// v6: add exit_ip to store the actual IP seen by the judge for each
+		// working proxy. When the proxy host is a domain (e.g. a rotating/
+		// backconnect endpoint), exit_ip holds the true exit IP parsed from
+		// the judge response body, which the geo enrichment worker uses
+		// instead of the hostname for accurate country lookups.
+		// Fresh installs already have exit_ip from baseSchema.
+		up: func(tx *sql.Tx) error {
+			var count int
+			if err := tx.QueryRow(
+				`SELECT COUNT(*) FROM pragma_table_info('check_results') WHERE name='exit_ip'`,
+			).Scan(&count); err != nil {
+				return err
+			}
+			if count > 0 {
+				return nil
+			}
+			_, err := tx.Exec(`ALTER TABLE check_results ADD COLUMN exit_ip TEXT NOT NULL DEFAULT ''`)
+			return err
+		},
+		down: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`ALTER TABLE check_results DROP COLUMN exit_ip`)
 			return err
 		},
 	},
@@ -613,8 +640,8 @@ func (s *Store) SaveCheckResults(ctx context.Context, results []CheckResult) err
 	stmt, err := tx.PrepareContext(ctx,
 		`INSERT INTO check_results
 		 (id, check_id, host, port, auth, status, protocols, anon, timeout_ms,
-		  country_code, country_name, country_flag, city, blacklists, errors, server, keep_alive, traces, full_data, geo_status)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  country_code, country_name, country_flag, city, blacklists, errors, server, keep_alive, traces, full_data, geo_status, exit_ip)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	)
 	if err != nil {
 		return fmt.Errorf("store: prepare stmt: %w", err)
@@ -654,7 +681,7 @@ func (s *Store) SaveCheckResults(ctx context.Context, results []CheckResult) err
 			r.ID, r.CheckID, r.Host, r.Port, r.Auth, r.Status,
 			protocols, r.Anon, r.TimeoutMs,
 			r.CountryCode, r.CountryName, r.CountryFlag, r.City,
-			blacklists, errorsJSON, r.Server, boolToInt(r.KeepAlive), tracesVal, fullDataVal, r.GeoStatus,
+			blacklists, errorsJSON, r.Server, boolToInt(r.KeepAlive), tracesVal, fullDataVal, r.GeoStatus, r.ExitIP,
 		); err != nil {
 			return fmt.Errorf("store: insert check result: %w", err)
 		}
@@ -729,7 +756,7 @@ func (s *Store) GetCheckResults(ctx context.Context, checkID, sessionID string, 
 	offset := (page - 1) * limit
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT cr.id, cr.check_id, cr.host, cr.port, cr.auth, cr.status, cr.protocols, cr.anon, cr.timeout_ms,
-		        cr.country_code, cr.country_name, cr.country_flag, cr.city, cr.blacklists, cr.errors, cr.server, cr.keep_alive, cr.traces, cr.full_data, cr.geo_status
+		        cr.country_code, cr.country_name, cr.country_flag, cr.city, cr.blacklists, cr.errors, cr.server, cr.keep_alive, cr.traces, cr.full_data, cr.geo_status, cr.exit_ip
 		 FROM check_results cr
 		 JOIN checks c ON c.id = cr.check_id
 		 WHERE cr.check_id = ? AND (? = '' OR c.session_id = ?)
@@ -751,7 +778,7 @@ func (s *Store) GetCheckResults(ctx context.Context, checkID, sessionID string, 
 			&r.ID, &r.CheckID, &r.Host, &r.Port, &r.Auth, &r.Status,
 			&protocols, &r.Anon, &r.TimeoutMs,
 			&r.CountryCode, &r.CountryName, &r.CountryFlag, &r.City,
-			&blacklists, &errorsJSON, &r.Server, &keepAlive, &tracesJSON, &fullDataJSON, &r.GeoStatus,
+			&blacklists, &errorsJSON, &r.Server, &keepAlive, &tracesJSON, &fullDataJSON, &r.GeoStatus, &r.ExitIP,
 		); err != nil {
 			return nil, 0, fmt.Errorf("store: scan result: %w", err)
 		}

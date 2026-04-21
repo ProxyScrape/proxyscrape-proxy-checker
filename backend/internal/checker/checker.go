@@ -131,6 +131,7 @@ type Result struct {
 	KeepAlive  bool                     `json:"keepAlive,omitempty"`
 	Traces     map[string][]TraceEvent  `json:"traces,omitempty"`
 	FullData   map[string]ProtoFullData `json:"fullData,omitempty"`
+	ExitIP     string                   `json:"exitIp,omitempty"`
 }
 
 // Progress reports checking progress.
@@ -495,6 +496,8 @@ func (c *Checker) checkProxy(ctx context.Context, p Proxy) Result {
 	} else {
 		result.Status = "failed"
 	}
+
+	result.ExitIP = proxyIP
 
 	// Country/City are left empty here. After the check completes, the backend
 	// calls the ip-geo Cloudflare Worker in a single batch to enrich all working

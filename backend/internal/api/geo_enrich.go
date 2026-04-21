@@ -180,22 +180,31 @@ func runGeoEnrichmentWorker(ctx context.Context, st *store.Store, client *geowor
 
 	// Fetch all pending rows at once — no need to loop in batches since the
 	// worker accepts up to 10,000 IPs per call and handles the rest internally.
+	// Select three columns: id, the configured proxy host (for SSE/UI keying),
+	// and the effective lookup key (exit_ip when available, else host). This
+	// ensures rotating/backconnect domain proxies are geolocated by their true
+	// exit IP while the SSE enrichedRow.Host remains the configured hostname
+	// so the frontend can match patches by proxy host as usual.
 	rows, err := st.DB().QueryContext(ctx,
-		`SELECT id, host FROM check_results WHERE geo_status = 'pending'`,
+		`SELECT id, host, COALESCE(NULLIF(exit_ip, ''), host) FROM check_results WHERE geo_status = 'pending'`,
 	)
 	if err != nil {
 		log.Printf("geo enrich worker: query: %v", err)
 		return
 	}
 
-	type pendingRow struct{ id, host string }
+	type pendingRow struct {
+		id        string
+		host      string // configured proxy host — used for enrichedRow.Host
+		lookupKey string // exit_ip when available, else host — sent to geo worker
+	}
 	var pending []pendingRow
 	hosts := make([]string, 0)
 	for rows.Next() {
 		var r pendingRow
-		if err := rows.Scan(&r.id, &r.host); err == nil {
+		if err := rows.Scan(&r.id, &r.host, &r.lookupKey); err == nil {
 			pending = append(pending, r)
-			hosts = append(hosts, r.host)
+			hosts = append(hosts, r.lookupKey)
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -246,7 +255,9 @@ func runGeoEnrichmentWorker(ctx context.Context, st *store.Store, client *geowor
 
 		enriched := make([]enrichedRow, 0, len(chunk))
 		for _, p := range chunk {
-			r := byHost[p.host] // zero-value (empty country) if chunk failed
+			// byHost is keyed by the lookup key (exit_ip or host), which is
+			// what ip-api echoes back as "query" in geoworker.Result.Host.
+			r := byHost[p.lookupKey] // zero-value (empty country) if chunk failed
 			if _, err := tx.ExecContext(ctx,
 				`UPDATE check_results
 				 SET country_code = ?, country_name = ?, country_flag = ?, city = ?, geo_status = 'done'
@@ -258,7 +269,7 @@ func runGeoEnrichmentWorker(ctx context.Context, st *store.Store, client *geowor
 				return
 			}
 			enriched = append(enriched, enrichedRow{
-				Host:        p.host,
+				Host:        p.host, // always the configured proxy host, not the lookup key
 				CountryCode: r.CountryCode,
 				CountryName: r.CountryName,
 				CountryFlag: r.CountryFlag,

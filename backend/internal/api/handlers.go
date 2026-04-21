@@ -43,7 +43,10 @@ type runningCheck struct {
 	// completes and before close(rc.done). SSE handlers read it after
 	// receiving from rc.done. No mutex needed: the happens-before relationship
 	// through close/receive on rc.done is sufficient.
-	geoResults []geoworker.Result
+	// Stored as enrichedRow so SSE can forward them directly without an
+	// extra translation step; Host is always the configured proxy host
+	// (Proxy.Host), never the exit IP used as the geo lookup key.
+	geoResults []enrichedRow
 
 	progress  chan checker.Progress // passed to checker.Run; SSE reads from here
 	done      chan struct{}         // closed after check goroutine fully finishes (store saved + geo enriched)
@@ -338,13 +341,22 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 		elapsed := time.Since(startTime).Milliseconds()
 
 		working := 0
-		var workingHosts []string
+		// geoEntry pairs the configured proxy host (for SSE/DB matching) with
+		// the lookup key sent to the geo worker (exit_ip when available, else
+		// host). This lets rotating/backconnect domain proxies be geolocated
+		// by their true exit IP without breaking frontend host-keyed patching.
+		type geoEntry struct{ displayHost, lookupKey string }
+		var geoEntries []geoEntry
 		storeResults := make([]store.CheckResult, len(rc.snapshot))
 		for i, res := range rc.snapshot {
 			if res.Status == "working" {
 				working++
 				if res.Proxy.Host != "" {
-					workingHosts = append(workingHosts, res.Proxy.Host)
+					key := res.ExitIP
+					if key == "" {
+						key = res.Proxy.Host
+					}
+					geoEntries = append(geoEntries, geoEntry{displayHost: res.Proxy.Host, lookupKey: key})
 				}
 			}
 			storeResults[i] = resultToStore(checkID, res)
@@ -378,13 +390,24 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 		// every SSE client (including reconnecting ones) sees the same data
 		// after receiving from rc.done. bgCtx ensures enrichment always runs
 		// to completion regardless of whether any SSE client is connected.
-		if s.geoWorker != nil && len(workingHosts) > 0 {
-			geoRes, err := s.geoWorker.LookupBatch(bgCtx, workingHosts)
+		if s.geoWorker != nil && len(geoEntries) > 0 {
+			lookupKeys := make([]string, len(geoEntries))
+			// keyToHost maps lookup key → display host for entries where they
+			// differ (i.e. when exit_ip is used as the lookup key).
+			keyToHost := make(map[string]string, len(geoEntries))
+			for i, e := range geoEntries {
+				lookupKeys[i] = e.lookupKey
+				if e.lookupKey != e.displayHost {
+					keyToHost[e.lookupKey] = e.displayHost
+				}
+			}
+			geoRes, err := s.geoWorker.LookupBatch(bgCtx, lookupKeys)
 			if err != nil {
 				log.Printf("[geoworker] enrichment %s: %v", checkID, err)
 			} else {
-				inlineUpdateGeo(s.store.DB(), checkID, geoRes)
-				rc.geoResults = geoRes
+				enriched := makeEnrichedRows(geoRes, keyToHost)
+				inlineUpdateGeo(s.store.DB(), checkID, enriched)
+				rc.geoResults = enriched
 			}
 		}
 	}()
@@ -550,6 +573,7 @@ func resultToStore(checkID string, r checker.Result) store.CheckResult {
 		TracesJSON:   marshalJSON(r.Traces),
 		FullDataJSON: marshalJSON(r.FullData),
 		GeoStatus:    geoStatusForResult(r.Status, r.Country.Code),
+		ExitIP:       r.ExitIP,
 	}
 }
 
@@ -637,8 +661,9 @@ func (s *server) streamLiveEvents(w http.ResponseWriter, r *http.Request, rc *ru
 	progressCh := rc.progress
 	nextIdx := 0 // number of snapshot entries already sent to this client
 
-	// Collect working proxy hosts for geo enrichment after the check finishes.
-	var workingHosts []string
+	// Track whether any working proxy has been seen; used only to decide
+	// whether to send the "enriching" spinner event before geo enrichment.
+	var hasWorking bool
 
 	// drainSnapshot copies and sends any snapshot entries not yet delivered to
 	// this client. Called on every newItem notification and once before the
@@ -651,8 +676,8 @@ func (s *server) streamLiveEvents(w http.ResponseWriter, r *http.Request, rc *ru
 
 		for _, result := range batch {
 			writeSSEEvent(w, "result", resultToAPI(result))
-			if result.Status == "working" && result.Proxy.Host != "" {
-				workingHosts = append(workingHosts, result.Proxy.Host)
+			if result.Status == "working" {
+				hasWorking = true
 			}
 			nextIdx++
 		}
@@ -667,7 +692,7 @@ func (s *server) streamLiveEvents(w http.ResponseWriter, r *http.Request, rc *ru
 		// the check goroutine runs geo enrichment. We predict enrichment will
 		// happen if the geo worker is configured and the check produced working
 		// proxies; this is the same condition the goroutine uses.
-		if s.geoWorker != nil && len(workingHosts) > 0 {
+		if s.geoWorker != nil && hasWorking {
 			writeSSEEvent(w, "enriching", map[string]string{"message": "Enriching location data"})
 		}
 
@@ -682,18 +707,10 @@ func (s *server) streamLiveEvents(w http.ResponseWriter, r *http.Request, rc *ru
 
 		// Forward the geo results written by the check goroutine. Every SSE
 		// client — including reconnecting ones — sees the same enriched data.
+		// rc.geoResults is already []enrichedRow with Host set to the configured
+		// proxy host (never the exit IP), so it can be sent directly.
 		if len(rc.geoResults) > 0 {
-			enriched := make([]enrichedRow, 0, len(rc.geoResults))
-			for _, gr := range rc.geoResults {
-				enriched = append(enriched, enrichedRow{
-					Host:        gr.Host,
-					CountryCode: gr.CountryCode,
-					CountryName: gr.CountryName,
-					CountryFlag: gr.CountryFlag,
-					City:        gr.City,
-				})
-			}
-			writeSSEEvent(w, "geo-batch", map[string]interface{}{"results": enriched})
+			writeSSEEvent(w, "geo-batch", map[string]interface{}{"results": rc.geoResults})
 		}
 
 		// "complete" = all proxies were checked naturally.
@@ -774,20 +791,44 @@ func (s *server) handleActiveCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, found)
 }
 
+// makeEnrichedRows converts geo worker results into enrichedRows for SSE and
+// DB persistence. keyToHost maps a geo lookup key (exit IP) back to the
+// configured proxy host when they differ; entries not in the map keep gr.Host
+// as-is (lookup key == display host, i.e. no exit IP was available).
+func makeEnrichedRows(results []geoworker.Result, keyToHost map[string]string) []enrichedRow {
+	rows := make([]enrichedRow, 0, len(results))
+	for _, gr := range results {
+		host := gr.Host
+		if mapped, ok := keyToHost[gr.Host]; ok {
+			host = mapped
+		}
+		rows = append(rows, enrichedRow{
+			Host:        host,
+			CountryCode: gr.CountryCode,
+			CountryName: gr.CountryName,
+			CountryFlag: gr.CountryFlag,
+			City:        gr.City,
+		})
+	}
+	return rows
+}
+
 // inlineUpdateGeo updates geo fields for working proxies of a single check
 // in one transaction. Scoped to the check's rows so other checks are unaffected.
-func inlineUpdateGeo(db *sql.DB, checkID string, results []geoworker.Result) {
+// rows must use the configured proxy host (Proxy.Host) in the Host field so
+// that the WHERE clause matches the stored host column correctly.
+func inlineUpdateGeo(db *sql.DB, checkID string, rows []enrichedRow) {
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("[geoworker] inline update begin tx: %v", err)
 		return
 	}
-	for _, gr := range results {
+	for _, er := range rows {
 		if _, err := tx.Exec(
 			`UPDATE check_results
 			 SET country_code = ?, country_name = ?, country_flag = ?, city = ?, geo_status = 'done'
 			 WHERE check_id = ? AND host = ? AND geo_status = 'pending'`,
-			gr.CountryCode, gr.CountryName, gr.CountryFlag, gr.City, checkID, gr.Host,
+			er.CountryCode, er.CountryName, er.CountryFlag, er.City, checkID, er.Host,
 		); err != nil {
 			log.Printf("[geoworker] inline update row: %v", err)
 			_ = tx.Rollback()
