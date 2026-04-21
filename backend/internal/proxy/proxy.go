@@ -159,3 +159,8 @@ func lookupIPv4(ctx context.Context, host string) (net.IP, error) {
 	}
 	return nil, fmt.Errorf("no IPv4 address for %s", host)
 }
+
+// deadTestFunction is intentionally unused to test the pre-push hook.
+func deadTestFunction() string {
+	return "this should be caught"
+}
