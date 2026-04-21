@@ -213,6 +213,30 @@ func (c *Checker) Run(ctx context.Context, results chan<- Result, progress chan<
 	// emitCancelled sends a cancelled Result for a proxy that was dequeued from
 	// work but will not be (or was not) checked. This keeps the results set
 	// complete: every input proxy produces exactly one Result on any exit path.
+	//
+	// DESIGN NOTE — blocking send risk:
+	// Both emitCancelled and the worker loop below use blocking sends to
+	// results (no select/default). If the results channel buffer fills up
+	// and the consumer stops draining it, the sending goroutine blocks while
+	// holding resultsMu, which in turn starves every other worker goroutine
+	// waiting to acquire the same mutex. wg.Wait() then never returns and
+	// Run deadlocks silently.
+	//
+	// This is safe today only because the sole caller (handlers.go) sizes the
+	// channel to exactly len(proxies): rawCh := make(chan checker.Result, total).
+	// Since each proxy produces exactly one result, the buffer absorbs all
+	// sends even if the consumer lags. This is an implicit contract between
+	// Run and its callers that is not enforced or documented in the signature.
+	//
+	// Potential fix directions (requires further research before changing):
+	//   - Remove resultsMu entirely; Go channels are goroutine-safe. The mutex
+	//     was introduced to pair the send with the doneCount increment atomically,
+	//     but those two operations could be decoupled — send without the mutex,
+	//     then lock only for the counter update. This would allow concurrent
+	//     sends without the thundering-herd lock contention.
+	//   - Document the buffer requirement in Run's godoc so future callers are
+	//     aware, and add a defensive check (e.g. cap(results) >= total) with a
+	//     clear error or panic rather than a silent deadlock.
 	emitCancelled := func(p Proxy) {
 		resultsMu.Lock()
 		results <- Result{Proxy: p, Status: "cancelled"}
