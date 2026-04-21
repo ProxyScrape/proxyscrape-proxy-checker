@@ -29,7 +29,7 @@ import { wait } from '../misc/wait';
  * check results and null for history items — both callers are safe with this.
  */
 export const mapResultItem = item => ({
-    id: item.id,
+    resultId: item.id,
     host: item.proxy.host,
     port: item.proxy.port,
     auth: item.proxy.auth,

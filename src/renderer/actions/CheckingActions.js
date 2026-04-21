@@ -85,7 +85,7 @@ function attachCheckStream(dispatch, id, initialCounter) {
             // appears multiple times in the same check run.
             const patchMap = new Map((data?.results ?? []).map(r => [r.id, r]));
             bufferedResults.forEach(item => {
-                const patch = patchMap.get(item.id);
+                const patch = patchMap.get(item.resultId);
                 if (!patch) return;
                 item.country = {
                     code: patch.countryCode || '',
