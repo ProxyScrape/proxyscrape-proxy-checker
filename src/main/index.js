@@ -28,7 +28,7 @@ let isQuitting = false;
 let pendingDeepLink = null;
 
 // True while a geo-enrich SSE connection is open. Prevents duplicate streams
-// if listenGeoEnrichSSE() is called multiple times (e.g. on app focus).
+// if listenGeoEnrichSSE() is ever called more than once.
 let geoEnrichListening = false;
 
 const isMac = process.platform === 'darwin';
@@ -607,14 +607,14 @@ ipcMain.on('window-close', () => {
 });
 
 // =============================================================================
-// Geo enrichment SSE — forward progress events to the renderer window
+// Geo enrichment SSE — drain stream so background DB worker runs to completion
 // =============================================================================
 
 /**
  * Connect to the Go geo enrichment SSE stream and drain it until the backend
  * reports running=false or the stream closes. This keeps the singleton guard
- * active so duplicate streams are never opened, and lets the Go worker run to
- * completion even when no renderer client is listening.
+ * active so duplicate streams are never opened, and ensures the Go worker runs
+ * to completion (updating the DB) even when no renderer client is listening.
  */
 function listenGeoEnrichSSE() {
     if (!checkerPort || !checkerToken) return;
