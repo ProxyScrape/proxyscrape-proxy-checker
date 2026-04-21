@@ -77,7 +77,7 @@ const Footer = ({ toggleModal, closeDrawer }) => (
             color: 'text.secondary',
         }}>
             <Typography variant="body2" component="span" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                We have 40 000 premium datacenter proxies.{' '}
+                Scale up with our 40,000 datacenter proxies.{' '}
             </Typography>
             <Box
                 component="a"
@@ -92,7 +92,7 @@ const Footer = ({ toggleModal, closeDrawer }) => (
                     '&:hover': { textDecoration: 'underline', opacity: 0.85 },
                 }}
             >
-                Get it all
+                Get started
             </Box>
         </Box>
         {IS_CANARY && <CanaryBanner />}
