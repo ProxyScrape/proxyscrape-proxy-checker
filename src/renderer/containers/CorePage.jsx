@@ -105,16 +105,18 @@ const CorePage = ({ proxyCount, overLimit, start }) => {
         );
     }
 
-    // Desktop: two-column grid
+    // Desktop: two-column grid.
+    // alignItems defaults to 'stretch' so both columns share the same row height.
+    // fillHeight tells InputV2 to grow its editor to fill the available column
+    // height, matching the bottom of the sliders/protocols in the right sidebar.
     return (
         <Box sx={{
             display: 'grid',
             gridTemplateColumns: '1fr 300px',
             gap: 2,
-            alignItems: 'start',
         }}>
-            {/* Left: proxy editor */}
-            <InputV2 />
+            {/* Left: proxy editor — fills column height to align with sidebar bottom */}
+            <InputV2 fillHeight />
 
             {/* Right: settings sidebar */}
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

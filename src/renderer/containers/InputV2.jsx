@@ -182,6 +182,7 @@ const ActionButton = ({ onClick, icon, label }) => (
 const InputV2 = ({
     loaded, list, errors, unique, total, proxyCount, shuffle,
     applyParsedResult, clearInput, showError, toggleOption,
+    fillHeight,  // when true: stretch to fill the parent grid cell (desktop layout)
 }) => {
     const limits    = getGuestLimits();
     const overLimit = limits !== null && proxyCount > limits.inFlightProxies;
@@ -492,11 +493,14 @@ const InputV2 = ({
     // ── Render ────────────────────────────────────────────────────────────
 
     return (
-        <Box>
-            <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 3, pb: 2 }}>
+        <Box sx={fillHeight ? { display: 'flex', flexDirection: 'column', height: '100%' } : {}}>
+            <Box sx={{
+                bgcolor: 'background.paper', borderRadius: 3, p: 3, pb: 2,
+                ...(fillHeight ? { display: 'flex', flexDirection: 'column', flex: 1 } : {}),
+            }}>
 
                 {/* ── Header ── */}
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, flexShrink: 0 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
                         Proxy List
                         <InfoIcon title={
@@ -516,10 +520,14 @@ const InputV2 = ({
                 <Box
                     sx={{
                         position: 'relative',
-                        // Use a fixed initial height so height:100% propagates to
-                        // CodeMirror's scroller, enabling virtual rendering for large docs.
-                        // resize:vertical lets users drag the box taller.
-                        height: 200,
+                        // fillHeight: flex:1 expands the editor to fill the remaining card
+                        // space so it aligns with the sidebar bottom on the desktop grid.
+                        // Default: fixed 266px (33% more than the original 200px baseline).
+                        // resize:vertical lets users drag to a custom height in either mode.
+                        ...(fillHeight
+                            ? { flex: 1, minHeight: 200 }
+                            : { height: 266 }
+                        ),
                         resize: 'vertical',
                         overflow: 'hidden',
                         borderRadius: 2,
@@ -548,7 +556,10 @@ const InputV2 = ({
                         '& .cm-content': {
                             padding: '12px',
                             caretColor: '#fff',
-                            minHeight: '196px',
+                            // minHeight keeps the click target tall enough even when empty.
+                            // Matches the editor box height (fillHeight: flex so keep low;
+                            // default: 266px box → 262px content after top/bottom padding).
+                            minHeight: fillHeight ? '196px' : '262px',
                         },
                         '& .cm-line': { padding: '0' },
                         '& .cm-cursor, & .cm-dropCursor': {
