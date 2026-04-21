@@ -564,10 +564,16 @@ const InputV2 = ({
                         '& .cm-content': {
                             padding: '12px',
                             caretColor: '#fff',
-                            // minHeight keeps the click target tall enough even when empty.
-                            // Matches the editor box height (fillHeight: flex so keep low;
-                            // default: 266px box → 262px content after top/bottom padding).
-                            minHeight: fillHeight ? '196px' : '262px',
+                            // fillHeight: must be 0 so cm-content doesn't push the editor
+                            // box taller than its flex allocation. minHeight:0 on the
+                            // wrapper alone is insufficient — cm-content and cm-gutter also
+                            // have intrinsic min-height that causes CodeMirror to expand to
+                            // fit all lines instead of scrolling. (source: CM6 forum)
+                            // Default: 262px keeps the click target tall when empty.
+                            minHeight: fillHeight ? 0 : '262px',
+                        },
+                        '& .cm-gutter': {
+                            minHeight: fillHeight ? 0 : undefined,
                         },
                         '& .cm-line': { padding: '0' },
                         '& .cm-cursor, & .cm-dropCursor': {
