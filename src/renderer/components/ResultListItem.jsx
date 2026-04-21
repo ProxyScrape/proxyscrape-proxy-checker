@@ -1,6 +1,4 @@
 import React from 'react';
-import ReactDOM from 'react-dom';
-import ProxyDetailsDrawer from './ProxyDetailsDrawer';
 import { splitByKK } from '../misc/text';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -193,22 +191,6 @@ export default class ResultListItem extends React.PureComponent {
 
             </Box>
 
-            {ReactDOM.createPortal(
-                <ProxyDetailsDrawer
-                    open={isDetailsOpen}
-                    onClose={this.props.onCloseDetails}
-                    host={host}
-                    port={port}
-                    status={status}
-                    protocols={protocols}
-                    errors={errors}
-                    anon={anon}
-                    traces={traces}
-                    server={server}
-                    fullData={fullData}
-                />,
-                document.body
-            )}
             </>
         );
     };

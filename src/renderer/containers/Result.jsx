@@ -1,5 +1,7 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import ResultListItem from '../components/ResultListItem';
+import ProxyDetailsDrawer from '../components/ProxyDetailsDrawer';
 import ResultCountries from '../components/ResultCountries';
 import ResultBlacklist from '../components/ResultBlacklist';
 import ResultItemsHeader from '../components/ResultItemsHeader';
@@ -52,6 +54,9 @@ class Result extends React.PureComponent {
         this.tableRef = React.createRef();
         this.loadMoreWrapperRef = React.createRef();
         this.loadMoreInnerRef = React.createRef();
+        // Holds data for the last-opened details drawer so the close animation
+        // still has props to render with after activeDetails is cleared.
+        this._lastDetailsItem = null;
     }
 
     isMoreAvailable = () => this.props.state.countOfResults < this.props.filteredItems.length;
@@ -114,6 +119,14 @@ class Result extends React.PureComponent {
             openDetails,
             closeDetails,
         } = this.props;
+
+        // Single details drawer — only ever ONE portal in the DOM.
+        // Keep last item so the close animation still has data to render with.
+        const openItem = activeDetails
+            ? filteredItems.find(i => i.host === activeDetails.host && i.port === activeDetails.port) || null
+            : null;
+        if (openItem) this._lastDetailsItem = openItem;
+        const drawerItem = this._lastDetailsItem || {};
 
         const gridTemplate = [
             '40px',
@@ -454,6 +467,23 @@ class Result extends React.PureComponent {
                     copy={copy}
                 />
             </Box>
+
+            {ReactDOM.createPortal(
+                <ProxyDetailsDrawer
+                    open={activeDetails !== null}
+                    onClose={closeDetails}
+                    host={drawerItem.host}
+                    port={drawerItem.port}
+                    status={drawerItem.status}
+                    protocols={drawerItem.protocols}
+                    errors={drawerItem.errors}
+                    anon={drawerItem.anon}
+                    traces={drawerItem.traces}
+                    server={drawerItem.server}
+                    fullData={drawerItem.fullData}
+                />,
+                document.body
+            )}
         );
     };
 }
