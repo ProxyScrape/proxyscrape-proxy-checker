@@ -76,11 +76,7 @@ if ! command -v staticcheck &>/dev/null; then
     exit 1
 fi
 echo "[pre-push] running dead code checks (staticcheck U1000, both build variants)..."
-if ! (cd "$BACKEND_DIR" && staticcheck -checks=U1000 -matrix - <<'MATRIX'
-desktop:   -tags=''
-webserver: -tags=webserver
-MATRIX
-); then
+if ! (cd "$BACKEND_DIR" && printf 'desktop:   -tags=""\nwebserver: -tags=webserver\n' | staticcheck -checks=U1000 -matrix ./...); then
     echo ""
     echo "ERROR: staticcheck found dead code in backend/."
     echo "  Remove unused code, or suppress with:"

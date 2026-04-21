@@ -325,7 +325,6 @@ var userCreateCmd = &cobra.Command{
 }
 
 var (
-	userListUsername   string
 	userDeleteUsername string
 	userPasswdUsername string
 )

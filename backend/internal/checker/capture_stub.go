@@ -12,12 +12,11 @@ import "time"
 type captureHandleSet []struct{}
 
 // capturedPacket mirrors the type defined in capture.go for the desktop build.
-// It carries a raw packet event plus the source/destination ports needed to
-// attribute the event to a specific protocol connection.
+// srcPort/dstPort are intentionally omitted here: checker.go never reads those
+// fields directly (only capture.go does), and drainAllHandles always returns nil
+// in webserver mode so the struct is never populated.
 type capturedPacket struct {
 	TraceEvent
-	srcPort uint16
-	dstPort uint16
 }
 
 // openCaptureHandles always returns an error in webserver mode because packet

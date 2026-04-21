@@ -144,11 +144,6 @@ func (e *envOnce) init() {
 	}
 }
 
-// reset is used by tests
-func (e *envOnce) reset() {
-	e.once = sync.Once{}
-	e.val = ""
-}
 
 // lookupIPv4 resolves host to its first IPv4 address using the default resolver.
 // Returns an error if resolution fails or no IPv4 address is available.
