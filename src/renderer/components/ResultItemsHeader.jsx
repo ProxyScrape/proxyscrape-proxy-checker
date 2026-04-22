@@ -1,6 +1,5 @@
 import React from 'react';
 import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 import TimeIcon from './ui/TimeIcon';
 import SortIcon from './ui/SortIcon';
@@ -33,7 +32,7 @@ export default class ResultItemsHeader extends React.PureComponent {
     };
 
     render = () => {
-        const { inBlacklists, captureServer, keepAlive, sorting, gridTemplate } = this.props;
+        const { captureServer, keepAlive, sorting, gridTemplate } = this.props;
 
         const headerSx = {
             cursor: 'pointer',

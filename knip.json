@@ -1,0 +1,32 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+
+  "entry": [
+    "src/main/index.js",
+    "src/preload/index.js",
+    "src/renderer/index.jsx",
+    "src/renderer/electron-shim.js",
+    "src/shared/AppConstants.js",
+    "src/renderer/workers/*.js",
+    "electron.vite.config.mjs",
+    "vite.web.config.mjs",
+    "electron-builder.config.js",
+    "scripts/generate-release-notes.mjs",
+    "scripts/notarize.js"
+  ],
+
+  "project": [
+    "src/**/*.{js,jsx}",
+    "!src/renderer/dist/**"
+  ],
+
+  "paths": {
+    "@shared": ["./src/shared"],
+    "@shared/*": ["./src/shared/*"],
+    "electron": ["./src/renderer/electron-shim.js"]
+  },
+
+  "include": ["files", "exports"],
+
+  "ignoreBinaries": ["air"]
+}

@@ -50,7 +50,7 @@ export async function initMode() {
  * @returns {string} Current mode ('desktop' | 'server' | 'guest').
  * Returns 'server' if initMode() has not been called yet.
  */
-export function getMode() {
+function getMode() {
     if (_mode === null) {
         return 'server';
     }

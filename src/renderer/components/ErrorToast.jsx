@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { connect } from 'react-redux';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getToastBottom } from '../constants/Layout';
@@ -35,7 +35,6 @@ const ExternalLinkIcon = () => (
 const ErrorToast = ({ error, errorCta, onClose, checkingOpen }) => {
     const hovered = useRef(false);
     const timerRef = useRef(null);
-    const [, forceUpdate] = useState(0);
 
     useEffect(() => {
         if (!error) return;

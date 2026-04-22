@@ -6,18 +6,16 @@
  */
 
 import { ipcRenderer } from 'electron';
-/** Extract the filename from a native path without importing Node's `path` module. */
-const pathBasename = (p) => (p ? p.replace(/^.*[\\/]/, '') : '');
 
 /** True when the preload exposed the Electron bridge (future Track C). */
-export const hasElectronBridge =
+const hasElectronBridge =
   typeof window !== 'undefined' && typeof window.__ELECTRON__ !== 'undefined';
 
 /**
  * True when we should use Electron main-process dialogs and Node fs (not pure web).
  * Uses Electron-specific signals so an app without `__ELECTRON__` (placeholder preload) still works.
  */
-export function isElectronFileEnvironment() {
+function isElectronFileEnvironment() {
   if (typeof window === 'undefined') {
     return false;
   }

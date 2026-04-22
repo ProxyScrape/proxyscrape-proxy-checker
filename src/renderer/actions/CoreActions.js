@@ -1,4 +1,4 @@
-import { CORE_CHANGE_OPTION, CORE_TOGGLE_OPTION, CORE_TOGGLE_PROTOCOL, CORE_SET_PROTOCOL_WARNING, CORE_SET_TRACE_STATUS } from '../constants/ActionTypes';
+import { CORE_CHANGE_OPTION, CORE_TOGGLE_OPTION, CORE_TOGGLE_PROTOCOL, CORE_SET_TRACE_STATUS } from '../constants/ActionTypes';
 import { getMaxThreads } from '../misc/other';
 import { apiFetch } from '../api/client';
 
@@ -11,11 +11,6 @@ export const changeOption = e => ({
 export const toggleOption = e => ({
     type: CORE_TOGGLE_OPTION,
     target: e.target.name
-});
-
-export const setProtocolWarning = warning => ({
-    type: CORE_SET_PROTOCOL_WARNING,
-    warning,
 });
 
 // Toggles captureTrace and, when enabling, fetches /api/trace/status so the

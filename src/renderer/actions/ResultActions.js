@@ -61,7 +61,7 @@ const getProtocolPrefix = (protocols) => {
     return 'http';
 };
 
-export const formatProxyResults = (items, { withProtocol = false, authType = 1 } = {}) => {
+const formatProxyResults = (items, { withProtocol = false, authType = 1 } = {}) => {
     let content = '';
 
     items.forEach(item => {

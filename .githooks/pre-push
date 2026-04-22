@@ -19,18 +19,20 @@ export PATH="$PATH:$HOME/go/bin"
 # is blocked. Add the route to the appropriate map, then push again.
 
 if ! command -v go &>/dev/null; then
-    echo "[pre-push] go not found in PATH — skipping guest route coverage check"
-else
-    echo "[pre-push] running guest route coverage tests..."
-    if ! (cd "$BACKEND_DIR" && go test ./internal/api/... -count=1 2>&1); then
-        echo ""
-        echo "ERROR: Guest route coverage check failed."
-        echo "  Add the missing route(s) to guestAllowed or guestBlocked in:"
-        echo "  backend/internal/api/guest.go"
-        exit 1
-    fi
-    echo "[pre-push] ✓ Guest route coverage OK"
+    echo ""
+    echo "ERROR: go is required for guest route coverage checks but is not installed."
+    echo "  Install from: https://go.dev/dl/"
+    exit 1
 fi
+echo "[pre-push] running guest route coverage tests..."
+if ! (cd "$BACKEND_DIR" && go test ./internal/api/... -count=1 2>&1); then
+    echo ""
+    echo "ERROR: Guest route coverage check failed."
+    echo "  Add the missing route(s) to guestAllowed or guestBlocked in:"
+    echo "  backend/internal/api/guest.go"
+    exit 1
+fi
+echo "[pre-push] ✓ Guest route coverage OK"
 
 # ── SQL-injection safety checks (run on every push) ──────────────────────────
 
@@ -106,6 +108,55 @@ if ! (cd "$BACKEND_DIR" && printf 'desktop:   -tags=""\nwebserver: -tags=webserv
     exit 1
 fi
 echo "[pre-push] ✓ Dead code checks passed"
+
+# ── Frontend dead code checks (knip) ─────────────────────────────────────────
+# Detects unused JS/JSX files and exports across the renderer, main, preload,
+# and shared source trees.
+#
+# To suppress a legitimate false positive, add to knip.json:
+#   "ignore": ["src/path/to/file.js"]           (unused file)
+#   "ignoreExports": { "src/path.js": ["name"] } (unused export)
+# Or inline in the source file:
+#   /* knip:ignore-export */
+# Never skip the check at push time.
+
+if ! command -v node &>/dev/null; then
+    echo ""
+    echo "ERROR: node is required for frontend dead code checks but is not installed."
+    echo "  Install from: https://nodejs.org/"
+    exit 1
+fi
+echo "[pre-push] running frontend dead code checks (knip)..."
+if ! (cd "$ROOT" && npx knip --reporter compact --no-progress 2>&1); then
+    echo ""
+    echo "ERROR: knip found unused JS/JSX files or exports."
+    echo "  Remove the dead code, or add a targeted exception in knip.json."
+    exit 1
+fi
+echo "[pre-push] ✓ Frontend dead code checks passed"
+
+# ── Intra-file dead code checks (oxlint) ─────────────────────────────────────
+# Detects unused private variables, functions, and constants that are defined
+# within a file but never called or referenced — the gap knip cannot see because
+# knip only tracks exported symbols across module boundaries.
+#
+# Scoped to no-unused-vars only; all other default oxlint rules are suppressed
+# so this check stays focused and doesn't grow into a general linter.
+#
+# To suppress a legitimate false positive, prefix the variable with _:
+#   const _intentionallyUnused = ...;
+# Or inline for a single declaration:
+#   // oxlint-disable-next-line eslint/no-unused-vars
+# Never skip the check at push time.
+
+echo "[pre-push] running intra-file dead code checks (oxlint no-unused-vars)..."
+if ! (cd "$ROOT" && npx oxlint -A all -D no-unused-vars src/ 2>&1); then
+    echo ""
+    echo "ERROR: oxlint found unused private variables or functions."
+    echo "  Remove the dead code, or prefix with _ to mark as intentionally unused."
+    exit 1
+fi
+echo "[pre-push] ✓ Intra-file dead code checks passed"
 
 # ── Version / tag checks ──────────────────────────────────────────────────────
 

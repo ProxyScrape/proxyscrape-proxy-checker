@@ -1,7 +1,7 @@
 // Settings persistence is now handled by the Go backend via GET/PUT /api/settings.
 // These constants define default Redux state used before the first loadSettings() completes.
 
-export const DEFAULT_CORE_SETTINGS = {
+const DEFAULT_CORE_SETTINGS = {
     threads: 350,
     keepAlive: false,
     timeout: 15000,
@@ -25,7 +25,7 @@ export const DEFAULT_CORE_SETTINGS = {
     }
 };
 
-export const DEFAULT_JUDGES_SETTINGS = {
+const DEFAULT_JUDGES_SETTINGS = {
     swap: true,
     items: [
         {
@@ -66,12 +66,12 @@ export const DEFAULT_JUDGES_SETTINGS = {
     ]
 };
 
-export const DEFAULT_IP_SETTINGS = {
+const DEFAULT_IP_SETTINGS = {
     current: '',
     lookupUrl: 'https://api.proxyscrape.com/ip.php'
 };
 
-export const DEFAULT_BLACKLIST_SETTINGS = {
+const DEFAULT_BLACKLIST_SETTINGS = {
     filter: false,
     items: [
         {
@@ -92,11 +92,11 @@ export const DEFAULT_BLACKLIST_SETTINGS = {
     ]
 };
 
-export const DEFAULT_EXPORTING_SETTINGS = {
+const DEFAULT_EXPORTING_SETTINGS = {
     type: 1
 };
 
-export const DEFAULT_MAIN_SETTINGS = {};
+const DEFAULT_MAIN_SETTINGS = {};
 
 export const MERGED_DEFAULT_SETTINGS = {
     core: DEFAULT_CORE_SETTINGS,

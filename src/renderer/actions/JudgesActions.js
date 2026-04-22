@@ -24,10 +24,9 @@ export const toggleOption = e => ({
 
 /**
  * Pings all active judges via the backend and stores their alive/latency status.
- * Returns true if required judge types are reachable, false otherwise.
- * @param {string[]} [protocols] Protocols to validate (defaults to all four)
+ * Returns true if at least one judge is reachable, false otherwise.
  */
-export const refreshJudges = (protocols = ['http', 'https', 'socks4', 'socks5']) => async dispatch => {
+export const refreshJudges = () => async dispatch => {
     dispatch({ type: JUDGES_SET_REFRESHING, refreshing: true });
     dispatch({ type: JUDGES_SET_STATUSES, statuses: {} });
     try {

@@ -30,7 +30,7 @@ export const checkAtAvailable = () => async dispatch => {
                 releases: versionData?.releases || [],
             }));
         }
-    } catch (e) {
+    } catch {
         await wait(500);
         dispatch(changeUpdateState({ active: false, isChecking: false, available: false, releases: [] }));
     }

@@ -3,9 +3,8 @@ export const FOOTER_BACKGROUND = '#33374F';
 export const DRAWER_BACKGROUND = '#1E2132';
 export const CARD_BACKGROUND = '#282C3E';
 export const TOOLTIP_BACKGROUND = '#1A1D2E';
-export const LIGHT_BACKGROUND_GRADIENT = 'linear-gradient(180deg, #33374F 0%, #4A5D88 100%)';
 
-export const black = {
+const black = {
   50: 'rgba(255, 255, 255, 0.2)',
   20: 'rgba(0, 0, 0, 0.2)',
   200: 'rgba(47, 43, 61, 0.3)',
@@ -14,7 +13,7 @@ export const black = {
   800: 'rgba(47, 43, 61, 0.9)',
 };
 
-export const gray = {
+const gray = {
   50: 'rgba(223, 226, 237, 0.15)',
   100: 'rgba(223, 226, 237, 0.3)',
   300: 'rgba(152, 161, 177, 0.15)',
@@ -30,7 +29,7 @@ export const blueBrand = {
   700: '#3D74A9',
 };
 
-export const navyBlue = {
+const navyBlue = {
   100: 'rgba(24, 28, 45, 0.2)',
   200: 'rgba(28, 60, 156, 0.2)',
   300: 'rgba(51, 55, 79, 0.4)',
@@ -39,7 +38,7 @@ export const navyBlue = {
   800: '#142152',
 };
 
-export const green = {
+const green = {
   500: '#098709',
   600: '#219654',
 };

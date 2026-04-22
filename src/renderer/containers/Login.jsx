@@ -60,7 +60,7 @@ const Login = ({ onSuccess }) => {
                 } else {
                     window.location.reload();
                 }
-            } catch (err) {
+            } catch {
                 setError('network');
                 setLoading(false);
             }

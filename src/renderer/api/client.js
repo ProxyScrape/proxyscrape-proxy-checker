@@ -6,12 +6,12 @@
  */
 
 /** @returns {boolean} True when running inside Electron with the preload bridge. */
-export const isDesktop = typeof window !== 'undefined' && typeof window.__ELECTRON__ !== 'undefined';
+const isDesktop = typeof window !== 'undefined' && typeof window.__ELECTRON__ !== 'undefined';
 
 /**
  * @returns {string} Base URL for API requests (e.g. http://127.0.0.1:PORT) or '' for same-origin web.
  */
-export function getApiBase() {
+function getApiBase() {
   if (isDesktop && window.__ELECTRON__.apiBase != null) {
     return String(window.__ELECTRON__.apiBase).replace(/\/$/, '');
   }
@@ -24,7 +24,7 @@ const SESSION_KEY = 'checker_session';
  * Bearer token for Authorization header and SSE query param.
  * @returns {string|null}
  */
-export function getToken() {
+function getToken() {
   if (isDesktop && window.__ELECTRON__.token != null) {
     return String(window.__ELECTRON__.token);
   }

@@ -233,7 +233,7 @@ export const start = () => async (dispatch, getState) => {
 
         // Show the judge ping overlay, ping all judges, then proceed only if
         // required judge types are reachable for the selected protocols.
-        const judgesOk = await dispatch(pingJudgesWithOverlay(protocols));
+        const judgesOk = await dispatch(pingJudgesWithOverlay());
         if (!judgesOk) {
             throw new Error('No working judges found for the selected protocols. Check the Judges tab for details.');
         }
@@ -317,12 +317,12 @@ export const otherChanges = state => ({
     state
 });
 
-export const openChecking = counter => ({
+const openChecking = counter => ({
     type: CHECKING_OPEN,
     counter
 });
 
-export const upCounterStatus = counter => ({
+const upCounterStatus = counter => ({
     type: CHECKING_UP_COUNTER_STATUS,
     counter
 });

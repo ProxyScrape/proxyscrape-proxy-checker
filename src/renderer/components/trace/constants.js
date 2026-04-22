@@ -1,4 +1,4 @@
-export const KIND_META = {
+const KIND_META = {
     syn:                { label: 'SYN',             color: '#4888C7', group: 'tcp'   },
     syn_ack:            { label: 'SYN-ACK',         color: '#6DA0D2', group: 'tcp'   },
     fin:                { label: 'FIN',             color: '#6DA0D2', group: 'tcp'   },

@@ -64,4 +64,3 @@ export const InfoIcon = ({ title, placement = 'top' }) => (
     </Tooltip>
 );
 
-export default HelpTip;

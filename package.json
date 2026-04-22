@@ -57,6 +57,7 @@
     "electron-updater": "^6.3.0",
     "electron-vite": "^3.1.0",
     "fast-sort": "^3.4.0",
+    "knip": "^6.6.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^9.0.0",

@@ -4,12 +4,12 @@ import { isIP } from '../misc/regexes';
 import { OVERLAY_IP_CHANGE_LOOKUP_STATUS, OVERLAY_IP_CHANGE_LOOKUP_TO_INITIAL } from '../constants/ActionTypes';
 import { setIP } from './IpActions';
 
-export const changeIpLookupStatus = status => ({
+const changeIpLookupStatus = status => ({
     type: OVERLAY_IP_CHANGE_LOOKUP_STATUS,
     status
 });
 
-export const toInitialState = () => ({
+const toInitialState = () => ({
     type: OVERLAY_IP_CHANGE_LOOKUP_TO_INITIAL
 });
 

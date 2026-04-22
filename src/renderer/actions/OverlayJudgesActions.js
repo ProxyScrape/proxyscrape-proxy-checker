@@ -1,26 +1,12 @@
 import { OVERLAY_JUDGES_CHANGE_STATE, OVERLAY_JUDGE_CHANGE_PING_STATE, JUDGES_SET_STATUSES } from '../constants/ActionTypes';
 import { apiFetch } from '../api/client';
 
-export const changeState = state => ({
+const changeState = state => ({
     type: OVERLAY_JUDGES_CHANGE_STATE,
     state
 });
 
-export const startPing = () => (dispatch, getState) => {
-    const { judges } = getState();
-
-    const parsejudges = judges.items.filter(item => item.active).map(item => ({
-        url: item.url,
-        state: {
-            checking: true,
-            working: false
-        }
-    }));
-
-    dispatch(changeState({ isActive: true, locked: true, items: parsejudges }));
-};
-
-export const changeJudgePingState = (url, state) => ({
+const changeJudgePingState = (url, state) => ({
     type: OVERLAY_JUDGE_CHANGE_PING_STATE,
     url,
     state
@@ -31,7 +17,7 @@ export const changeJudgePingState = (url, state) => ({
  * updates each judge's result in the overlay, then dismisses it.
  * Returns true if required judge types are reachable for the given protocols.
  */
-export const pingJudgesWithOverlay = protocols => async (dispatch, getState) => {
+export const pingJudgesWithOverlay = () => async (dispatch, getState) => {
     const { judges } = getState();
     const activeJudges = judges.items.filter(item => item.active);
 
