@@ -109,6 +109,10 @@ jobs:
             go build -C backend -buildvcs=false \
             -ldflags="-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION#v}'" \
             -o ../bin/checker-win-x64.exe ./cmd/checker
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+            go build -C backend -buildvcs=false \
+            -ldflags="-s -w -X 'main.appVersion=${APP_VERSION#v}'" \
+            -o ../bin/proxychecker-host-win-x64.exe ./cmd/host
 
       - name: Build win-arm64
         run: |
@@ -117,6 +121,10 @@ jobs:
             go build -C backend -buildvcs=false \
             -ldflags="-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION#v}'" \
             -o ../bin/checker-win-arm64.exe ./cmd/checker
+          GOOS=windows GOARCH=arm64 CGO_ENABLED=0 \
+            go build -C backend -buildvcs=false \
+            -ldflags="-s -w -X 'main.appVersion=${APP_VERSION#v}'" \
+            -o ../bin/proxychecker-host-win-arm64.exe ./cmd/host
 
       - uses: actions/upload-artifact@v6
         with:
@@ -156,11 +164,17 @@ jobs:
             go build -C backend -buildvcs=false \
             -ldflags="-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION#v}'" \
             -o ../bin/checker-linux-x64 ./cmd/checker
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -C backend -buildvcs=false \
+            -ldflags="-s -w -X 'main.appVersion=${APP_VERSION#v}'" \
+            -o ../bin/proxychecker-host-linux-x64 ./cmd/host
 
       - uses: actions/upload-artifact@v6
         with:
           name: go-linux-x64-bin
-          path: bin/checker-linux-x64
+          path: |
+            bin/checker-linux-x64
+            bin/proxychecker-host-linux-x64
 
   # ── Go binaries: Linux arm64 (native runner — no cross-compilation) ──────────
   # ubuntu-24.04-arm is a native arm64 runner, so CGO just works without any
@@ -197,11 +211,17 @@ jobs:
             go build -C backend -buildvcs=false \
             -ldflags="-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION#v}'" \
             -o ../bin/checker-linux-arm64 ./cmd/checker
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+            go build -C backend -buildvcs=false \
+            -ldflags="-s -w -X 'main.appVersion=${APP_VERSION#v}'" \
+            -o ../bin/proxychecker-host-linux-arm64 ./cmd/host
 
       - uses: actions/upload-artifact@v6
         with:
           name: go-linux-arm64-bin
-          path: bin/checker-linux-arm64
+          path: |
+            bin/checker-linux-arm64
+            bin/proxychecker-host-linux-arm64
 
   # ── Go binaries: macOS ───────────────────────────────────────────────────────
   build-go-macos:
@@ -234,6 +254,10 @@ jobs:
             go build -C backend -buildvcs=false \
             -ldflags="-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION#v}'" \
             -o ../bin/checker-darwin-arm64 ./cmd/checker
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
+            go build -C backend -buildvcs=false \
+            -ldflags="-s -w -X 'main.appVersion=${APP_VERSION#v}'" \
+            -o ../bin/proxychecker-host-darwin-arm64 ./cmd/host
 
       - name: Build darwin-x64
         run: |
@@ -241,6 +265,10 @@ jobs:
             go build -C backend -buildvcs=false \
             -ldflags="-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION#v}'" \
             -o ../bin/checker-darwin-x64 ./cmd/checker
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \
+            go build -C backend -buildvcs=false \
+            -ldflags="-s -w -X 'main.appVersion=${APP_VERSION#v}'" \
+            -o ../bin/proxychecker-host-darwin-x64 ./cmd/host
 
       - uses: actions/upload-artifact@v6
         with:
@@ -398,7 +426,7 @@ jobs:
           merge-multiple: true
 
       - name: Make Linux binaries executable
-        run: chmod +x bin/checker-linux-*
+        run: chmod +x bin/checker-linux-* bin/proxychecker-host-linux-*
 
       - name: Install dependencies
         run: npm ci
@@ -481,7 +509,7 @@ jobs:
           path: bin
 
       - name: Make macOS binaries executable
-        run: chmod +x bin/checker-darwin-*
+        run: chmod +x bin/checker-darwin-* bin/proxychecker-host-darwin-*
 
       - name: Install dependencies
         run: npm ci

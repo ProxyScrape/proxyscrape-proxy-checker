@@ -27,6 +27,9 @@ export const ipcRenderer = {
         switch (channel) {
             case 'choose-path':  return E.choosePath(args[0]);
             case 'choose-multi': return E.chooseMulti();
+            case 'native-messaging-status':       return E.nativeMessagingStatus();
+            case 'native-messaging-register':     return E.nativeMessagingRegister(args[0]);
+            case 'native-messaging-unregister-all': return E.nativeMessagingUnregisterAll();
             default:
                 warn('invoke', channel);
                 return Promise.resolve(undefined);

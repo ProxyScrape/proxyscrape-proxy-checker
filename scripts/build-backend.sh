@@ -22,17 +22,22 @@ mkdir -p bin
 BACKEND="$(pwd)/backend"
 APP_VERSION=$(node -p "require('./package.json').version")
 VERSION_LDFLAG="-X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=${APP_VERSION}'"
+HOST_VERSION_LDFLAG="-X 'main.appVersion=${APP_VERSION}'"
 
 echo "Building version: ${APP_VERSION}"
 
 echo "==> darwin-arm64"
 GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
     go build -C "${BACKEND}" -ldflags="-s -w ${VERSION_LDFLAG}" -o "$(pwd)/bin/checker-darwin-arm64" ./cmd/checker
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
+    go build -C "${BACKEND}" -ldflags="-s -w ${HOST_VERSION_LDFLAG}" -o "$(pwd)/bin/proxychecker-host-darwin-arm64" ./cmd/host
 echo "    OK"
 
 echo "==> darwin-x64"
 GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 \
     go build -C "${BACKEND}" -ldflags="-s -w ${VERSION_LDFLAG}" -o "$(pwd)/bin/checker-darwin-x64" ./cmd/checker
+GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 \
+    go build -C "${BACKEND}" -ldflags="-s -w ${HOST_VERSION_LDFLAG}" -o "$(pwd)/bin/proxychecker-host-darwin-x64" ./cmd/host
 echo "    OK"
 
 echo "==> linux-x64 (Docker)"
@@ -51,6 +56,9 @@ else
             CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
               -ldflags=\"-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=\${APP_VERSION}'\" \
               -o /workspace/bin/checker-linux-x64 ./cmd/checker
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+              -ldflags=\"-s -w -X 'main.appVersion=\${APP_VERSION}'\" \
+              -o /workspace/bin/proxychecker-host-linux-x64 ./cmd/host
         "
     echo "    OK"
 fi
@@ -71,6 +79,9 @@ else
             CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build \
               -ldflags=\"-s -w -X 'github.com/proxyscrape/checker-backend/internal/api.appVersion=\${APP_VERSION}'\" \
               -o /workspace/bin/checker-linux-arm64 ./cmd/checker
+            CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
+              -ldflags=\"-s -w -X 'main.appVersion=\${APP_VERSION}'\" \
+              -o /workspace/bin/proxychecker-host-linux-arm64 ./cmd/host
         "
     echo "    OK"
 fi
@@ -83,6 +94,9 @@ else
         CC="zig cc -target x86_64-windows-gnu" \
         go build -C "${BACKEND}" -ldflags="-s -w ${VERSION_LDFLAG}" \
         -o "$(pwd)/bin/checker-win-x64.exe" ./cmd/checker
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+        go build -C "${BACKEND}" -ldflags="-s -w ${HOST_VERSION_LDFLAG}" \
+        -o "$(pwd)/bin/proxychecker-host-win-x64.exe" ./cmd/host
     echo "    OK"
 fi
 
@@ -94,6 +108,9 @@ else
         CC="zig cc -target aarch64-windows-gnu" \
         go build -C "${BACKEND}" -ldflags="-s -w ${VERSION_LDFLAG}" \
         -o "$(pwd)/bin/checker-win-arm64.exe" ./cmd/checker
+    GOOS=windows GOARCH=arm64 CGO_ENABLED=0 \
+        go build -C "${BACKEND}" -ldflags="-s -w ${HOST_VERSION_LDFLAG}" \
+        -o "$(pwd)/bin/proxychecker-host-win-arm64.exe" ./cmd/host
     echo "    OK"
 fi
 

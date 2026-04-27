@@ -73,10 +73,14 @@ module.exports = {
     binaries: [
       'bin/checker-darwin-arm64',
       'bin/checker-darwin-x64',
+      'bin/proxychecker-host-darwin-arm64',
+      'bin/proxychecker-host-darwin-x64',
     ],
     extraResources: [
-      { from: 'bin/checker-darwin-arm64', to: 'bin/checker-darwin-arm64' },
-      { from: 'bin/checker-darwin-x64',   to: 'bin/checker-darwin-x64'   },
+      { from: 'bin/checker-darwin-arm64',            to: 'bin/checker-darwin-arm64'            },
+      { from: 'bin/checker-darwin-x64',              to: 'bin/checker-darwin-x64'              },
+      { from: 'bin/proxychecker-host-darwin-arm64',  to: 'bin/proxychecker-host-darwin-arm64'  },
+      { from: 'bin/proxychecker-host-darwin-x64',    to: 'bin/proxychecker-host-darwin-x64'    },
     ],
     target: [
       { target: 'dmg', arch: ['x64', 'arm64'] },
@@ -90,8 +94,10 @@ module.exports = {
     icon: './public/icons/icon.ico',
     artifactName: '${name}-v${version}-${arch}-${os}-installer.${ext}',
     extraResources: [
-      { from: 'bin/checker-win-x64.exe',   to: 'bin/checker-win-x64.exe'   },
-      { from: 'bin/checker-win-arm64.exe', to: 'bin/checker-win-arm64.exe' },
+      { from: 'bin/checker-win-x64.exe',              to: 'bin/checker-win-x64.exe'              },
+      { from: 'bin/checker-win-arm64.exe',            to: 'bin/checker-win-arm64.exe'            },
+      { from: 'bin/proxychecker-host-win-x64.exe',    to: 'bin/proxychecker-host-win-x64.exe'    },
+      { from: 'bin/proxychecker-host-win-arm64.exe',  to: 'bin/proxychecker-host-win-arm64.exe'  },
     ],
     target: [
       { target: 'nsis',     arch: ['x64', 'arm64'] },
@@ -104,8 +110,10 @@ module.exports = {
     category: 'Network',
     artifactName: '${name}-v${version}-${arch}-${os}.${ext}',
     extraResources: [
-      { from: 'bin/checker-linux-x64',   to: 'bin/checker-linux-x64'   },
-      { from: 'bin/checker-linux-arm64', to: 'bin/checker-linux-arm64' },
+      { from: 'bin/checker-linux-x64',              to: 'bin/checker-linux-x64'              },
+      { from: 'bin/checker-linux-arm64',            to: 'bin/checker-linux-arm64'            },
+      { from: 'bin/proxychecker-host-linux-x64',    to: 'bin/proxychecker-host-linux-x64'    },
+      { from: 'bin/proxychecker-host-linux-arm64',  to: 'bin/proxychecker-host-linux-arm64'  },
     ],
     target: [
       { target: 'AppImage', arch: ['x64', 'arm64'] },
@@ -118,6 +126,7 @@ module.exports = {
     allowToChangeInstallationDirectory: true,
     differentialPackage: true,
     buildUniversalInstaller: false,
+    include: 'build/uninstall.nsh',
   },
 
   portable: {

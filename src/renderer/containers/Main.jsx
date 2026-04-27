@@ -33,7 +33,15 @@ import { TITLEBAR_HEIGHT, FOOTER_HEIGHT, CANARY_BANNER_HEIGHT, GUEST_BANNER_HEIG
 import { IS_CANARY } from '../../shared/AppConstants';
 import { isGuestMode } from '../misc/mode';
 
-const TAB_SCREENS = ['Core', 'Judges', 'Ip', 'Blacklist', 'History'];
+const isElectron = typeof window !== 'undefined' && !!window.__ELECTRON__;
+
+// "Browsers" tab is desktop-only (native messaging is Electron-only).
+const TAB_SCREENS = isElectron
+    ? ['Core', 'Judges', 'Ip', 'Blacklist', 'Browsers', 'History']
+    : ['Core', 'Judges', 'Ip', 'Blacklist', 'History'];
+
+const HISTORY_TAB = isElectron ? 5 : 4;
+const BROWSERS_TAB = 4; // only used in Electron
 
 const TITLEBAR_TAB_SX = {
     minHeight: TITLEBAR_HEIGHT,
@@ -178,6 +186,7 @@ const NavTabs = ({ value, onChange, onClick }) => {
             <MuiTab label="Judges" />
             <MuiTab label="Ip" />
             <MuiTab label="Blacklist" />
+            {isElectron && <MuiTab label="Browsers" />}
             <MuiTab label="History" />
         </MuiTabs>
     );
@@ -290,7 +299,8 @@ class Main extends React.PureComponent {
                         <Box id="checker-content-root" data-active-tab={this.state.tabIndex} sx={{ pt: 3 }}>
                             {this.state.tabIndex === 0 && <CorePage />}
                             {this.state.tabIndex > 0 && this.state.tabIndex <= 3 && <Settings tabIndex={this.state.tabIndex} />}
-                            <History visible={this.state.tabIndex === 4} />
+                            {isElectron && this.state.tabIndex === BROWSERS_TAB && <Settings tabIndex={BROWSERS_TAB} />}
+                            <History visible={this.state.tabIndex === HISTORY_TAB} />
                         </Box>
                     </Box>
                     <Info show={this.props.infoActive} releases={releases} toggleInfo={this.toggleInfo}/>
