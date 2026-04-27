@@ -630,6 +630,7 @@ const InputV2 = ({
                             fontFamily: '"Roboto Mono", monospace',
                             fontSize: '0.75rem',
                             lineHeight: '1.6',
+                            cursor: 'text',
                         },
                         '& .cm-content': {
                             padding: '12px',
