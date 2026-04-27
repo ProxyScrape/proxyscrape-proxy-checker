@@ -1,14 +1,13 @@
-import { MERGED_DEFAULT_SETTINGS } from '../../constants/SettingsConstants';
 import { BLACKLIST_CHANGE_ITEM_PATH, BLACKLIST_ADD_ITEM, BLACKLIST_REMOVE_ITEM, BLACKLIST_TOGGLE_OPTION, BLACKLIST_SET_ACTIVE_ITEM, SETTINGS_LOAD } from '../../constants/ActionTypes';
 
 // See PERSISTED_CORE_FIELDS in core.js for the persistence contract.
 export const PERSISTED_BLACKLIST_FIELDS = ['filter', 'items'];
 
-const blacklist = (state = MERGED_DEFAULT_SETTINGS.blacklist, action) => {
+const blacklist = (state = null, action) => {
     switch (action.type) {
         case SETTINGS_LOAD:
             if (action.settings && action.settings.blacklist) {
-                return { ...state, ...action.settings.blacklist };
+                return action.settings.blacklist;
             }
             return state;
         case BLACKLIST_CHANGE_ITEM_PATH:

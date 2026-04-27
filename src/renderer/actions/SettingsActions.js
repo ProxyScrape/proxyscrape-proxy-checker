@@ -9,13 +9,9 @@ import { PERSISTED_EXPORTING_FIELDS } from '../store/reducers/result';
 const pickFields = (obj, fields) => Object.fromEntries(fields.map(f => [f, obj[f]]));
 
 export const loadSettings = () => async (dispatch) => {
-    try {
-        const settings = await apiFetch('/api/settings');
-        if (settings && typeof settings === 'object') {
-            dispatch({ type: SETTINGS_LOAD, settings });
-        }
-    } catch (err) {
-        console.error('Failed to load settings from API:', err);
+    const settings = await apiFetch('/api/settings');
+    if (settings && typeof settings === 'object') {
+        dispatch({ type: SETTINGS_LOAD, settings });
     }
 };
 
@@ -29,6 +25,7 @@ export const loadSettings = () => async (dispatch) => {
 //      unknown keys, so skipping this step will cause the value to save but never load.
 export const saveSettings = () => async (dispatch, getState) => {
     const { core, judges, blacklist, ip, result } = getState();
+    if (!core || !judges || !blacklist || !ip) return;
     const settings = {
         core:      pickFields(core,           PERSISTED_CORE_FIELDS),
         judges:    pickFields(judges,          PERSISTED_JUDGES_FIELDS),

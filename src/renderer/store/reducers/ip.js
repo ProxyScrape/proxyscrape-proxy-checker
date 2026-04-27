@@ -1,14 +1,13 @@
-import { MERGED_DEFAULT_SETTINGS } from '../../constants/SettingsConstants';
 import { IP_CHANGE_OPTION, IP_SET, SETTINGS_LOAD } from '../../constants/ActionTypes';
 
 // See PERSISTED_CORE_FIELDS in core.js for the persistence contract.
 export const PERSISTED_IP_FIELDS = ['current', 'lookupUrl'];
 
-const ip = (state = MERGED_DEFAULT_SETTINGS.ip, action) => {
+const ip = (state = null, action) => {
     switch (action.type) {
         case SETTINGS_LOAD:
             if (action.settings && action.settings.ip) {
-                return { ...state, ...action.settings.ip };
+                return action.settings.ip;
             }
             return state;
         case IP_CHANGE_OPTION:

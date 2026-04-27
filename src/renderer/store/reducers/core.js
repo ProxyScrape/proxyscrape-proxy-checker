@@ -1,4 +1,3 @@
-import { MERGED_DEFAULT_SETTINGS } from '../../constants/SettingsConstants';
 import { CORE_CHANGE_OPTION, CORE_TOGGLE_OPTION, CORE_TOGGLE_PROTOCOL, CORE_SET_PROTOCOL_WARNING, CORE_SET_TRACE_STATUS, SETTINGS_LOAD } from '../../constants/ActionTypes';
 
 // Fields in this slice that are saved to settings.json via the Go backend.
@@ -9,19 +8,23 @@ import { CORE_CHANGE_OPTION, CORE_TOGGLE_OPTION, CORE_TOGGLE_PROTOCOL, CORE_SET_
 export const PERSISTED_CORE_FIELDS = [
     'timeout', 'threads', 'retries', 'shuffle', 'keepAlive',
     'captureServer', 'captureFullData', 'captureTrace', 'overrideProtocols',
-    'localDns', 'protocols',
+    'localDns', 'protocols', 'rotatingEnabled', 'rotatingCount',
 ];
 
-const INITIAL_PROTOCOL_WARNING = MERGED_DEFAULT_SETTINGS.core.protocolWarning;
+// protocolWarning is ephemeral UI state — never persisted, always reset on load.
+const PROTOCOL_WARNING_INITIAL = {
+    open: false,
+    listProtocols: [],
+    selectedProtocols: [],
+};
 
-const core = (state = MERGED_DEFAULT_SETTINGS.core, action) => {
+const core = (state = null, action) => {
     switch (action.type) {
         case SETTINGS_LOAD:
             if (action.settings && action.settings.core) {
                 return {
-                    ...state,
                     ...action.settings.core,
-                    protocolWarning: INITIAL_PROTOCOL_WARNING,
+                    protocolWarning: PROTOCOL_WARNING_INITIAL,
                 };
             }
             return state;

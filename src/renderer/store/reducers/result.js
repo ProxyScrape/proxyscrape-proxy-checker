@@ -1,4 +1,3 @@
-import { MERGED_DEFAULT_SETTINGS } from '../../constants/SettingsConstants';
 import {
     RESULT_SHOW,
     RESULT_TOGGLE_ANON,
@@ -62,7 +61,6 @@ const initialState = {
         active: false,
         authType: 1,
         type: 1,
-        ...MERGED_DEFAULT_SETTINGS.exporting
     }
 };
 

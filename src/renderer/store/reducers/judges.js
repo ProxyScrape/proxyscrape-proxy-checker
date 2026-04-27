@@ -1,16 +1,13 @@
-import { MERGED_DEFAULT_SETTINGS } from '../../constants/SettingsConstants';
 import { JUDGES_CHANGE, JUDGES_ADD, JUDGES_REMOVE, JUDGES_TOGGLE_OPTION, SETTINGS_LOAD, JUDGES_SET_REFRESHING, JUDGES_SET_STATUSES } from '../../constants/ActionTypes';
 
 // See PERSISTED_CORE_FIELDS in core.js for the persistence contract.
 export const PERSISTED_JUDGES_FIELDS = ['swap', 'items'];
 
-const defaultState = { ...MERGED_DEFAULT_SETTINGS.judges, refreshing: false, statuses: {} };
-
-const judges = (state = defaultState, action) => {
+const judges = (state = null, action) => {
     switch (action.type) {
         case SETTINGS_LOAD:
             if (action.settings && action.settings.judges) {
-                return { ...state, ...action.settings.judges };
+                return { ...action.settings.judges, refreshing: false, statuses: {} };
             }
             return state;
         case JUDGES_CHANGE:

@@ -186,7 +186,8 @@ function AppRoot() {
         //
         // Two additional retries are scheduled at 300 ms and 800 ms as a safety
         // net for async layout changes that happen after fonts resolve:
-        //   - Redux SETTINGS_LOAD (loadSettings is fire-and-forget before ready)
+        //   - Redux SETTINGS_LOAD (settings are awaited before ready, but layout
+        //     may still shift as MUI processes the hydrated values)
         //   - useMediaQuery settling (MUI reads matchMedia after first paint)
         //   - MUI internal measurements (sliders, chip wrapping)
         // The ResizeObserver catches intentional size changes, but if the sidebar
@@ -218,14 +219,20 @@ function AppRoot() {
     }, [appState]);
 
     useEffect(() => {
-        if (isDesktop) {
-            // Desktop: token comes from Electron preload — load settings and go.
-            store.dispatch(loadSettings());
-            setAppState('ready');
-            return;
-        }
-
         (async () => {
+            if (isDesktop) {
+                // Desktop: token comes from Electron preload — load settings and go.
+                try {
+                    await store.dispatch(loadSettings());
+                } catch (err) {
+                    console.error('[app] failed to load settings:', err);
+                    setAppState('error');
+                    return;
+                }
+                setAppState('ready');
+                return;
+            }
+
             // Step 1: identify the backend mode.
             // If the backend is unreachable or returns an error, show the error
             // screen — the login screen would also fail in that case, so falling
@@ -244,7 +251,9 @@ function AppRoot() {
                     // Bootstrap the anonymous session (idempotent — server
                     // reuses existing cookie if it is still valid).
                     await bootstrapGuestSession();
-                    store.dispatch(loadSettings());
+                    // Load settings before reconnecting — reconnectIfRunning can
+                    // trigger showResult which reads state.core.timeout.
+                    await store.dispatch(loadSettings());
                     // Reconnect to any check that was still running when the
                     // user last left or refreshed the page. The server replays
                     // all results produced so far, so the overlay opens with
@@ -257,14 +266,14 @@ function AppRoot() {
                 // Server mode: require a stored session token.
                 const token = window.localStorage.getItem('checker_session');
                 if (token && String(token).length > 0) {
-                    store.dispatch(loadSettings());
+                    await store.dispatch(loadSettings());
                     setAppState('ready');
                 } else {
                     setAppState('login');
                 }
             } catch (err) {
                 console.error('[app] startup failed:', err);
-                setAppState('login');
+                setAppState('error');
             }
         })();
     }, [isDesktop]);
@@ -296,7 +305,16 @@ function AppRoot() {
     }
 
     if (isWeb && appState === 'login') {
-        return <Login onSuccess={() => { store.dispatch(loadSettings()); setAppState('ready'); }} />;
+        return <Login onSuccess={async () => {
+            try {
+                await store.dispatch(loadSettings());
+            } catch (err) {
+                console.error('[app] failed to load settings after login:', err);
+                setAppState('error');
+                return;
+            }
+            setAppState('ready');
+        }} />;
     }
 
     return (
