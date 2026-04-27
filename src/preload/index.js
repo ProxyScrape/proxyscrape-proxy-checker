@@ -65,4 +65,9 @@ contextBridge.exposeInMainWorld('__ELECTRON__', {
         ipcRenderer.on('deep-link-proxy', handler);
         return () => ipcRenderer.removeListener('deep-link-proxy', handler);
     },
+
+    // Native Messaging — browser extension integration
+    nativeMessagingStatus: () => ipcRenderer.invoke('native-messaging-status'),
+    nativeMessagingRegister: (browserId) => ipcRenderer.invoke('native-messaging-register', browserId),
+    nativeMessagingUnregisterAll: () => ipcRenderer.invoke('native-messaging-unregister-all'),
 });
