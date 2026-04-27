@@ -320,21 +320,6 @@ function getHostBinaryPath() {
 }
 
 /**
- * Returns the directory where we write the native messaging manifest JSON.
- * We keep it in userData so it survives across launches and is writable.
- */
-function getNativeMessagingDir() {
-    return path.join(app.getPath('userData'), 'native-messaging');
-}
-
-/**
- * Returns the manifest file path for a given browser ID.
- */
-function getManifestPath(browserId) {
-    return path.join(getNativeMessagingDir(), `${NM_HOST_NAME}.${browserId}.json`);
-}
-
-/**
  * Returns the NativeMessagingHosts directory for each browser on the current platform,
  * or null if unsupported.
  */
