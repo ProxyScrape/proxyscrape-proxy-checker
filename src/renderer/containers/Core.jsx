@@ -4,8 +4,9 @@ import { changeOption, toggleOption, toggleCaptureTrace, recheckTraceStatus } fr
 import ToggleChip from '../components/ui/ToggleChip';
 import { HelpTip } from '../components/ui/HelpTip';
 import { splitByKK } from '../misc/text';
-import { getMaxThreads } from '../misc/other';
-import { openLink } from '../misc/links';
+import { getMaxThreads, psUrl } from '../misc/other';
+import { ROTATING_GUEST_CAP } from '../constants/SettingsConstants';
+import { openLink, openPsLink } from '../misc/links';
 import { isGuestMode } from '../misc/mode';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -118,18 +119,49 @@ const CommandBlock = ({ cmd }) => {
     );
 };
 
-const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceStatus, localDns, threads, timeout, retries, keepAlive, changeOption, toggleOption, toggleCaptureTrace, recheckTraceStatus }) => {
+const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceStatus, localDns, threads, timeout, retries, keepAlive, rotatingEnabled, rotatingCount, changeOption, toggleOption, toggleCaptureTrace, recheckTraceStatus }) => {
     const guestMode = isGuestMode();
     const guestLock = (feature, description) => guestMode ? { feature, description } : undefined;
     const handleSliderChange = (name) => (e, value) => {
         changeOption({ target: { name, value } });
     };
 
+    const displayRotatingCount = guestMode ? Math.min(rotatingCount, ROTATING_GUEST_CAP) : rotatingCount;
+    const handleRotatingCountChange = e => {
+        const raw = parseInt(e.target.value, 10);
+        if (isNaN(raw)) return;
+        const clamped = guestMode ? Math.min(raw, ROTATING_GUEST_CAP) : raw;
+        changeOption({ target: { name: 'rotatingCount', value: Math.max(1, clamped) } });
+    };
+
+    const rotatingTip = guestMode ? (
+        <Box sx={{ fontSize: 'inherit' }}>
+            <Box component="span" sx={{ display: 'block', opacity: 0.65, mb: 0.6 }}>
+                Check each proxy multiple times independently — ideal for rotating or backconnect proxies where the exit IP changes on every connection.
+            </Box>
+            <Box component="span" sx={{ display: 'block', fontWeight: 700, mb: 0.3 }}>
+                Capped at {ROTATING_GUEST_CAP.toLocaleString()} rotations per proxy
+            </Box>
+            <Box component="span" sx={{ display: 'block', opacity: 0.65, mb: 0.6 }}>
+                The online proxy checker limits rotations to {ROTATING_GUEST_CAP.toLocaleString()} per proxy. Use the free desktop app for higher limits.
+            </Box>
+            <Box
+                component="a"
+                href={psUrl('/proxy-checker', 'rotating-upsell')}
+                onClick={openPsLink}
+                sx={{ display: 'inline-block', color: blueBrand[300], cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+            >
+                Get the free desktop app ↗
+            </Box>
+        </Box>
+    ) : 'Check each proxy multiple times independently — ideal for rotating or backconnect proxies where the exit IP changes on every connection.';
+
     return (
         <>
             {/* ── Compact chip bar: Data Capturing + Options in one row ── */}
             <Box sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2, mb: 2 }}>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
+                    {/* ── Available in all modes ── */}
                     <ToggleChip
                         label="Full Data"
                         active={captureFullData}
@@ -143,14 +175,21 @@ const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceSt
                         tip="Capture the web server name from proxy responses. Adds a Server column to results."
                     />
                     <ToggleChip
+                        label="Rotating"
+                        active={rotatingEnabled}
+                        onClick={() => toggleOption({ target: { name: 'rotatingEnabled' } })}
+                        tip={rotatingTip}
+                    />
+                    {/* ── Separator: available / desktop-only ── */}
+                    <Box sx={{ width: '1px', height: 20, bgcolor: 'divider', mx: 0.25, flexShrink: 0, alignSelf: 'center' }} />
+                    {/* ── Desktop app only ── */}
+                    <ToggleChip
                         label="Traces"
                         active={captureTrace}
                         onClick={() => toggleCaptureTrace()}
                         tip="Record TCP packet events and connection timing for every proxy. Adds a Trace button to each result row. Requires libpcap (macOS/Linux) or Npcap (Windows)."
                         lockedTip={guestLock('Traces', 'TCP packet capture is only available in the free desktop app.')}
                     />
-                    {/* Visual separator between Data Capturing and Options groups */}
-                    <Box sx={{ width: '1px', height: 20, bgcolor: 'divider', mx: 0.25, flexShrink: 0, alignSelf: 'center' }} />
                     <ToggleChip
                         label="Keep-Alive"
                         active={keepAlive}
@@ -264,6 +303,60 @@ const Core = ({ protocols, captureFullData, captureServer, captureTrace, traceSt
                         size="small"
                     />
                 </Box>
+
+                {/* Rotating count — only visible when Rotating is toggled on */}
+                {rotatingEnabled && (
+                    <Box id="rotating-count-section" sx={{ mt: 2 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: guestMode ? 0.75 : 0 }}>
+                            <HelpTip title={guestMode
+                                ? `Number of times each proxy is independently checked (max ${ROTATING_GUEST_CAP.toLocaleString()} per proxy in the online proxy checker).`
+                                : 'Number of times each proxy is independently checked. Each rotation runs as a separate check with its own result.'
+                            }>
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', cursor: 'help', borderBottom: '1px dotted', borderColor: 'text.secondary' }}>Rotations</Typography>
+                            </HelpTip>
+                            <Box
+                                component="input"
+                                type="number"
+                                min={1}
+                                max={guestMode ? ROTATING_GUEST_CAP : undefined}
+                                value={displayRotatingCount}
+                                onChange={handleRotatingCountChange}
+                                sx={{
+                                    width: 76,
+                                    bgcolor: 'transparent',
+                                    border: '1px solid',
+                                    borderColor: 'rgba(255,255,255,0.15)',
+                                    borderRadius: '6px',
+                                    color: 'primary.main',
+                                    fontFamily: 'inherit',
+                                    fontSize: '0.875rem',
+                                    fontWeight: 600,
+                                    textAlign: 'right',
+                                    px: '8px',
+                                    py: '3px',
+                                    outline: 'none',
+                                    '&:focus': { borderColor: 'primary.main' },
+                                    '&::-webkit-inner-spin-button': { opacity: 0.4 },
+                                    '&::-webkit-outer-spin-button': { opacity: 0.4 },
+                                }}
+                            />
+                        </Box>
+                        {guestMode && (
+                            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.67rem', display: 'block', lineHeight: 1.4 }}>
+                                Capped at {ROTATING_GUEST_CAP.toLocaleString()} per proxy.{' '}
+                                <Box
+                                    component="a"
+                                    href={psUrl('/proxy-checker', 'rotating-upsell')}
+                                    onClick={openPsLink}
+                                    sx={{ color: blueBrand[300], cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                                >
+                                    Get the free desktop app
+                                </Box>
+                                {' '}for higher limits.
+                            </Typography>
+                        )}
+                    </Box>
+                )}
             </Box>
         </>
     );

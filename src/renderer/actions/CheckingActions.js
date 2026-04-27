@@ -6,6 +6,8 @@ import { showError, showErrorWithCta } from '../store/reducers/app';
 import { psUrl } from '../misc/other';
 import { showResult, mapResultItem } from './ResultActions';
 import { pingJudgesWithOverlay } from './OverlayJudgesActions';
+import { isGuestMode } from '../misc/mode';
+import { ROTATING_GUEST_CAP } from '../constants/SettingsConstants';
 
 let currentCheckId = null;
 let closeCurrentStream = null;
@@ -196,6 +198,26 @@ export const start = () => async (dispatch, getState) => {
 
         validateInput(input.list);
 
+        // Expand proxies for rotating/backconnect mode.
+        // Each proxy is duplicated `effectiveCount` times, each copy carrying a
+        // shared rotationGroupId (a UUID stable per original proxy) and a
+        // 1-based rotationIndex. Expansion happens after deduplication so the
+        // user always gets exactly N independent checks per unique proxy.
+        let proxyEntries = input.list;
+        if (core.rotatingEnabled) {
+            const effectiveCount = isGuestMode()
+                ? Math.min(core.rotatingCount, ROTATING_GUEST_CAP)
+                : core.rotatingCount;
+            const expanded = [];
+            for (const proxy of input.list) {
+                const groupId = crypto.randomUUID();
+                for (let i = 1; i <= effectiveCount; i++) {
+                    expanded.push({ ...proxy, rotationGroupId: groupId, rotationIndex: i });
+                }
+            }
+            proxyEntries = expanded;
+        }
+
         // Determine effective per-proxy protocol mode.
         // When overrideProtocols is true, ignore declared protocols and use the
         // selected ones uniformly (legacy behaviour).
@@ -239,20 +261,24 @@ export const start = () => async (dispatch, getState) => {
         }
 
         trackAction('proxy_check_started', {
-            proxy_count: input.list.length,
+            proxy_count: proxyEntries.length,
+            base_proxy_count: input.list.length,
             authenticated_proxies: input.list.filter(p => p.auth && p.auth !== 'none').length,
             unauthenticated_proxies: input.list.filter(p => !p.auth || p.auth === 'none').length,
             protocols: protocols.join(','),
             threads: core.threads,
             timeout: core.timeout,
+            rotating_enabled: core.rotatingEnabled,
         });
 
         const payload = {
-            proxies: input.list.map(p => ({
+            proxies: proxyEntries.map(p => ({
                 host: p.host,
                 port: parseInt(p.port),
                 auth: p.auth || 'none',
                 protocol: useListProtocols ? (p.protocol || '') : '',
+                rotationGroupId: p.rotationGroupId || '',
+                rotationIndex: p.rotationIndex || 0,
             })),
             protocols,
             threads: core.threads,
@@ -274,7 +300,7 @@ export const start = () => async (dispatch, getState) => {
             body: JSON.stringify(payload),
         });
 
-        attachCheckStream(dispatch, data.id, { all: input.list.length, done: 0, protocols: {} });
+        attachCheckStream(dispatch, data.id, { all: proxyEntries.length, done: 0, protocols: {} });
     } catch (error) {
         dispatch(otherChanges({ starting: false }));
         if (error.status === 429) {

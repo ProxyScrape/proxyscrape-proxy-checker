@@ -1,11 +1,6 @@
 import { chooseMultiTxtFiles } from '../misc/filePicker';
 import { INPUT_SET_LOADED_FILE_DATA, INPUT_CLEAR } from '../constants/ActionTypes';
 
-const setLoadedData = nextState => ({
-    type: INPUT_SET_LOADED_FILE_DATA,
-    nextState,
-});
-
 export const clearInput = () => ({ type: INPUT_CLEAR });
 
 /**
@@ -13,7 +8,7 @@ export const clearInput = () => ({ type: INPUT_CLEAR });
  * Called by InputV2 after the parse Web Worker returns results, keeping
  * the expensive findMixedProxies work off the main thread.
  */
-export const applyParsedResult = payload => setLoadedData(payload);
+export const applyParsedResult = payload => ({ type: INPUT_SET_LOADED_FILE_DATA, nextState: payload });
 
 /**
  * Opens the file picker and populates the CodeMirror editor in InputV2

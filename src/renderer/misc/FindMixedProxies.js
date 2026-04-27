@@ -90,7 +90,7 @@ const getParseErrorReason = string => {
     }
 
     const portMatch = s.match(/:(\d+)/g);
-    if (!portMatch) return 'Missing port number — expected ip:port or protocol://ip:port';
+    if (!portMatch) return 'Missing port number — expected ip:port, user:pass@ip:port, ip:port:user:pass, or protocol://ip:port';
 
     const ports = portMatch.map(p => Number(p.slice(1)));
     const outOfRange = ports.find(p => p > 65535);

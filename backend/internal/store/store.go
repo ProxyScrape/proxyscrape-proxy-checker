@@ -61,23 +61,25 @@ type Check struct {
 
 // CheckResult is a single proxy result within a Check.
 type CheckResult struct {
-	ID          string
-	CheckID     string
-	Host        string
-	Port        int
-	Auth        string
-	Status      string
-	Protocols   []string
-	Anon        string
-	TimeoutMs   int64
-	CountryCode string
-	CountryName string
-	CountryFlag string
-	City        string
-	Blacklists  []string
-	Errors      map[string]string
-	Server      string
-	KeepAlive   bool
+	ID              string
+	CheckID         string
+	Host            string
+	Port            int
+	Auth            string
+	RotationGroupID string // UUID shared by all rotations of the same source proxy; "" when not rotating
+	RotationIndex   int    // 1-based position within the rotation group; 0 when not rotating
+	Status          string
+	Protocols       []string
+	Anon            string
+	TimeoutMs       int64
+	CountryCode     string
+	CountryName     string
+	CountryFlag     string
+	City            string
+	Blacklists      []string
+	Errors          map[string]string
+	Server          string
+	KeepAlive       bool
 	TracesJSON   string // JSON-serialized map[protocol][]TraceEvent, empty when no trace
 	FullDataJSON string // JSON-serialized map[protocol]ProtoFullData, empty when not captured
 	GeoStatus    string // 'done', 'pending', or 'skipped'
@@ -125,6 +127,8 @@ CREATE TABLE IF NOT EXISTS check_results (
   host TEXT NOT NULL,
   port INTEGER NOT NULL,
   auth TEXT NOT NULL,
+  rotation_group_id TEXT,
+  rotation_index INTEGER,
   status TEXT NOT NULL DEFAULT 'failed',
   protocols TEXT NOT NULL,
   anon TEXT NOT NULL,
@@ -300,6 +304,36 @@ var migrations = []migration{
 		},
 		down: func(tx *sql.Tx) error {
 			_, err := tx.Exec(`ALTER TABLE check_results DROP COLUMN exit_ip`)
+			return err
+		},
+	},
+	{
+		// v7: add rotation_group_id and rotation_index to check_results.
+		// These two columns link all rotations of the same source proxy so that
+		// per-group analytics are possible without a separate join table.
+		// Both are nullable: NULL when the result was not produced by a rotating check.
+		// Fresh installs already have both columns from baseSchema.
+		up: func(tx *sql.Tx) error {
+			var count int
+			if err := tx.QueryRow(
+				`SELECT COUNT(*) FROM pragma_table_info('check_results') WHERE name='rotation_group_id'`,
+			).Scan(&count); err != nil {
+				return err
+			}
+			if count > 0 {
+				return nil // fresh install or already migrated
+			}
+			if _, err := tx.Exec(`ALTER TABLE check_results ADD COLUMN rotation_group_id TEXT`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`ALTER TABLE check_results ADD COLUMN rotation_index INTEGER`)
+			return err
+		},
+		down: func(tx *sql.Tx) error {
+			if _, err := tx.Exec(`ALTER TABLE check_results DROP COLUMN rotation_group_id`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`ALTER TABLE check_results DROP COLUMN rotation_index`)
 			return err
 		},
 	},
@@ -639,9 +673,10 @@ func (s *Store) SaveCheckResults(ctx context.Context, results []CheckResult) err
 
 	stmt, err := tx.PrepareContext(ctx,
 		`INSERT INTO check_results
-		 (id, check_id, host, port, auth, status, protocols, anon, timeout_ms,
+		 (id, check_id, host, port, auth, rotation_group_id, rotation_index,
+		  status, protocols, anon, timeout_ms,
 		  country_code, country_name, country_flag, city, blacklists, errors, server, keep_alive, traces, full_data, geo_status, exit_ip)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	)
 	if err != nil {
 		return fmt.Errorf("store: prepare stmt: %w", err)
@@ -677,9 +712,18 @@ func (s *Store) SaveCheckResults(ctx context.Context, results []CheckResult) err
 			fullDataVal = r.FullDataJSON
 		}
 
+		var rotGroupID interface{}
+		if r.RotationGroupID != "" {
+			rotGroupID = r.RotationGroupID
+		}
+		var rotIndex interface{}
+		if r.RotationIndex != 0 {
+			rotIndex = r.RotationIndex
+		}
+
 		if _, err := stmt.ExecContext(ctx,
-			r.ID, r.CheckID, r.Host, r.Port, r.Auth, r.Status,
-			protocols, r.Anon, r.TimeoutMs,
+			r.ID, r.CheckID, r.Host, r.Port, r.Auth, rotGroupID, rotIndex,
+			r.Status, protocols, r.Anon, r.TimeoutMs,
 			r.CountryCode, r.CountryName, r.CountryFlag, r.City,
 			blacklists, errorsJSON, r.Server, boolToInt(r.KeepAlive), tracesVal, fullDataVal, r.GeoStatus, r.ExitIP,
 		); err != nil {
@@ -755,7 +799,8 @@ func (s *Store) GetCheckResults(ctx context.Context, checkID, sessionID string, 
 
 	offset := (page - 1) * limit
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT cr.id, cr.check_id, cr.host, cr.port, cr.auth, cr.status, cr.protocols, cr.anon, cr.timeout_ms,
+		`SELECT cr.id, cr.check_id, cr.host, cr.port, cr.auth, cr.rotation_group_id, cr.rotation_index,
+		        cr.status, cr.protocols, cr.anon, cr.timeout_ms,
 		        cr.country_code, cr.country_name, cr.country_flag, cr.city, cr.blacklists, cr.errors, cr.server, cr.keep_alive, cr.traces, cr.full_data, cr.geo_status, cr.exit_ip
 		 FROM check_results cr
 		 JOIN checks c ON c.id = cr.check_id
@@ -774,15 +819,23 @@ func (s *Store) GetCheckResults(ctx context.Context, checkID, sessionID string, 
 		var keepAlive int
 		var protocols, blacklists, errorsJSON string
 		var tracesJSON, fullDataJSON sql.NullString
+		var rotGroupID sql.NullString
+		var rotIndex sql.NullInt64
 		if err := rows.Scan(
-			&r.ID, &r.CheckID, &r.Host, &r.Port, &r.Auth, &r.Status,
-			&protocols, &r.Anon, &r.TimeoutMs,
+			&r.ID, &r.CheckID, &r.Host, &r.Port, &r.Auth, &rotGroupID, &rotIndex,
+			&r.Status, &protocols, &r.Anon, &r.TimeoutMs,
 			&r.CountryCode, &r.CountryName, &r.CountryFlag, &r.City,
 			&blacklists, &errorsJSON, &r.Server, &keepAlive, &tracesJSON, &fullDataJSON, &r.GeoStatus, &r.ExitIP,
 		); err != nil {
 			return nil, 0, fmt.Errorf("store: scan result: %w", err)
 		}
 		r.KeepAlive = keepAlive != 0
+		if rotGroupID.Valid {
+			r.RotationGroupID = rotGroupID.String
+		}
+		if rotIndex.Valid {
+			r.RotationIndex = int(rotIndex.Int64)
+		}
 		if tracesJSON.Valid {
 			r.TracesJSON = tracesJSON.String
 		}

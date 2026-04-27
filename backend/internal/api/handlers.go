@@ -95,10 +95,12 @@ type startCheckReq struct {
 }
 
 type proxyInput struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Auth     string `json:"auth"`     // "none" or "user:pass"
-	Protocol string `json:"protocol"` // declared protocol from import ("http", "socks5", etc.) or ""
+	Host            string `json:"host"`
+	Port            int    `json:"port"`
+	Auth            string `json:"auth"`            // "none" or "user:pass"
+	Protocol        string `json:"protocol"`        // declared protocol from import ("http", "socks5", etc.) or ""
+	RotationGroupID string `json:"rotationGroupId"` // UUID shared by all rotations of the same source proxy; "" when not rotating
+	RotationIndex   int    `json:"rotationIndex"`   // 1-based position within the rotation group; 0 when not rotating
 }
 
 type judgeInput struct {
@@ -268,7 +270,14 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 		if auth == "" {
 			auth = "none"
 		}
-		proxies[i] = checker.Proxy{Host: p.Host, Port: p.Port, Auth: auth, Protocol: p.Protocol}
+		proxies[i] = checker.Proxy{
+			Host:            p.Host,
+			Port:            p.Port,
+			Auth:            auth,
+			Protocol:        p.Protocol,
+			RotationGroupID: p.RotationGroupID,
+			RotationIndex:   p.RotationIndex,
+		}
 	}
 
 	// Optional shuffle.
@@ -429,9 +438,11 @@ func (s *server) handleStartCheck(w http.ResponseWriter, r *http.Request) {
 
 // apiResultProxy is the nested proxy object in apiResult, matching checker.Result JSON shape.
 type apiResultProxy struct {
-	Host string `json:"host"`
-	Port int    `json:"port"`
-	Auth string `json:"auth"`
+	Host            string `json:"host"`
+	Port            int    `json:"port"`
+	Auth            string `json:"auth"`
+	RotationGroupID string `json:"rotationGroupId,omitempty"`
+	RotationIndex   int    `json:"rotationIndex,omitempty"`
 }
 
 // apiResultCountry mirrors geo.Country JSON shape.
@@ -463,6 +474,7 @@ type apiResult struct {
 	Traces    map[string][]checker.TraceEvent  `json:"traces,omitempty"`
 	FullData  map[string]checker.ProtoFullData `json:"fullData,omitempty"`
 	GeoStatus string                           `json:"geoStatus,omitempty"`
+	ExitIP    string                           `json:"exitIp,omitempty"`
 }
 
 // geoStatusForResult derives the geo_status to store for a freshly-checked proxy.
@@ -507,8 +519,14 @@ func storeResultToAPI(r store.CheckResult) apiResult {
 		_ = json.Unmarshal([]byte(r.FullDataJSON), &fullData)
 	}
 	return apiResult{
-		ID:        r.ID,
-		Proxy:     apiResultProxy{Host: r.Host, Port: r.Port, Auth: r.Auth},
+		ID: r.ID,
+		Proxy: apiResultProxy{
+			Host:            r.Host,
+			Port:            r.Port,
+			Auth:            r.Auth,
+			RotationGroupID: r.RotationGroupID,
+			RotationIndex:   r.RotationIndex,
+		},
 		Status:    r.Status,
 		Protocols: protocols,
 		Anon:      r.Anon,
@@ -522,6 +540,7 @@ func storeResultToAPI(r store.CheckResult) apiResult {
 		Traces:    traces,
 		FullData:  fullData,
 		GeoStatus: r.GeoStatus,
+		ExitIP:    r.ExitIP,
 	}
 }
 
@@ -543,8 +562,14 @@ func resultToAPI(e resultEntry) apiResult {
 		errors = map[string]string{}
 	}
 	return apiResult{
-		ID:        e.ID,
-		Proxy:     apiResultProxy{Host: r.Proxy.Host, Port: r.Proxy.Port, Auth: r.Proxy.Auth},
+		ID: e.ID,
+		Proxy: apiResultProxy{
+			Host:            r.Proxy.Host,
+			Port:            r.Proxy.Port,
+			Auth:            r.Proxy.Auth,
+			RotationGroupID: r.Proxy.RotationGroupID,
+			RotationIndex:   r.Proxy.RotationIndex,
+		},
 		Status:    r.Status,
 		Protocols: protocols,
 		Anon:      r.Anon,
@@ -558,6 +583,7 @@ func resultToAPI(e resultEntry) apiResult {
 		Traces:    r.Traces,
 		FullData:  r.FullData,
 		GeoStatus: geoStatusForResult(r.Status, r.Country.Code),
+		ExitIP:    r.ExitIP,
 	}
 }
 
@@ -575,27 +601,29 @@ func resultToStore(checkID string, e resultEntry) store.CheckResult {
 		blists = []string{}
 	}
 	return store.CheckResult{
-		ID:           e.ID,
-		CheckID:      checkID,
-		Host:         r.Proxy.Host,
-		Port:         r.Proxy.Port,
-		Auth:         r.Proxy.Auth,
-		Status:       r.Status,
-		Protocols:    protocols,
-		Anon:         r.Anon,
-		TimeoutMs:    r.TimeoutMs,
-		CountryCode:  r.Country.Code,
-		CountryName:  r.Country.Name,
-		CountryFlag:  r.Country.Flag,
-		City:         r.City,
-		Blacklists:   blists,
-		Errors:       r.Errors,
-		Server:       r.Server,
-		KeepAlive:    r.KeepAlive,
-		TracesJSON:   marshalJSON(r.Traces),
-		FullDataJSON: marshalJSON(r.FullData),
-		GeoStatus:    geoStatusForResult(r.Status, r.Country.Code),
-		ExitIP:       r.ExitIP,
+		ID:              e.ID,
+		CheckID:         checkID,
+		Host:            r.Proxy.Host,
+		Port:            r.Proxy.Port,
+		Auth:            r.Proxy.Auth,
+		RotationGroupID: r.Proxy.RotationGroupID,
+		RotationIndex:   r.Proxy.RotationIndex,
+		Status:          r.Status,
+		Protocols:       protocols,
+		Anon:            r.Anon,
+		TimeoutMs:       r.TimeoutMs,
+		CountryCode:     r.Country.Code,
+		CountryName:     r.Country.Name,
+		CountryFlag:     r.Country.Flag,
+		City:            r.City,
+		Blacklists:      blists,
+		Errors:          r.Errors,
+		Server:          r.Server,
+		KeepAlive:       r.KeepAlive,
+		TracesJSON:      marshalJSON(r.Traces),
+		FullDataJSON:    marshalJSON(r.FullData),
+		GeoStatus:       geoStatusForResult(r.Status, r.Country.Code),
+		ExitIP:          r.ExitIP,
 	}
 }
 

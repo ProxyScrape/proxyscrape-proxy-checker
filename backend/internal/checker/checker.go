@@ -89,10 +89,12 @@ func mergeAndSort(a, b []TraceEvent) []TraceEvent {
 
 // Proxy represents a single proxy to check.
 type Proxy struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Auth     string `json:"auth"`     // "user:pass" or "none"
-	Protocol string `json:"protocol"` // declared protocol from import or "" to use global list
+	Host            string `json:"host"`
+	Port            int    `json:"port"`
+	Auth            string `json:"auth"`            // "user:pass" or "none"
+	Protocol        string `json:"protocol"`        // declared protocol from import or "" to use global list
+	RotationGroupID string `json:"rotationGroupId"` // UUID shared by all rotations of the same source proxy; "" when not rotating
+	RotationIndex   int    `json:"rotationIndex"`   // 1-based position within the rotation group; 0 when not rotating
 }
 
 // Options controls checker behaviour.

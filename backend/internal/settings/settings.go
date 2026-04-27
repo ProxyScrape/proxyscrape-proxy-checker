@@ -32,6 +32,10 @@ type CoreSettings struct {
 	// LocalDNS forces client-side DNS resolution for SOCKS4/SOCKS5 proxies.
 	// Off by default; not recommended for general proxy checking.
 	LocalDNS bool `json:"localDns"`
+	// RotatingEnabled enables proxy duplication for rotating/backconnect proxies.
+	RotatingEnabled bool `json:"rotatingEnabled"`
+	// RotatingCount is the number of times each proxy is duplicated when rotating is on.
+	RotatingCount int `json:"rotatingCount"`
 }
 
 // JudgeItem is a single HTTP judge endpoint.
@@ -87,11 +91,13 @@ const ipRegex = `REMOTE_ADDR = (25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|
 // DefaultSettings matches the JS SettingsConstants defaults exactly.
 var DefaultSettings = Settings{
 	Core: CoreSettings{
-		Timeout:   15000,
-		Threads:   350,
-		Retries:   0,
-		Shuffle:   false,
-		KeepAlive: false,
+		Timeout:         15000,
+		Threads:         350,
+		Retries:         0,
+		Shuffle:         false,
+		KeepAlive:       false,
+		RotatingEnabled: false,
+		RotatingCount:   5000,
 		Protocols: map[string]bool{
 			"http":   true,
 			"https":  true,
@@ -304,6 +310,9 @@ func applyDefaults(s *Settings) {
 	}
 	if s.IP.LookupURL == "" {
 		s.IP.LookupURL = DefaultSettings.IP.LookupURL
+	}
+	if s.Core.RotatingCount == 0 {
+		s.Core.RotatingCount = DefaultSettings.Core.RotatingCount
 	}
 	if s.Version == "" {
 		s.Version = DefaultSettings.Version

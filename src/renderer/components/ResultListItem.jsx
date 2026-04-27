@@ -69,7 +69,7 @@ export default class ResultListItem extends React.PureComponent {
 
                     <Box sx={{ minWidth: 0, fontSize: '0.8rem', fontWeight: 500, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
                         <span>{host}</span>
-                        {!isCancelled && host !== ip && (
+                        {ip && host !== ip && (
                             <Typography component="span" variant="caption" sx={{ ml: 0.5, color: 'text.secondary', fontSize: '0.7rem' }} title="Real IP">
                                 {ip}
                             </Typography>

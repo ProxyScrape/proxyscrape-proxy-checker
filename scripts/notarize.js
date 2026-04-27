@@ -1,4 +1,5 @@
 const { notarize } = require('@electron/notarize');
+const { execFileSync } = require('child_process');
 const path = require('path');
 
 module.exports = async (context) => {
@@ -24,4 +25,7 @@ module.exports = async (context) => {
   });
 
   console.log(`Notarization complete for ${appName}.`);
+
+  execFileSync('xcrun', ['stapler', 'staple', appPath]);
+  console.log(`Stapled notarization ticket to ${appPath}.`);
 };

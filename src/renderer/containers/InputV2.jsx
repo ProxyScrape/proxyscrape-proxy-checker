@@ -5,6 +5,7 @@ import { EditorView, keymap, drawSelection } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { applyParsedResult, clearInput } from '../actions/InputActions';
 import { toggleOption } from '../actions/CoreActions';
+import { CORE_TOGGLE_OPTION } from '../constants/ActionTypes';
 import { showError } from '../store/reducers/app';
 import { chooseMultiTxtFiles } from '../misc/filePicker';
 import { splitByKK } from '../misc/text';
@@ -13,7 +14,7 @@ import { getGuestLimits } from '../misc/mode';
 import { openPsLink } from '../misc/links';
 import { psUrl } from '../misc/other';
 import Checkbox from '../components/ui/Checkbox';
-import { InfoIcon } from '../components/ui/HelpTip';
+import { InfoIcon, HelpTip } from '../components/ui/HelpTip';
 import DropDocIcon from '../components/ui/DropDocIcon';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -180,12 +181,12 @@ const ActionButton = ({ onClick, icon, label }) => (
 // ---------------------------------------------------------------------------
 
 const InputV2 = ({
-    loaded, list, errors, unique, total, proxyCount, shuffle,
-    applyParsedResult, clearInput, showError, toggleOption,
+    loaded, list, errors, unique, total, shuffle, rotatingEnabled,
+    applyParsedResult, clearInput, showError, toggleOption, enableRotating,
     fillHeight,  // when true: stretch to fill the parent grid cell (desktop layout)
 }) => {
     const limits    = getGuestLimits();
-    const overLimit = limits !== null && proxyCount > limits.inFlightProxies;
+    const overLimit = limits !== null && list.length > limits.inFlightProxies;
 
     // ── Refs ──────────────────────────────────────────────────────────────
     const editorContainerRef = useRef(null);   // DOM node CodeMirror mounts into
@@ -205,6 +206,18 @@ const InputV2 = ({
     const [isParsing,      setIsParsing]      = useState(false);
     const [errorsExpanded, setErrorsExpanded] = useState(false);
     const [isEmpty,        setIsEmpty]        = useState(true);
+    // Tracks whether the user has removed duplicates, so we can offer Restore.
+    const [isDeduped,      setIsDeduped]      = useState(false);
+
+    // ── Dedup refs ────────────────────────────────────────────────────────
+    // Unique source-line strings from the last worker result — used to update
+    // the editor when the user clicks Remove.
+    const uniqueLinesRef    = useRef([]);
+    // The original editor text saved at Remove time — used to restore.
+    const originalTextRef   = useRef(null);
+    // Signals to handleWorkerMessage that this parse was triggered by Remove,
+    // so we don't reset the isDeduped state when the re-parse result arrives.
+    const removePendingRef  = useRef(false);
 
     // ── Reset helper ──────────────────────────────────────────────────────
     const clearInputAndState = useCallback(() => {
@@ -257,14 +270,29 @@ const InputV2 = ({
         setIsParsing(false);
         setErrorsExpanded(false);
 
-        if (!data.list.length) {
+        // Keep the latest unique line strings for the Remove editor update.
+        uniqueLinesRef.current = data.uniqueLines;
+
+        // Any parse that was NOT triggered by Remove means the user changed
+        // the content — reset the dedup state so Remove/Restore is fresh.
+        if (removePendingRef.current) {
+            removePendingRef.current = false;
+        } else {
+            setIsDeduped(false);
+            originalTextRef.current = null;
+        }
+
+        // Only clear when there is genuinely nothing to show — no valid proxies
+        // AND no parse errors. If there are errors but no valid proxies (e.g. the
+        // user pasted only invalid lines) we still want to display those errors.
+        if (!data.fullList.length && !data.errors.length) {
             clearInput();
             return;
         }
 
         applyParsedResult({
             loaded:       true,
-            list:         data.list,
+            list:         data.fullList,
             errors:       data.errors,
             total:        data.totalLines,
             unique:       data.unique,
@@ -276,8 +304,8 @@ const InputV2 = ({
 
         trackAction('proxy_list_imported', {
             source:       sourceMetaRef.current.sourceType,
-            proxy_count:  data.list.length,
-            unique_count: data.unique,
+            proxy_count:  data.fullList.length,
+            unique_count: data.uniqueLines.length,
             error_count:  data.errors.length,
         });
     }, [applyParsedResult, clearInput]);
@@ -337,9 +365,10 @@ const InputV2 = ({
                     }),
 
                     // Intercept Cmd+V / right-click paste.
-                    // We call triggerParseNow with the raw clipboard string so the
-                    // TextEncoder → ArrayBuffer transfer happens before CodeMirror
-                    // even inserts the text, keeping the main thread maximally free.
+                    // Always read the full doc after dispatch — pasting into an editor
+                    // that already has content would otherwise send only the clipboard
+                    // fragment to the worker, causing a stale duplicate count until the
+                    // next keystroke.
                     EditorView.domEventHandlers({
                         paste(event, view) {
                             event.preventDefault();
@@ -354,7 +383,9 @@ const InputV2 = ({
                             });
 
                             sourceMetaRef.current = { name: 'Clipboard', sourceType: 'clipboard' };
-                            triggerParseNowRef.current?.(text);
+                            // Use the full doc content (post-dispatch) so the worker sees
+                            // existing content + the pasted fragment together.
+                            triggerParseNowRef.current?.(view.state.doc.toString());
                             return true;
                         },
                     }),
@@ -485,10 +516,49 @@ const InputV2 = ({
         setLineCount(0);
         setIsParsing(false);
         setErrorsExpanded(false);
+        setIsDeduped(false);
+        originalTextRef.current  = null;
+        removePendingRef.current = false;
         requestIdRef.current++;    // invalidate any in-flight worker result
         sourceMetaRef.current = { name: 'Manual Input', sourceType: 'textarea' };
         clearInput();
     }, [clearInput]);
+
+    // Replaces editor content with deduplicated lines and re-parses so all
+    // Redux state (list, total, unique) stays consistent with the editor.
+    const handleRemoveDuplicates = useCallback(() => {
+        const view = editorViewRef.current;
+        const lines = uniqueLinesRef.current;
+        if (!view || !lines.length) return;
+
+        originalTextRef.current  = view.state.doc.toString();
+        removePendingRef.current = true;
+        setIsDeduped(true);
+
+        const newText = lines.join('\n');
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newText } });
+        triggerParseNowRef.current?.(newText);
+    }, []);
+
+    // Restores the original editor content (including duplicates) and re-parses.
+    const handleRestoreDuplicates = useCallback(() => {
+        const view         = editorViewRef.current;
+        const originalText = originalTextRef.current;
+        if (!view || !originalText) return;
+
+        originalTextRef.current = null;
+        setIsDeduped(false);
+
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: originalText } });
+        triggerParseNowRef.current?.(originalText);
+    }, []);
+
+    // Removes duplicates from the editor and simultaneously enables the Rotating
+    // option if it isn't already on — called from the tooltip action link.
+    const handleRemoveAndEnableRotating = useCallback(() => {
+        handleRemoveDuplicates();
+        if (!rotatingEnabled) enableRotating();
+    }, [handleRemoveDuplicates, rotatingEnabled, enableRotating]);
 
     // ── Render ────────────────────────────────────────────────────────────
 
@@ -666,20 +736,99 @@ const InputV2 = ({
                                 <Typography variant="caption" sx={{ color: 'success.main', fontSize: '0.72rem', fontWeight: 600 }}>
                                     {splitByKK(list.length)} valid
                                 </Typography>
-                                {errors.length > 0 && (
+                            </>
+                        )}
+
+                        {/* Error count is independent of the valid-count block so it shows
+                            even when the entire list failed to parse (list.length === 0). */}
+                        {!isParsing && loaded && errors.length > 0 && (
+                            <>
+                                <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.72rem' }}>·</Typography>
+                                <Typography variant="caption" sx={{ color: 'error.main', fontSize: '0.72rem', fontWeight: 600 }}>
+                                    {splitByKK(errors.length)} errors
+                                </Typography>
+                            </>
+                        )}
+
+                        {!isParsing && loaded && list.length > 0 && (
+                            <>
+                                {isDeduped ? (
                                     <>
                                         <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.72rem' }}>·</Typography>
-                                        <Typography variant="caption" sx={{ color: 'error.main', fontSize: '0.72rem', fontWeight: 600 }}>
-                                            {splitByKK(errors.length)} errors
-                                        </Typography>
+                                        <HelpTip title="Restore the original list, including all duplicates">
+                                            <Typography
+                                                variant="caption"
+                                                onClick={handleRestoreDuplicates}
+                                                sx={{
+                                                    color: blueBrand[300],
+                                                    fontSize: '0.72rem',
+                                                    cursor: 'pointer',
+                                                    userSelect: 'none',
+                                                    px: 0.75, py: 0.25, borderRadius: 1,
+                                                    transition: 'color 0.15s, background-color 0.15s',
+                                                    '&:hover': { color: '#fff', bgcolor: alpha(blueBrand[500], 0.12) },
+                                                }}
+                                            >
+                                                Restore duplicates
+                                            </Typography>
+                                        </HelpTip>
                                     </>
-                                )}
-                                {total > unique && (
+                                ) : (total > unique) && (
                                     <>
                                         <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.72rem' }}>·</Typography>
-                                        <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.72rem' }}>
-                                            {splitByKK(total - unique)} dupes removed
-                                        </Typography>
+                                        <HelpTip title={
+                                            <>
+                                                <Box component="span" sx={{ display: 'block', opacity: 0.8, mb: 0.75 }}>
+                                                    Each duplicate is checked independently. If you want structured rotating proxy testing across identical proxies, consider enabling the Rotating option.
+                                                </Box>
+                                                <Box
+                                                    component="span"
+                                                    onClick={handleRemoveAndEnableRotating}
+                                                    sx={{
+                                                        display: 'block',
+                                                        color: blueBrand[300],
+                                                        cursor: 'pointer',
+                                                        fontWeight: 600,
+                                                        transition: 'color 0.15s',
+                                                        '&:hover': { color: '#fff' },
+                                                    }}
+                                                >
+                                                    ↻ Remove duplicates &amp; enable Rotating
+                                                </Box>
+                                            </>
+                                        }>
+                                            <Typography
+                                                variant="caption"
+                                                sx={{
+                                                    color: 'text.disabled',
+                                                    fontSize: '0.72rem',
+                                                    cursor: 'help',
+                                                    textDecoration: 'underline dotted',
+                                                    textUnderlineOffset: '2px',
+                                                    transition: 'color 0.15s',
+                                                    '&:hover': { color: 'text.secondary' },
+                                                }}
+                                            >
+                                                {splitByKK(total - unique)} duplicates
+                                            </Typography>
+                                        </HelpTip>
+                                        <HelpTip title="Remove duplicate lines, keeping one occurrence of each proxy">
+                                            <Typography
+                                                variant="caption"
+                                                onClick={handleRemoveDuplicates}
+                                                sx={{
+                                                    color: blueBrand[300],
+                                                    fontSize: '0.72rem',
+                                                    cursor: 'pointer',
+                                                    userSelect: 'none',
+                                                    px: 0.75, py: 0.25, borderRadius: 1,
+                                                    transition: 'color 0.15s, background-color 0.15s',
+                                                    '&:hover': { color: '#fff', bgcolor: alpha(blueBrand[500], 0.12) },
+                                                }}
+                                            >
+                                                · Remove
+                                            </Typography>
+                                        </HelpTip>
                                     </>
                                 )}
                             </>
@@ -734,7 +883,7 @@ const InputV2 = ({
                 {/* ── Guest limit warning ── */}
                 {loaded && overLimit && (
                     <Box sx={{ mt: 1.5 }}>
-                        <GuestProxyLimitWarning proxyCount={proxyCount} limit={limits.inFlightProxies} />
+                        <GuestProxyLimitWarning proxyCount={list.length} limit={limits.inFlightProxies} />
                     </Box>
                 )}
 
@@ -759,13 +908,13 @@ const InputV2 = ({
 // ---------------------------------------------------------------------------
 
 const mapStateToProps = state => ({
-    loaded:     state.input.loaded,
-    list:       state.input.list,
-    errors:     state.input.errors,
-    unique:     state.input.unique,
-    total:      state.input.total,
-    proxyCount: state.input.list.length,
-    shuffle:    state.core.shuffle,
+    loaded:          state.input.loaded,
+    list:            state.input.list,
+    errors:          state.input.errors,
+    unique:          state.input.unique,
+    total:           state.input.total,
+    shuffle:         state.core?.shuffle,
+    rotatingEnabled: state.core?.rotatingEnabled ?? false,
 });
 
 const mapDispatchToProps = {
@@ -773,6 +922,7 @@ const mapDispatchToProps = {
     clearInput,
     showError,
     toggleOption,
+    enableRotating: () => ({ type: CORE_TOGGLE_OPTION, target: 'rotatingEnabled' }),
 };
 
 export default connect(mapStateToProps, mapDispatchToProps)(InputV2);
