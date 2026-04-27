@@ -33,11 +33,6 @@ let geoEnrichListening = false;
 
 const isMac = process.platform === 'darwin';
 
-// Pass --enable-updater on the command line to force electron-updater active
-// even on canary builds. Used to test the auto-update flow end-to-end.
-// Example: "ProxyScrape Proxy Checker Canary.exe" --enable-updater
-const enableUpdater = app.commandLine.hasSwitch('enable-updater');
-
 /**
  * Returns the directory used for all persistent app data (settings.json, checker.db).
  * In portable mode this is beside the executable so the install stays self-contained.
@@ -282,7 +277,6 @@ ipcMain.on('get-api-config', (event) => {
     event.returnValue = {
         apiBase: checkerPort != null ? `http://127.0.0.1:${checkerPort}` : '',
         token: checkerToken || '',
-        enableUpdater,
     };
 });
 
@@ -518,7 +512,7 @@ app.whenReady().then(async () => {
         });
     }
 
-    if ((!IS_CANARY || enableUpdater) && app.isPackaged && !isPortable) {
+    if (app.isPackaged && !isPortable) {
         autoUpdater.checkForUpdates();
     }
 
@@ -549,38 +543,37 @@ app.on('window-all-closed', async () => {
     }
 });
 
-// On stable builds electron-updater handles updates automatically.
-// On canary builds the CanaryBanner + Go backend handles updates instead,
-// unless --enable-updater is passed for testing the auto-update flow.
-if (!IS_CANARY || enableUpdater) {
-    // Explicitly set so the behaviour is documented — when an update is downloaded
-    // but the user dismisses the toast, it installs silently on the next app quit.
-    autoUpdater.autoInstallOnAppQuit = true;
-    autoUpdater.on('update-available', () => {
-        if (window && !window.isDestroyed()) {
-            window.webContents.send('update-available');
-        }
-    });
+// Auto-updates run on all packaged non-portable builds (stable and canary).
+// Canary publishes to the canary/ R2 channel so users only receive canary updates.
+// Portables never auto-update — the user controls when to replace the executable.
 
-    autoUpdater.on('download-progress', (progressObj) => {
-        if (window && !window.isDestroyed()) {
-            window.webContents.send('download-progress', Math.floor(progressObj.percent));
-        }
-    });
+// Explicitly set so the behaviour is documented — when an update is downloaded
+// but the user dismisses the toast, it installs silently on the next app quit.
+autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.on('update-available', () => {
+    if (window && !window.isDestroyed()) {
+        window.webContents.send('update-available');
+    }
+});
 
-    // Notify the renderer so it can prompt the user. quitAndInstall is
-    // triggered by the renderer via the 'install-update' IPC channel after
-    // the user confirms (or immediately for stable if the user hasn't dismissed).
-    autoUpdater.on('update-downloaded', () => {
-        if (window && !window.isDestroyed()) {
-            window.webContents.send('update-ready');
-        }
-    });
+autoUpdater.on('download-progress', (progressObj) => {
+    if (window && !window.isDestroyed()) {
+        window.webContents.send('download-progress', Math.floor(progressObj.percent));
+    }
+});
 
-    autoUpdater.on('error', (err) => {
-        console.error('[updater] error:', err?.message || err);
-    });
-}
+// Notify the renderer so it can prompt the user. quitAndInstall is
+// triggered by the renderer via the 'install-update' IPC channel after
+// the user confirms (or immediately for stable if the user hasn't dismissed).
+autoUpdater.on('update-downloaded', () => {
+    if (window && !window.isDestroyed()) {
+        window.webContents.send('update-ready');
+    }
+});
+
+autoUpdater.on('error', (err) => {
+    console.error('[updater] error:', err?.message || err);
+});
 
 ipcMain.on('window-minimize', () => {
     if (window && !window.isDestroyed()) {

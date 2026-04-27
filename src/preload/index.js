@@ -35,9 +35,6 @@ contextBridge.exposeInMainWorld('__ELECTRON__', {
     // Paths — async invoke, never sendSync (sendSync blocks the renderer process)
     getDownloadsPath: () => ipcRenderer.invoke('getDownloadsPath'),
 
-    // Whether the packaged app was launched with --enable-updater (canary testing).
-    enableUpdater: config.enableUpdater ?? false,
-
     // Events pushed from the main process (callback-based, IPC event object is never exposed).
     // The Electron IPC event object cannot cross the contextBridge, so it is never forwarded.
     // For channels that carry data, pass null as the first argument so component callbacks

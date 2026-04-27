@@ -5,10 +5,6 @@ const initialState = {
     isChecking: true,
     available: false,
     releases: [],
-    // Canary-only fields populated when IS_CANARY=true
-    hasUpdate: false,
-    latestCanary: null,
-    canaryReleases: [],
 };
 
 const update = (state = initialState, action) => {

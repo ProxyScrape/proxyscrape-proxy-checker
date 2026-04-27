@@ -21,9 +21,6 @@ export const shell = {
     },
 };
 
-// True when the packaged app was launched with --enable-updater.
-export const enableUpdater = E ? (E.enableUpdater ?? false) : false;
-
 export const ipcRenderer = {
     invoke(channel, ...args) {
         if (!E) return Promise.resolve(undefined);
