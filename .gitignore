@@ -1,4 +1,6 @@
 node_modules
+# Claude Code worktrees — ephemeral, never commit
+.claude/worktrees/
 npm-debug.log
 settings.proxyscrape.checker.json
 /public/*.js
