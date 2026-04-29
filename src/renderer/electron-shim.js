@@ -25,11 +25,15 @@ export const ipcRenderer = {
     invoke(channel, ...args) {
         if (!E) return Promise.resolve(undefined);
         switch (channel) {
-            case 'choose-path':  return E.choosePath(args[0]);
-            case 'choose-multi': return E.chooseMulti();
-            case 'native-messaging-status':       return E.nativeMessagingStatus();
-            case 'native-messaging-register':     return E.nativeMessagingRegister(args[0]);
+            case 'choose-path':      return E.choosePath(args[0]);
+            case 'choose-multi':     return E.chooseMulti();
+            case 'choose-directory': return E.chooseDirectory();
+            case 'native-messaging-status':         return E.nativeMessagingStatus();
+            case 'native-messaging-register':       return E.nativeMessagingRegister(args[0]);
+            case 'native-messaging-unregister':     return E.nativeMessagingUnregister(args[0]);
             case 'native-messaging-unregister-all': return E.nativeMessagingUnregisterAll();
+            case 'native-messaging-add-custom':     return E.nativeMessagingAddCustom(args[0]);
+            case 'native-messaging-remove-custom':  return E.nativeMessagingRemoveCustom(args[0]);
             default:
                 warn('invoke', channel);
                 return Promise.resolve(undefined);

@@ -201,8 +201,7 @@ export const start = () => async (dispatch, getState) => {
         // Expand proxies for rotating/backconnect mode.
         // Each proxy is duplicated `effectiveCount` times, each copy carrying a
         // shared rotationGroupId (a UUID stable per original proxy) and a
-        // 1-based rotationIndex. Expansion happens after deduplication so the
-        // user always gets exactly N independent checks per unique proxy.
+        // 1-based rotationIndex.
         let proxyEntries = input.list;
         if (core.rotatingEnabled) {
             const effectiveCount = isGuestMode()

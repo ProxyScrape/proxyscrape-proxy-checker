@@ -1,9 +1,12 @@
 // Command proxychecker-host is the Chrome Native Messaging host for ProxyScrape Proxy Checker.
-// Chrome launches it as a subprocess on every extension ping — it must start instantly,
+// Chrome launches it as a subprocess on every extension message — it must start instantly,
 // respond, and exit. No UI, no heavy init, no network calls.
 //
 // Protocol: 4-byte little-endian uint32 length prefix, followed by UTF-8 JSON body.
-// Responds to {"action":"ping"} with {"status":"ok","version":"...","appRunning":bool}.
+//
+// Supported actions:
+//   ping  → {"status":"ok","version":"...","appRunning":bool,"appInstalled":bool}
+//   check → writes proxies to a temp file for the Electron app to pick up; returns {"ok":true}
 package main
 
 import (
@@ -19,14 +22,22 @@ import (
 // appVersion is injected at build time: -ldflags "-X main.appVersion=2.4.2-canary"
 var appVersion = "dev"
 
-type pingRequest struct {
-	Action string `json:"action"`
+type request struct {
+	Action  string   `json:"action"`
+	Proxies []string `json:"proxies"`
+	Source  string   `json:"source"`
 }
 
 type pingResponse struct {
-	Status     string `json:"status"`
-	Version    string `json:"version"`
-	AppRunning bool   `json:"appRunning"`
+	Status       string `json:"status"`
+	Version      string `json:"version"`
+	AppRunning   bool   `json:"appRunning"`
+	AppInstalled bool   `json:"appInstalled"`
+}
+
+type checkPayload struct {
+	Proxies []string `json:"proxies"`
+	Source  string   `json:"source"`
 }
 
 func main() {
@@ -35,18 +46,44 @@ func main() {
 		os.Exit(1)
 	}
 
-	var req pingRequest
-	if err := json.Unmarshal(msg, &req); err != nil || req.Action != "ping" {
+	var req request
+	if err := json.Unmarshal(msg, &req); err != nil {
 		os.Exit(1)
 	}
 
-	resp := pingResponse{
-		Status:     "ok",
-		Version:    appVersion,
-		AppRunning: isAppRunning(),
+	switch req.Action {
+	case "ping":
+		resp := pingResponse{
+			Status:       "ok",
+			Version:      appVersion,
+			AppRunning:   isAppRunning(),
+			AppInstalled: isPackagedInstall(),
+		}
+		data, _ := json.Marshal(resp)
+		_ = writeMessage(os.Stdout, data)
+
+	case "check":
+		if !isAppRunning() {
+			if !isPackagedInstall() {
+				// Dev mode: content.js will have already shown the download toast,
+				// but exit non-zero as a safety net for any unexpected code path.
+				os.Exit(1)
+			}
+			// Packaged install, app not running: launch it directly (no browser
+			// dialog) and fall through to write the temp file so the app picks
+			// up the proxy list as soon as it finishes starting.
+			launchApp()
+		}
+		payload := checkPayload{Proxies: req.Proxies, Source: req.Source}
+		data, _ := json.Marshal(payload)
+		checkFile := filepath.Join(os.TempDir(), "proxychecker-check.json")
+		_ = os.WriteFile(checkFile, data, 0600)
+		ok, _ := json.Marshal(map[string]bool{"ok": true})
+		_ = writeMessage(os.Stdout, ok)
+
+	default:
+		os.Exit(1)
 	}
-	data, _ := json.Marshal(resp)
-	_ = writeMessage(os.Stdout, data)
 }
 
 func readMessage(r io.Reader) ([]byte, error) {
@@ -69,6 +106,20 @@ func writeMessage(w io.Writer, data []byte) error {
 	}
 	_, err := w.Write(data)
 	return err
+}
+
+// isPackagedInstall reports whether this binary is running from a packaged
+// (installed) build rather than a development checkout. Packaged binaries live
+// at .../resources/bin/<name> on all platforms; dev binaries live directly
+// inside the repository's bin/ directory whose parent is never "resources".
+func isPackagedInstall() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	// Dir(exe) = .../resources/bin  →  Dir(Dir(exe)) = .../resources
+	parent := strings.ToLower(filepath.Base(filepath.Dir(filepath.Dir(exe))))
+	return parent == "resources"
 }
 
 // isAppRunning checks whether the main Proxy Checker Electron process is alive.

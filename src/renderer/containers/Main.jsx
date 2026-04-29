@@ -13,6 +13,8 @@ import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import Settings from '../components/Settings';
+import BrowserIntegration from './BrowserIntegration';
+import SideDrawer from '../components/ui/SideDrawer';
 import { connect } from 'react-redux';
 import Checking from './Checking';
 import Overlay from './Overlay';
@@ -35,13 +37,8 @@ import { isGuestMode } from '../misc/mode';
 
 const isElectron = typeof window !== 'undefined' && !!window.__ELECTRON__;
 
-// "Browsers" tab is desktop-only (native messaging is Electron-only).
-const TAB_SCREENS = isElectron
-    ? ['Core', 'Judges', 'Ip', 'Blacklist', 'Browsers', 'History']
-    : ['Core', 'Judges', 'Ip', 'Blacklist', 'History'];
-
-const HISTORY_TAB = isElectron ? 5 : 4;
-const BROWSERS_TAB = 4; // only used in Electron
+const TAB_SCREENS = ['Core', 'Judges', 'Ip', 'Blacklist', 'History'];
+const HISTORY_TAB = 4;
 
 const TITLEBAR_TAB_SX = {
     minHeight: TITLEBAR_HEIGHT,
@@ -186,7 +183,6 @@ const NavTabs = ({ value, onChange, onClick }) => {
             <MuiTab label="Judges" />
             <MuiTab label="Ip" />
             <MuiTab label="Blacklist" />
-            {isElectron && <MuiTab label="Browsers" />}
             <MuiTab label="History" />
         </MuiTabs>
     );
@@ -199,32 +195,53 @@ class Main extends React.PureComponent {
         this.state = {
             showModal: false,
             tabIndex: 0,
+            settingsOpen: false,
         };
     }
 
     componentDidMount() {
-        if (!window.__ELECTRON__?.onDeepLinkProxy) return;
-        this._removeDeepLinkListener = window.__ELECTRON__.onDeepLinkProxy((_e, url) => {
-            this.handleDeepLink(url);
-        });
+        if (window.__ELECTRON__?.onDeepLinkProxy) {
+            this._removeDeepLinkListener = window.__ELECTRON__.onDeepLinkProxy((_e, url) => {
+                this.handleDeepLink(url);
+            });
+        }
+        if (window.__ELECTRON__?.onNativeCheckProxies) {
+            this._removeNativeCheckListener = window.__ELECTRON__.onNativeCheckProxies((_e, data) => {
+                this.loadProxiesFromExtension(data.proxies, data.source);
+            });
+        }
     }
 
     componentWillUnmount() {
-        if (this._removeDeepLinkListener) {
-            this._removeDeepLinkListener();
-        }
+        if (this._removeDeepLinkListener) this._removeDeepLinkListener();
+        if (this._removeNativeCheckListener) this._removeNativeCheckListener();
     }
+
+    // Shared handler: load a proxy list received from the browser extension,
+    // whether it arrived via native messaging or the proxychecker:// deep link.
+    loadProxiesFromExtension = (rawList, source) => {
+        if (!rawList?.length) return;
+        const browserLabel = source ? `${source} Extension` : 'Browser Extension';
+        if (this.props.resultIsOpened) this.props.closeResult();
+        this.setState({ tabIndex: 0 });
+        window.dispatchEvent(new CustomEvent('proxy-checker:load-lines', {
+            detail: {
+                lines: rawList,
+                meta:  { name: browserLabel, sourceType: 'extension' },
+            },
+        }));
+        trackAction('proxy_list_imported', { source: source || 'extension', proxy_count: rawList.length, unique_count: rawList.length, error_count: 0 });
+    };
 
     handleDeepLink = (url) => {
         try {
             const parsed = new URL(url);
             if (parsed.hostname !== 'check') return;
 
-            const source       = parsed.searchParams.get('source') || 'unknown';
+            const source       = parsed.searchParams.get('source') || null;
             const proxiesParam = parsed.searchParams.get('proxies'); // bulk: newline-separated
             const proxyParam   = parsed.searchParams.get('proxy');   // single proxy (legacy)
 
-            // Build the raw string array — bulk import takes precedence.
             let rawList;
             if (proxiesParam) {
                 rawList = proxiesParam.split('\n').map(s => s.trim()).filter(Boolean);
@@ -234,22 +251,7 @@ class Main extends React.PureComponent {
                 return;
             }
 
-            const browserLabel = source && source !== 'unknown' ? `${source} Extension` : 'Browser Extension';
-
-            if (this.props.resultIsOpened) {
-                this.props.closeResult();
-            }
-            this.setState({ tabIndex: 0 });
-
-            // Populate the editor so the user can review before checking.
-            // InputV2 listens for this event and writes the lines into its CodeMirror editor.
-            window.dispatchEvent(new CustomEvent('proxy-checker:load-lines', {
-                detail: {
-                    lines: rawList,
-                    meta:  { name: browserLabel, sourceType: 'extension' },
-                },
-            }));
-            trackAction('proxy_list_imported', { source, proxy_count: rawList.length, unique_count: rawList.length, error_count: 0 });
+            this.loadProxiesFromExtension(rawList, source);
         } catch { /* ignore malformed deep-link URLs */ }
     };
 
@@ -260,6 +262,7 @@ class Main extends React.PureComponent {
             this.props.openDrawer('info');
         }
     };
+    toggleSettings = () => this.setState(s => ({ settingsOpen: !s.settingsOpen }));
     toggleModal = () => this.setState({ showModal: !this.state.showModal });
     setTabIndex = (e, v) => {
         if (this.props.resultIsOpened) {
@@ -273,7 +276,7 @@ class Main extends React.PureComponent {
         const { releases } = this.props;
         return (
             <>
-                <Titlebar toggleInfo={this.toggleInfo}>
+                <Titlebar toggleInfo={this.toggleInfo} onSettingsClick={this.toggleSettings}>
                     <NavTabs
                         value={this.state.tabIndex}
                         onChange={this.setTabIndex}
@@ -299,7 +302,6 @@ class Main extends React.PureComponent {
                         <Box id="checker-content-root" data-active-tab={this.state.tabIndex} sx={{ pt: 3 }}>
                             {this.state.tabIndex === 0 && <CorePage />}
                             {this.state.tabIndex > 0 && this.state.tabIndex <= 3 && <Settings tabIndex={this.state.tabIndex} />}
-                            {isElectron && this.state.tabIndex === BROWSERS_TAB && <Settings tabIndex={BROWSERS_TAB} />}
                             <History visible={this.state.tabIndex === HISTORY_TAB} />
                         </Box>
                     </Box>
@@ -312,6 +314,24 @@ class Main extends React.PureComponent {
                     <ProtocolWarningDialog />
                     <ErrorToast />
                     <Footer toggleModal={this.toggleModal} closeDrawer={this.props.closeDrawer}/>
+                    {isElectron && (
+                        <SideDrawer
+                            open={this.state.settingsOpen}
+                            onClose={this.toggleSettings}
+                            width={460}
+                            zIndex={1200}
+                            panelSx={{ maxWidth: { xs: '100vw', sm: '85vw' } }}
+                            headerLeft={
+                                <Typography variant="body2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                    Settings
+                                </Typography>
+                            }
+                        >
+                            <Box sx={{ flex: 1, overflow: 'auto', p: 2.5 }}>
+                                <BrowserIntegration />
+                            </Box>
+                        </SideDrawer>
+                    )}
                 </Box>
             </>
         );

@@ -3,7 +3,7 @@ import { connect } from 'react-redux';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, drawSelection } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { applyParsedResult, clearInput } from '../actions/InputActions';
+import { applyParsedResult, clearInput, setInputParsing } from '../actions/InputActions';
 import { toggleOption } from '../actions/CoreActions';
 import { CORE_TOGGLE_OPTION } from '../constants/ActionTypes';
 import { showError } from '../store/reducers/app';
@@ -181,31 +181,31 @@ const ActionButton = ({ onClick, icon, label }) => (
 // ---------------------------------------------------------------------------
 
 const InputV2 = ({
-    loaded, list, errors, unique, total, shuffle, rotatingEnabled,
-    applyParsedResult, clearInput, showError, toggleOption, enableRotating,
+    loaded, list, errors, unique, total, lineCount, isParsing,
+    shuffle, rotatingEnabled,
+    applyParsedResult, clearInput, setInputParsing, showError, toggleOption, enableRotating,
     fillHeight,  // when true: stretch to fill the parent grid cell (desktop layout)
 }) => {
     const limits    = getGuestLimits();
     const overLimit = limits !== null && list.length > limits.inFlightProxies;
+    const isEmpty   = lineCount === 0;
 
     // ── Refs ──────────────────────────────────────────────────────────────
-    const editorContainerRef = useRef(null);   // DOM node CodeMirror mounts into
-    const editorViewRef      = useRef(null);   // CodeMirror EditorView instance
-    const workerRef          = useRef(null);
-    const requestIdRef       = useRef(0);
-    const parseTimerRef      = useRef(null);
-    const sourceMetaRef      = useRef({ name: 'Manual Input', sourceType: 'textarea' });
-    const handlerRef         = useRef(null);   // stable ref to worker message handler
+    const editorContainerRef  = useRef(null);   // DOM node CodeMirror mounts into
+    const editorViewRef       = useRef(null);   // CodeMirror EditorView instance
+    const workerRef           = useRef(null);
+    const requestIdRef        = useRef(0);
+    const parseTimerRef       = useRef(null);
+    const sourceMetaRef       = useRef({ name: 'Manual Input', sourceType: 'textarea' });
+    const handlerRef          = useRef(null);   // stable ref to worker message handler
     // Stable refs for CM extension closures — avoids stale-closure bugs
-    const triggerParseNowRef = useRef(null);
-    const scheduleParseRef   = useRef(null);
+    const triggerParseNowRef  = useRef(null);
+    const scheduleParseRef    = useRef(null);
+    const setInputParsingRef  = useRef(null);
 
     // ── Local state ───────────────────────────────────────────────────────
-    const [lineCount,      setLineCount]      = useState(0);
     const [isDragOver,     setIsDragOver]     = useState(false);
-    const [isParsing,      setIsParsing]      = useState(false);
     const [errorsExpanded, setErrorsExpanded] = useState(false);
-    const [isEmpty,        setIsEmpty]        = useState(true);
     // Tracks whether the user has removed duplicates, so we can offer Restore.
     const [isDeduped,      setIsDeduped]      = useState(false);
 
@@ -219,14 +219,6 @@ const InputV2 = ({
     // so we don't reset the isDeduped state when the re-parse result arrives.
     const removePendingRef  = useRef(false);
 
-    // ── Reset helper ──────────────────────────────────────────────────────
-    const clearInputAndState = useCallback(() => {
-        setIsParsing(false);
-        setIsEmpty(true);
-        setLineCount(0);
-        clearInput();
-    }, [clearInput]);
-
     // ── Core parse trigger ────────────────────────────────────────────────
     // rawText is the clipboard/file string when available (avoids doc.toString()
     // on the main thread for large documents).
@@ -238,19 +230,17 @@ const InputV2 = ({
             ? rawText
             : (editorViewRef.current?.state.doc.toString() ?? '');
 
-        if (!text.trim()) { clearInputAndState(); return; }
-
-        setIsEmpty(false);
-        setIsParsing(true);
+        if (!text.trim()) { clearInput(); return; }
 
         const id = ++requestIdRef.current;
         // Encode to UTF-8 bytes and transfer zero-copy to the worker.
         // The worker does the split/dedup/parse entirely off the main thread.
         const buffer = new TextEncoder().encode(text).buffer;
         workerRef.current.postMessage({ id, buffer }, [buffer]);
-    }, [clearInputAndState]);
+    }, [clearInput]);
 
-    useEffect(() => { triggerParseNowRef.current = triggerParseNow; }, [triggerParseNow]);
+    useEffect(() => { triggerParseNowRef.current  = triggerParseNow;  }, [triggerParseNow]);
+    useEffect(() => { setInputParsingRef.current  = setInputParsing;  }, [setInputParsing]);
 
     // ── Debounced parse trigger (for typing) ──────────────────────────────
     const scheduleParse = useCallback(() => {
@@ -267,7 +257,6 @@ const InputV2 = ({
     const handleWorkerMessage = useCallback(({ data }) => {
         if (data.id !== requestIdRef.current) return; // stale result
 
-        setIsParsing(false);
         setErrorsExpanded(false);
 
         // Keep the latest unique line strings for the Remove editor update.
@@ -292,6 +281,8 @@ const InputV2 = ({
 
         applyParsedResult({
             loaded:       true,
+            isParsing:    false,
+            lineCount:    data.totalLines,
             list:         data.fullList,
             errors:       data.errors,
             total:        data.totalLines,
@@ -343,15 +334,16 @@ const InputV2 = ({
                         spellcheck:      'false',
                     }),
 
-                    // React to typing — update line count and schedule a re-parse.
+                    // React to content changes — dispatch lineCount + isParsing=true
+                    // to Redux immediately so all stats stay in one atomic state.
                     // Programmatic dispatches (paste handler, file load, clear) are
                     // NOT user events, so they won't double-trigger the parse.
                     EditorView.updateListener.of((update) => {
                         if (!update.docChanged) return;
-                        const doc   = update.state.doc;
-                        const empty = doc.length === 0;
-                        setIsEmpty(empty);
-                        setLineCount(empty ? 0 : doc.lines);
+                        const doc = update.state.doc;
+                        setInputParsingRef.current?.({
+                            lineCount: doc.length === 0 ? 0 : doc.lines,
+                        });
 
                         if (update.transactions.some(
                             tr => tr.isUserEvent('input')  ||
@@ -376,7 +368,7 @@ const InputV2 = ({
                             if (!text) return true;
 
                             const { from, to } = view.state.selection.main;
-                            // updateListener fires synchronously here, updating isEmpty + lineCount.
+                            // updateListener fires synchronously here, dispatching setInputParsing.
                             view.dispatch({
                                 changes:   { from, to, insert: text },
                                 selection: { anchor: from + text.length },
@@ -405,7 +397,7 @@ const InputV2 = ({
             const view = editorViewRef.current;
             if (!view) return;
             const text = lines.join('\n');
-            // updateListener fires synchronously here, updating isEmpty + lineCount.
+            // updateListener fires synchronously here, dispatching setInputParsing.
             view.dispatch({
                 changes:   { from: 0, to: view.state.doc.length, insert: text },
                 selection: { anchor: text.length },
@@ -454,7 +446,7 @@ const InputV2 = ({
 
             const view = editorViewRef.current;
             if (!view || !text) return;
-            // updateListener fires synchronously here, updating isEmpty + lineCount.
+            // updateListener fires synchronously here, dispatching setInputParsing.
             view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
             sourceMetaRef.current = { name: names.join(', '), sourceType: 'drag_drop' };
             triggerParseNowRef.current?.(text);
@@ -479,7 +471,7 @@ const InputV2 = ({
 
             const view = editorViewRef.current;
             if (!view) return;
-            // updateListener fires synchronously here, updating isEmpty + lineCount.
+            // updateListener fires synchronously here, dispatching setInputParsing.
             view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
             sourceMetaRef.current = { name: names.join(', '), sourceType: 'file' };
             triggerParseNowRef.current?.(text);
@@ -496,7 +488,7 @@ const InputV2 = ({
 
             const view = editorViewRef.current;
             if (!view || !text) return;
-            // updateListener fires synchronously here, updating isEmpty + lineCount.
+            // updateListener fires synchronously here, dispatching setInputParsing.
             view.dispatch({
                 changes:   { from: 0, to: view.state.doc.length, insert: text ?? '' },
                 selection: { anchor: (text ?? '').length },
@@ -512,9 +504,6 @@ const InputV2 = ({
         const view = editorViewRef.current;
         if (!view) return;
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '' } });
-        setIsEmpty(true);
-        setLineCount(0);
-        setIsParsing(false);
         setErrorsExpanded(false);
         setIsDeduped(false);
         originalTextRef.current  = null;
@@ -914,6 +903,8 @@ const mapStateToProps = state => ({
     errors:          state.input.errors,
     unique:          state.input.unique,
     total:           state.input.total,
+    lineCount:       state.input.lineCount,
+    isParsing:       state.input.isParsing,
     shuffle:         state.core?.shuffle,
     rotatingEnabled: state.core?.rotatingEnabled ?? false,
 });
@@ -921,6 +912,7 @@ const mapStateToProps = state => ({
 const mapDispatchToProps = {
     applyParsedResult,
     clearInput,
+    setInputParsing,
     showError,
     toggleOption,
     enableRotating: () => ({ type: CORE_TOGGLE_OPTION, target: 'rotatingEnabled' }),

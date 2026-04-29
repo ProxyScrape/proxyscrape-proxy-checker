@@ -4,7 +4,6 @@ import Judges from '../containers/Judges';
 import Core from '../containers/Core';
 import Ip from '../containers/Ip';
 import Blacklist from '../containers/Blacklist';
-import BrowserIntegration from '../containers/BrowserIntegration';
 
 const Settings = ({ tabIndex }) => (
     <Box className="no-select" sx={{ mb: 3 }}>
@@ -12,7 +11,6 @@ const Settings = ({ tabIndex }) => (
         {tabIndex === 1 && <Judges />}
         {tabIndex === 2 && <Ip />}
         {tabIndex === 3 && <Blacklist />}
-        {tabIndex === 4 && <BrowserIntegration />}
     </Box>
 );
 

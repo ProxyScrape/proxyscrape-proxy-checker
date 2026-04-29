@@ -28,6 +28,11 @@ let isQuitting = false;
 // Buffered deep-link URL that arrived before the renderer window was ready.
 let pendingDeepLink = null;
 
+// Buffered native-check payload written by the host binary before this process
+// existed (cold-start: host launched us, then wrote the file). Flushed to the
+// renderer via did-finish-load, the same way pendingDeepLink is handled.
+let pendingCheckPayload = null;
+
 // True while a geo-enrich SSE connection is open. Prevents duplicate streams
 // if listenGeoEnrichSSE() is ever called more than once.
 let geoEnrichListening = false;
@@ -277,28 +282,321 @@ function startGoBackend() {
 // Native Messaging — Chrome extension ↔ desktop app bridge
 // =============================================================================
 
-// The native messaging host name must match what the Chrome extension declares.
-const NM_HOST_NAME = 'com.proxyscrape.proxychecker';
+// The native messaging host name must match what the Chrome extension declares
+// (background.js: CHECKER_HOST = 'com.proxyscrape.checker').
+const NM_HOST_NAME = 'com.proxyscrape.checker';
 
-// Chrome extension IDs allowed to talk to this host.
-// Update these when the extension is published to the Chrome Web Store.
+// Chrome extension IDs allowed to connect to this native messaging host.
+//
+// Chrome requires at least one entry here — an empty array means Chrome silently
+// rejects all connection attempts even if the manifest file is installed.
+//
+// DEV ID: The extension manifest carries a pinned `key` so it always gets this
+// stable ID when loaded as an unpacked extension, regardless of machine or path.
+// Add the production Chrome Web Store ID here once the extension is published.
 const CHROME_EXTENSION_IDS = [
-    // 'chrome-extension://PLACEHOLDER/',
+    'chrome-extension://nkpeakhnbfobegmpilfnbnkpncjblkgm/', // dev (unpacked) — pinned via manifest key
 ];
 
 // Firefox extension ID (different format — uses addon id, not chrome-extension://).
-const FIREFOX_EXTENSION_ID = 'proxyscrape-proxy-helper@proxyscrape.com';
+const FIREFOX_EXTENSION_ID = 'proxyscrape-proxy-manager@proxyscrape.com';
 
-const BROWSERS = [
-    { id: 'chrome', name: 'Google Chrome', type: 'chromium' },
-    { id: 'edge',   name: 'Microsoft Edge', type: 'chromium' },
-    { id: 'brave',  name: 'Brave Browser', type: 'chromium' },
-    { id: 'firefox', name: 'Mozilla Firefox', type: 'firefox' },
+// All known browsers with detection paths, NM host directories, and Windows registry keys.
+// Adding a new browser requires only a new entry here — no other code changes needed.
+// nmDir values for mac/linux are pre-computed at module load; Windows manifests always go
+// in userData/native-messaging/manifests/<id>/ (computed lazily via getNmDir since
+// app.getPath('userData') is only available after app.whenReady).
+const _h = os.homedir();
+const KNOWN_BROWSERS = [
+    {
+        id: 'chrome', name: 'Google Chrome', type: 'chromium',
+        detect: {
+            darwin: ['/Applications/Google Chrome.app'],
+            linux:  ['google-chrome', 'google-chrome-stable'],
+            win32:  ['Google\\Chrome\\Application\\chrome.exe'],
+        },
+        nmDir: {
+            darwin: path.join(_h, 'Library/Application Support/Google/Chrome/NativeMessagingHosts'),
+            linux:  path.join(_h, '.config/google-chrome/NativeMessagingHosts'),
+        },
+        winRegKey: `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NM_HOST_NAME}`,
+    },
+    {
+        id: 'edge', name: 'Microsoft Edge', type: 'chromium',
+        detect: {
+            darwin: ['/Applications/Microsoft Edge.app'],
+            linux:  ['microsoft-edge', 'microsoft-edge-stable'],
+            win32:  ['Microsoft\\Edge\\Application\\msedge.exe'],
+        },
+        nmDir: {
+            darwin: path.join(_h, 'Library/Application Support/Microsoft Edge/NativeMessagingHosts'),
+            linux:  path.join(_h, '.config/microsoft-edge/NativeMessagingHosts'),
+        },
+        winRegKey: `HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\${NM_HOST_NAME}`,
+    },
+    {
+        id: 'brave', name: 'Brave Browser', type: 'chromium',
+        detect: {
+            darwin: ['/Applications/Brave Browser.app'],
+            linux:  ['brave-browser', 'brave'],
+            win32:  ['BraveSoftware\\Brave-Browser\\Application\\brave.exe'],
+        },
+        nmDir: {
+            darwin: path.join(_h, 'Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts'),
+            linux:  path.join(_h, '.config/BraveSoftware/Brave-Browser/NativeMessagingHosts'),
+        },
+        winRegKey: `HKCU\\Software\\BraveSoftware\\Brave-Browser\\NativeMessagingHosts\\${NM_HOST_NAME}`,
+    },
+    {
+        id: 'opera', name: 'Opera', type: 'chromium',
+        detect: {
+            darwin: ['/Applications/Opera.app'],
+            linux:  ['opera'],
+            win32:  ['Programs\\Opera\\opera.exe', 'Opera Software\\Opera Stable\\opera.exe'],
+        },
+        nmDir: {
+            darwin: path.join(_h, 'Library/Application Support/com.operasoftware.Opera/NativeMessagingHosts'),
+            linux:  path.join(_h, '.config/opera/NativeMessagingHosts'),
+        },
+        winRegKey: `HKCU\\Software\\Opera Software\\NativeMessagingHosts\\${NM_HOST_NAME}`,
+    },
+    {
+        id: 'vivaldi', name: 'Vivaldi', type: 'chromium',
+        detect: {
+            darwin: ['/Applications/Vivaldi.app'],
+            linux:  ['vivaldi'],
+            win32:  ['Vivaldi\\Application\\vivaldi.exe'],
+        },
+        nmDir: {
+            darwin: path.join(_h, 'Library/Application Support/Vivaldi/NativeMessagingHosts'),
+            linux:  path.join(_h, '.config/vivaldi/NativeMessagingHosts'),
+        },
+        winRegKey: `HKCU\\Software\\Vivaldi\\NativeMessagingHosts\\${NM_HOST_NAME}`,
+    },
+    {
+        id: 'arc', name: 'Arc', type: 'chromium',
+        detect: {
+            darwin: ['/Applications/Arc.app'],
+            linux:  [],
+            win32:  [],
+        },
+        nmDir: {
+            darwin: path.join(_h, 'Library/Application Support/Arc/User Data/NativeMessagingHosts'),
+            linux:  null,
+        },
+        winRegKey: null,
+    },
+    {
+        id: 'chromium', name: 'Chromium', type: 'chromium',
+        detect: {
+            darwin: ['/Applications/Chromium.app'],
+            linux:  ['chromium', 'chromium-browser'],
+            win32:  ['Chromium\\Application\\chrome.exe'],
+        },
+        nmDir: {
+            darwin: path.join(_h, 'Library/Application Support/Chromium/NativeMessagingHosts'),
+            linux:  path.join(_h, '.config/chromium/NativeMessagingHosts'),
+        },
+        winRegKey: `HKCU\\Software\\Chromium\\NativeMessagingHosts\\${NM_HOST_NAME}`,
+    },
+    {
+        id: 'firefox', name: 'Mozilla Firefox', type: 'firefox',
+        detect: {
+            darwin: ['/Applications/Firefox.app'],
+            linux:  ['firefox', 'firefox-esr'],
+            win32:  ['Mozilla Firefox\\firefox.exe'],
+        },
+        // Covers all Firefox variants (Dev Edition, Nightly) — they share this directory.
+        nmDir: {
+            darwin: path.join(_h, 'Library/Application Support/Mozilla/NativeMessagingHosts'),
+            linux:  path.join(_h, '.mozilla/native-messaging-hosts'),
+        },
+        winRegKey: `HKCU\\Software\\Mozilla\\NativeMessagingHosts\\${NM_HOST_NAME}`,
+    },
 ];
 
-/**
- * Returns the arch-specific host binary name bundled in resources/bin/.
- */
+// ─── Chromium filesystem scanner ─────────────────────────────────────────────
+// Detects unconventional Chromium-based browsers (e.g. Comet, Thorium, Cent)
+// that aren't in KNOWN_BROWSERS, by scanning the standard user-data root for
+// directories that contain both "Local State" and "Default/Preferences" — the
+// two files that identify a Chromium profile directory. Plain Electron apps
+// (e.g. Claude, VS Code) have "Local State" but not "Default/Preferences", so
+// the two-file check correctly excludes them.
+
+function _isChromiumProfileDir(dir) {
+    return fs.existsSync(path.join(dir, 'Local State')) &&
+           fs.existsSync(path.join(dir, 'Default', 'Preferences'));
+}
+
+function _makeScanEntry(name, nmDir, winRegKey = null) {
+    const id = `scan-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    return { id, name, type: 'chromium', nmDir, winRegKey };
+}
+
+// For reverse-DNS bundle IDs (e.g. "com.openai.atlas") derive a readable name
+// ("Atlas") from the last segment.
+function _bundleDisplayName(bundleId) {
+    const last = bundleId.split('.').pop();
+    return last.charAt(0).toUpperCase() + last.slice(1);
+}
+
+function scanChromiumBrowsers() {
+    const platform = process.platform;
+    const results = [];
+
+    // Build a set of NM dirs already covered by KNOWN_BROWSERS so we don't
+    // surface duplicates for browsers the user can already see explicitly.
+    const knownNmDirs = new Set(
+        KNOWN_BROWSERS.map(b => b.nmDir?.[platform]).filter(Boolean)
+    );
+
+    if (platform === 'darwin') {
+        const base = path.join(os.homedir(), 'Library', 'Application Support');
+        try {
+            for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+                if (!entry.isDirectory()) continue;
+                const dir = path.join(base, entry.name);
+
+                // Depth-1: direct Chromium profile (e.g. Comet, Arc, Thorium)
+                const nmDir = path.join(dir, 'NativeMessagingHosts');
+                if (!knownNmDirs.has(nmDir) && _isChromiumProfileDir(dir)) {
+                    results.push(_makeScanEntry(entry.name, nmDir));
+                    continue;
+                }
+
+                // Depth-2: namespaced dirs like "Google/Chrome".
+                // Depth-3: reverse-DNS bundle IDs like "com.openai.atlas" whose
+                //   browser data lives in a sub-subdirectory
+                //   (e.g. com.openai.atlas/browser-data/host/).
+                //   In both cases the display name is derived from the bundle ID
+                //   (last segment, capitalised) rather than from the leaf dir.
+                const isBundleId = entry.name.includes('.');
+                const bundleName = isBundleId ? _bundleDisplayName(entry.name) : null;
+
+                try {
+                    for (const sub of fs.readdirSync(dir, { withFileTypes: true })) {
+                        if (!sub.isDirectory()) continue;
+                        const subDir = path.join(dir, sub.name);
+                        const subNmDir = path.join(subDir, 'NativeMessagingHosts');
+
+                        if (!knownNmDirs.has(subNmDir) && _isChromiumProfileDir(subDir)) {
+                            results.push(_makeScanEntry(bundleName ?? sub.name, subNmDir));
+                            continue;
+                        }
+
+                        // Depth-3 only for bundle-ID containers
+                        if (isBundleId) {
+                            try {
+                                for (const subsub of fs.readdirSync(subDir, { withFileTypes: true })) {
+                                    if (!subsub.isDirectory()) continue;
+                                    const subsubDir = path.join(subDir, subsub.name);
+                                    const subsubNmDir = path.join(subsubDir, 'NativeMessagingHosts');
+                                    if (!knownNmDirs.has(subsubNmDir) && _isChromiumProfileDir(subsubDir))
+                                        results.push(_makeScanEntry(bundleName, subsubNmDir));
+                                }
+                            } catch { /* skip */ }
+                        }
+                    }
+                } catch { /* skip */ }
+            }
+        } catch { /* base unreadable */ }
+    }
+
+    if (platform === 'linux') {
+        const base = path.join(os.homedir(), '.config');
+        try {
+            for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+                if (!entry.isDirectory()) continue;
+                const dir = path.join(base, entry.name);
+                const nmDir = path.join(dir, 'NativeMessagingHosts');
+                if (!knownNmDirs.has(nmDir) && _isChromiumProfileDir(dir))
+                    results.push(_makeScanEntry(entry.name, nmDir));
+            }
+        } catch { /* base unreadable */ }
+    }
+
+    if (platform === 'win32') {
+        const base = process.env.LOCALAPPDATA || '';
+        // Skip dirs already covered by KNOWN_BROWSERS to avoid duplicates.
+        const skipDirs = new Set(['Google', 'Microsoft', 'BraveSoftware', 'Vivaldi', 'Chromium', 'Mozilla']);
+        if (base) {
+            try {
+                for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+                    if (!entry.isDirectory() || skipDirs.has(entry.name)) continue;
+                    // Chromium on Windows stores its profile under "<name>/User Data/".
+                    const userDataDir = path.join(base, entry.name, 'User Data');
+                    if (_isChromiumProfileDir(userDataDir)) {
+                        const winRegKey = `HKCU\\Software\\${entry.name}\\NativeMessagingHosts\\${NM_HOST_NAME}`;
+                        results.push(_makeScanEntry(entry.name, null, winRegKey));
+                    }
+                }
+            } catch { /* base unreadable */ }
+        }
+    }
+
+    return results;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Custom browsers are user-defined entries stored in userData as JSON.
+// Computed lazily because app.getPath requires app.whenReady.
+function customBrowsersFile() {
+    return path.join(app.getPath('userData'), 'native-messaging', 'custom-browsers.json');
+}
+function loadCustomBrowsers() {
+    try { return JSON.parse(fs.readFileSync(customBrowsersFile(), 'utf8')); }
+    catch { return []; }
+}
+function saveCustomBrowsers(list) {
+    const file = customBrowsersFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(list, null, 2), 'utf8');
+}
+
+// Opted-out browser IDs — auto-register skips these. Populated when the user
+// manually removes a known browser; cleared when they manually register it again.
+function optedOutFile() {
+    return path.join(app.getPath('userData'), 'native-messaging', 'opted-out.json');
+}
+function loadOptedOut() {
+    try { return new Set(JSON.parse(fs.readFileSync(optedOutFile(), 'utf8'))); }
+    catch { return new Set(); }
+}
+function saveOptedOut(set) {
+    const file = optedOutFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify([...set], null, 2), 'utf8');
+}
+function setOptedOut(browserId, optOut) {
+    const set = loadOptedOut();
+    optOut ? set.add(browserId) : set.delete(browserId);
+    saveOptedOut(set);
+}
+
+// Returns true if the browser appears to be installed on this machine.
+// macOS: checks .app bundle paths. Linux: checks PATH via which.
+// Windows: checks exe paths relative to %LOCALAPPDATA%, %PROGRAMFILES%, %PROGRAMFILES(X86)%.
+function isBrowserInstalled(browser) {
+    const platform = process.platform;
+    const candidates = browser.detect?.[platform] ?? [];
+    if (candidates.length === 0) return false;
+    if (platform === 'darwin') {
+        return candidates.some(p => fs.existsSync(p));
+    }
+    if (platform === 'linux') {
+        return candidates.some(cmd => spawnSync('which', [cmd], { stdio: 'ignore' }).status === 0);
+    }
+    if (platform === 'win32') {
+        const roots = [
+            process.env.LOCALAPPDATA,
+            process.env.PROGRAMFILES,
+            process.env['PROGRAMFILES(X86)'],
+        ].filter(Boolean);
+        return candidates.some(rel => roots.some(root => fs.existsSync(path.join(root, rel))));
+    }
+    return false;
+}
+
 function getHostBinaryName() {
     const platform = process.platform;
     const arch = process.arch;
@@ -308,9 +606,6 @@ function getHostBinaryName() {
     return `proxychecker-host-${platform === 'darwin' ? 'darwin' : 'linux'}-${arch === 'arm64' ? 'arm64' : 'x64'}`;
 }
 
-/**
- * Returns the absolute path to the host binary, from resources (packaged) or bin/ (dev).
- */
 function getHostBinaryPath() {
     const name = getHostBinaryName();
     if (app.isPackaged) {
@@ -319,144 +614,107 @@ function getHostBinaryPath() {
     return path.join(__dirname, '../../bin', name);
 }
 
-/**
- * Returns the NativeMessagingHosts directory for each browser on the current platform,
- * or null if unsupported.
- */
-function getBrowserNativeMessagingDir(browserId) {
-    const home = os.homedir();
-    const platform = process.platform;
-
-    if (platform === 'darwin') {
-        const dirs = {
-            chrome:  path.join(home, 'Library/Application Support/Google/Chrome/NativeMessagingHosts'),
-            edge:    path.join(home, 'Library/Application Support/Microsoft Edge/NativeMessagingHosts'),
-            brave:   path.join(home, 'Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts'),
-            firefox: path.join(home, 'Library/Application Support/Mozilla/NativeMessagingHosts'),
-        };
-        return dirs[browserId] ?? null;
+// Returns the NativeMessagingHosts directory for a browser.
+// Windows: always userData/native-messaging/manifests/<id>/ so manifests survive browser updates.
+// Custom browsers carry nmDir as a plain string (user-provided path).
+// Known browsers carry nmDir as a { darwin, linux } map.
+function getNmDir(browser) {
+    if (process.platform === 'win32') {
+        return path.join(app.getPath('userData'), 'native-messaging', 'manifests', browser.id);
     }
-
-    if (platform === 'linux') {
-        const dirs = {
-            chrome:  path.join(home, '.config/google-chrome/NativeMessagingHosts'),
-            edge:    path.join(home, '.config/microsoft-edge/NativeMessagingHosts'),
-            brave:   path.join(home, '.config/BraveSoftware/Brave-Browser/NativeMessagingHosts'),
-            firefox: path.join(home, '.mozilla/native-messaging-hosts'),
-        };
-        return dirs[browserId] ?? null;
-    }
-
-    // Windows uses the registry; the manifest is written to a stable app directory.
-    if (platform === 'win32') {
-        return path.join(app.getPath('userData'), 'native-messaging', 'manifests', browserId);
-    }
-
-    return null;
+    if (typeof browser.nmDir === 'string') return browser.nmDir || null;
+    return browser.nmDir?.[process.platform] ?? null;
 }
 
-/**
- * Builds the manifest JSON object for a given browser type.
- */
 function buildManifest(type) {
-    const hostPath = getHostBinaryPath();
     const base = {
         name: NM_HOST_NAME,
         description: 'ProxyScrape Proxy Checker native host',
-        path: hostPath,
+        path: getHostBinaryPath(),
         type: 'stdio',
     };
-    if (type === 'firefox') {
-        return { ...base, allowed_extensions: [FIREFOX_EXTENSION_ID] };
-    }
-    return { ...base, allowed_origins: CHROME_EXTENSION_IDS };
+    return type === 'firefox'
+        ? { ...base, allowed_extensions: [FIREFOX_EXTENSION_ID] }
+        : { ...base, allowed_origins: CHROME_EXTENSION_IDS };
 }
 
-/**
- * Registers the native messaging host for a single browser.
- * On macOS/Linux: writes the manifest to the browser's NativeMessagingHosts directory.
- * On Windows: writes the manifest file and adds the HKCU registry key.
- */
-function registerBrowser(browserId) {
-    const browser = BROWSERS.find(b => b.id === browserId);
-    if (!browser) throw new Error(`Unknown browser: ${browserId}`);
-
-    const nmDir = getBrowserNativeMessagingDir(browserId);
-    if (!nmDir) throw new Error(`Unsupported browser/platform: ${browserId}`);
-
-    const manifestJson = JSON.stringify(buildManifest(browser.type), null, 2);
-    const manifestDest = path.join(nmDir, `${NM_HOST_NAME}.json`);
-
+function registerBrowser(browser) {
+    const nmDir = getNmDir(browser);
+    if (!nmDir) throw new Error(`No NativeMessagingHosts directory known for ${browser.name}`);
+    const dest = path.join(nmDir, `${NM_HOST_NAME}.json`);
     fs.mkdirSync(nmDir, { recursive: true });
-    fs.writeFileSync(manifestDest, manifestJson, 'utf8');
-
-    if (process.platform === 'win32') {
-        // Write registry key so Chrome/Edge/Brave/Firefox can find the manifest.
-        const regKeys = {
-            chrome:  `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NM_HOST_NAME}`,
-            edge:    `HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\${NM_HOST_NAME}`,
-            brave:   `HKCU\\Software\\BraveSoftware\\Brave-Browser\\NativeMessagingHosts\\${NM_HOST_NAME}`,
-            firefox: `HKCU\\Software\\Mozilla\\NativeMessagingHosts\\${NM_HOST_NAME}`,
-        };
-        const regKey = regKeys[browserId];
-        if (regKey) {
-            spawnSync('reg', ['add', regKey, '/ve', '/d', manifestDest, '/f'], { windowsHide: true });
-        }
+    fs.writeFileSync(dest, JSON.stringify(buildManifest(browser.type), null, 2), 'utf8');
+    if (process.platform === 'win32' && browser.winRegKey) {
+        spawnSync('reg', ['add', browser.winRegKey, '/ve', '/d', dest, '/f'], { windowsHide: true });
     }
 }
 
-/**
- * Checks whether the native messaging host is registered for a given browser.
- * Presence of the manifest file in the browser's NativeMessagingHosts directory
- * is used as the registered indicator — the registry key on Windows is derived
- * from the same write operation, so they stay in sync.
- */
-function isBrowserRegistered(browserId) {
-    const nmDir = getBrowserNativeMessagingDir(browserId);
+function isBrowserRegistered(browser) {
+    const nmDir = getNmDir(browser);
     if (!nmDir) return false;
-    const manifestDest = path.join(nmDir, `${NM_HOST_NAME}.json`);
-    return fs.existsSync(manifestDest);
+    return fs.existsSync(path.join(nmDir, `${NM_HOST_NAME}.json`));
 }
 
-/**
- * Removes the native messaging host manifest for a given browser and, on Windows,
- * deletes the HKCU registry key.
- */
-function unregisterBrowser(browserId) {
-    const nmDir = getBrowserNativeMessagingDir(browserId);
+function unregisterBrowser(browser) {
+    const nmDir = getNmDir(browser);
     if (!nmDir) return;
-    const manifestDest = path.join(nmDir, `${NM_HOST_NAME}.json`);
-    try { fs.unlinkSync(manifestDest); } catch { /* already gone */ }
-
-    if (process.platform === 'win32') {
-        const regKeys = {
-            chrome:  `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NM_HOST_NAME}`,
-            edge:    `HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\${NM_HOST_NAME}`,
-            brave:   `HKCU\\Software\\BraveSoftware\\Brave-Browser\\NativeMessagingHosts\\${NM_HOST_NAME}`,
-            firefox: `HKCU\\Software\\Mozilla\\NativeMessagingHosts\\${NM_HOST_NAME}`,
-        };
-        const regKey = regKeys[browserId];
-        if (regKey) {
-            spawnSync('reg', ['delete', regKey, '/f'], { windowsHide: true });
-        }
+    try { fs.unlinkSync(path.join(nmDir, `${NM_HOST_NAME}.json`)); } catch { /* already gone */ }
+    if (process.platform === 'win32' && browser.winRegKey) {
+        spawnSync('reg', ['delete', browser.winRegKey, '/f'], { windowsHide: true });
     }
+}
+
+function findBrowser(browserId) {
+    return KNOWN_BROWSERS.find(b => b.id === browserId)
+        || loadCustomBrowsers().find(b => b.id === browserId)
+        || scanChromiumBrowsers().find(b => b.id === browserId)
+        || null;
 }
 
 ipcMain.handle('native-messaging-status', () => {
+    const custom = loadCustomBrowsers();
+    const detected = [];
+    const known = [];
+    for (const b of KNOWN_BROWSERS) {
+        const entry = { id: b.id, name: b.name, type: b.type, registered: isBrowserRegistered(b) };
+        if (isBrowserInstalled(b)) detected.push(entry);
+        else known.push(entry);
+    }
+    // Append scanned (unconventional) Chromium browsers to the detected list.
+    for (const b of scanChromiumBrowsers()) {
+        detected.push({ id: b.id, name: b.name, type: b.type, registered: isBrowserRegistered(b) });
+    }
     return {
-        browsers: BROWSERS.map(b => ({
-            id: b.id,
-            name: b.name,
-            registered: isBrowserRegistered(b.id),
-        })),
-        hostPath: getHostBinaryPath(),
+        detected,
+        known,
+        custom: custom.map(b => ({ id: b.id, name: b.name, type: b.type, registered: isBrowserRegistered(b) })),
         hostExists: fs.existsSync(getHostBinaryPath()),
     };
 });
 
 ipcMain.handle('native-messaging-register', (_event, browserId) => {
     try {
-        registerBrowser(browserId);
+        const browser = findBrowser(browserId);
+        if (!browser) throw new Error(`Unknown browser: ${browserId}`);
+        registerBrowser(browser);
+        // User explicitly opted back in — clear any previous opt-out.
+        const isAutoManaged = KNOWN_BROWSERS.some(b => b.id === browserId) || browserId.startsWith('scan-');
+        if (isAutoManaged) setOptedOut(browserId, false);
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+});
+
+ipcMain.handle('native-messaging-unregister', (_event, browserId) => {
+    try {
+        const browser = findBrowser(browserId);
+        if (!browser) throw new Error(`Unknown browser: ${browserId}`);
+        unregisterBrowser(browser);
+        // User explicitly removed a known or scanned browser — opt it out so
+        // auto-register doesn't re-register it on the next launch.
+        const isAutoManaged = KNOWN_BROWSERS.some(b => b.id === browserId) || browserId.startsWith('scan-');
+        if (isAutoManaged) setOptedOut(browserId, true);
         return { success: true };
     } catch (err) {
         return { success: false, error: err.message };
@@ -465,10 +723,38 @@ ipcMain.handle('native-messaging-register', (_event, browserId) => {
 
 ipcMain.handle('native-messaging-unregister-all', () => {
     const errors = [];
-    for (const b of BROWSERS) {
-        try { unregisterBrowser(b.id); } catch (err) { errors.push(err.message); }
+    const scanned = scanChromiumBrowsers();
+    for (const b of [...KNOWN_BROWSERS, ...loadCustomBrowsers(), ...scanned]) {
+        try { unregisterBrowser(b); } catch (err) { errors.push(err.message); }
     }
+    // Opt out all known + scanned browsers so auto-register doesn't immediately undo this.
+    const set = new Set([...KNOWN_BROWSERS.map(b => b.id), ...scanned.map(b => b.id)]);
+    saveOptedOut(set);
     return { success: errors.length === 0, errors };
+});
+
+ipcMain.handle('native-messaging-add-custom', (_event, { name, type, nmDir }) => {
+    try {
+        const list = loadCustomBrowsers();
+        const id = `custom-${Date.now()}`;
+        list.push({ id, name, type, nmDir });
+        saveCustomBrowsers(list);
+        return { success: true, id };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+});
+
+ipcMain.handle('native-messaging-remove-custom', (_event, id) => {
+    try {
+        const list = loadCustomBrowsers();
+        const browser = list.find(b => b.id === id);
+        if (browser) unregisterBrowser(browser);
+        saveCustomBrowsers(list.filter(b => b.id !== id));
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
 });
 
 // Preload reads sync before first paint — must be registered early
@@ -482,6 +768,19 @@ ipcMain.on('get-api-config', (event) => {
 // Triggered by the renderer's "Restart now" button after update-ready fires.
 ipcMain.on('install-update', () => {
     autoUpdater.quitAndInstall(false, true);
+});
+
+ipcMain.handle('choose-directory', async () => {
+    try {
+        const { filePaths, canceled } = await dialog.showOpenDialog({
+            properties: ['openDirectory', 'createDirectory'],
+        });
+        if (canceled || !filePaths?.length) return null;
+        return filePaths[0];
+    } catch (error) {
+        console.error(error);
+        return null;
+    }
 });
 
 ipcMain.handle('choose-path', async (event, action = 'save') => {
@@ -555,7 +854,7 @@ const preloadPath = path.join(__dirname, '../preload/index.js');
 
 const windowOptions = {
     width: 1220,
-    height: 905,
+    height: 955,
     minWidth: 700,
     minHeight: 500,
     show: false,
@@ -692,6 +991,61 @@ app.whenReady().then(async () => {
         fs.writeFileSync(path.join(os.tmpdir(), 'proxychecker.pid'), String(process.pid), 'utf8');
     } catch { /* non-fatal */ }
 
+    // Watch for native-messaging "check" payloads written by the Go host binary.
+    // Chrome launches the host as a short-lived subprocess; it writes the proxy
+    // list to this file and exits. We poll rather than fs.watch because the file
+    // may not exist at startup and fs.watchFile works on non-existent paths.
+    const checkFile = path.join(os.tmpdir(), 'proxychecker-check.json');
+    const consumeCheckFile = () => {
+        try {
+            const raw = fs.readFileSync(checkFile, 'utf8');
+            fs.unlinkSync(checkFile); // consume immediately to avoid re-processing
+            const { proxies, source } = JSON.parse(raw);
+            if (!Array.isArray(proxies) || proxies.length === 0) return;
+
+            if (window && !window.isDestroyed()) {
+                // Window is live — deliver immediately.
+                if (window.isMinimized()) window.restore();
+                window.show();
+                window.focus();
+                app.focus({ steal: true });
+                window.webContents.send('native-check-proxies', { proxies, source: source || null });
+            } else {
+                // Window not yet created (cold-start: host launched us before this
+                // process existed). Buffer and flush after did-finish-load.
+                pendingCheckPayload = { proxies, source: source || null };
+            }
+        } catch { /* file gone or malformed — ignore */ }
+    };
+    fs.watchFile(checkFile, { interval: 300, persistent: false }, consumeCheckFile);
+    // Handle the case where the host wrote the file before this process started
+    // (i.e. the host launched us — watchFile only fires on changes after registration).
+    // Ignore files older than 30 s — they are stale leftovers from a previous
+    // session where the app crashed before consuming the payload.
+    if (fs.existsSync(checkFile)) {
+        const ageMs = Date.now() - fs.statSync(checkFile).mtimeMs;
+        if (ageMs < 30_000) {
+            consumeCheckFile();
+        } else {
+            try { fs.unlinkSync(checkFile); } catch { /* already gone */ }
+        }
+    }
+
+    // Auto-register any detected browsers that aren't already registered and
+    // haven't been explicitly opted out by the user via the Browsers settings tab.
+    // Scanned browsers (unconventional Chromium forks) are included.
+    // Runs silently — failures are non-fatal. The Browsers tab reflects the result.
+    const optedOut = loadOptedOut();
+    const browsersToAutoRegister = [
+        ...KNOWN_BROWSERS.filter(b => isBrowserInstalled(b)),
+        ...scanChromiumBrowsers(),
+    ];
+    for (const b of browsersToAutoRegister) {
+        if (!isBrowserRegistered(b) && !optedOut.has(b.id)) {
+            try { registerBrowser(b); } catch { /* non-fatal */ }
+        }
+    }
+
     try {
         await startGoBackend();
     } catch {
@@ -714,6 +1068,22 @@ app.whenReady().then(async () => {
         pendingDeepLink = null;
         window.webContents.once('did-finish-load', () => {
             window.webContents.send('deep-link-proxy', urlToSend);
+        });
+    }
+
+    // Flush any native-check payload buffered during cold-start (host launched us
+    // before the window existed — consumeCheckFile stored it in pendingCheckPayload).
+    if (pendingCheckPayload) {
+        const payloadToSend = pendingCheckPayload;
+        pendingCheckPayload = null;
+        window.webContents.once('did-finish-load', () => {
+            if (window && !window.isDestroyed()) {
+                if (window.isMinimized()) window.restore();
+                window.show();
+                window.focus();
+                app.focus({ steal: true });
+                window.webContents.send('native-check-proxies', payloadToSend);
+            }
         });
     }
 

@@ -32,7 +32,6 @@ import {
     toggleHideStatus,
 } from '../actions/ResultActions';
 import { openDrawer, closeDrawer, openDetails, closeDetails } from '../actions/UIActions';
-import { loadFromTxt } from '../actions/InputActions';
 import { getFilteredProxies } from '../store/selectors/getFilteredProxies';
 import { splitByKK } from '../misc/text';
 import Box from '@mui/material/Box';
@@ -449,7 +448,7 @@ class Result extends React.PureComponent {
                     <Button variant="contained" onClick={toggleExport}>
                         Export
                     </Button>
-                    <Button variant="outlined" onClick={() => { close(); loadFromTxt(); }}>
+                    <Button variant="outlined" onClick={close}>
                         New Check
                     </Button>
                     <Button variant="outlined" onClick={close}>

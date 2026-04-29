@@ -58,26 +58,58 @@ const CorePage = ({ proxyCount, overLimit, start }) => {
         start();
     };
 
-    if (isMobile) {
-        return (
-            <Box>
-                {/* 1. Proxy editor */}
-                <InputV2 />
-
-                {/* 2. Protocol selection (no inline Check button — it floats below) */}
-                <Box sx={{ mt: 2 }}>
-                    <Protocols showCheckButton={false} />
+    // Single render tree — InputV2 stays mounted across breakpoint changes.
+    //
+    // Desktop (≥ 840px): two-column grid. The editor column uses
+    // position:absolute;inset:0 to fill the grid row height set by the sidebar,
+    // without contributing to that height itself (prevents unbounded growth).
+    // See CSS Grid spec §8.1: height:% in an auto row is indefinite, so
+    // flex/height:100% chains fail — absolute positioning is the fix.
+    //
+    // Mobile (< 840px): single-column grid. The absolute positioning wrappers
+    // are still present but inactive (position:static), so InputV2 sizes
+    // naturally. CSS `order` swaps Core below Protocols in the sidebar without
+    // changing the DOM order.
+    return (
+        <>
+            <Box sx={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr' : '1fr 300px',
+                gap: 2,
+            }}>
+                {/* Editor — stable tree position in both layouts */}
+                <Box sx={{ position: 'relative', minWidth: 0 }}>
+                    <Box sx={isMobile
+                        ? { display: 'flex', flexDirection: 'column' }
+                        : { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' }
+                    }>
+                        <InputV2 fillHeight={!isMobile} />
+                    </Box>
                 </Box>
 
-                {/* 3. Chip options + sliders */}
-                <Box sx={{ mt: 2 }}>
-                    <Core />
+                {/* Sidebar — stacks below the editor on mobile, right column on desktop.
+                    DOM order is Protocols → Core. On desktop the flex order reverses
+                    them (Core above Protocols) via CSS `order`. On mobile they stay
+                    in DOM order so Protocols appears above Core, matching the
+                    original mobile UX. */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Box sx={{ order: isMobile ? 0 : 1 }}>
+                        <Protocols
+                            showCheckButton={!isMobile}
+                            onEmptyCheck={isMobile ? undefined : scrollToEditor}
+                        />
+                    </Box>
+                    <Box sx={{ order: isMobile ? 1 : 0 }}>
+                        <Core />
+                    </Box>
                 </Box>
+            </Box>
 
-                {/* Spacer so last content item isn't hidden behind the floating button */}
-                <Box sx={{ height: 72 }} />
+            {/* Mobile only: spacer so content isn't hidden behind the floating button */}
+            {isMobile && <Box sx={{ height: 72 }} />}
 
-                {/* Floating Check button — fixed just above the footer */}
+            {/* Mobile only: floating Check button fixed just above the footer */}
+            {isMobile && (
                 <Box sx={{
                     position: 'fixed',
                     bottom: footerHeight,
@@ -101,44 +133,8 @@ const CorePage = ({ proxyCount, overLimit, start }) => {
                         Check
                     </Button>
                 </Box>
-            </Box>
-        );
-    }
-
-    // Desktop: two-column grid.
-    // The sidebar (right column) has a natural content height that sets the row
-    // height. The editor column uses position:absolute;inset:0 inside a
-    // position:relative grid item — this removes the editor from flow so it
-    // cannot contribute to the row height (which would cause unbounded growth
-    // when proxies are loaded). The absolutely-positioned child then fills the
-    // already-resolved grid area height with no circular dependency.
-    // See CSS Grid spec §8.1: height:% in an auto row is indefinite (treated as
-    // auto), so flex/height:100% chains fail — absolute positioning is the fix.
-    return (
-        <Box sx={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 300px',
-            gap: 2,
-        }}>
-            {/* Left: position:relative gives the absolute child a definite
-                containing block (the grid area height set by the sidebar).
-                minWidth:0 prevents the column from overflowing its 1fr track. */}
-            <Box sx={{ position: 'relative', minWidth: 0 }}>
-                <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' }}>
-                    <InputV2 fillHeight />
-                </Box>
-            </Box>
-
-            {/* Right: sidebar — its natural height is the single source of truth
-                for the grid row height. */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Core />
-                <Protocols
-                    showCheckButton
-                    onEmptyCheck={scrollToEditor}
-                />
-            </Box>
-        </Box>
+            )}
+        </>
     );
 };
 

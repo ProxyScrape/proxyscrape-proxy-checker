@@ -65,9 +65,20 @@ contextBridge.exposeInMainWorld('__ELECTRON__', {
         ipcRenderer.on('deep-link-proxy', handler);
         return () => ipcRenderer.removeListener('deep-link-proxy', handler);
     },
+    onNativeCheckProxies: (cb) => {
+        const handler = (_e, data) => cb(null, data);
+        ipcRenderer.on('native-check-proxies', handler);
+        return () => ipcRenderer.removeListener('native-check-proxies', handler);
+    },
 
     // Native Messaging — browser extension integration
     nativeMessagingStatus: () => ipcRenderer.invoke('native-messaging-status'),
     nativeMessagingRegister: (browserId) => ipcRenderer.invoke('native-messaging-register', browserId),
+    nativeMessagingUnregister: (browserId) => ipcRenderer.invoke('native-messaging-unregister', browserId),
     nativeMessagingUnregisterAll: () => ipcRenderer.invoke('native-messaging-unregister-all'),
+    nativeMessagingAddCustom: (data) => ipcRenderer.invoke('native-messaging-add-custom', data),
+    nativeMessagingRemoveCustom: (id) => ipcRenderer.invoke('native-messaging-remove-custom', id),
+
+    // Directory picker — used by the custom browser form
+    chooseDirectory: () => ipcRenderer.invoke('choose-directory'),
 });
