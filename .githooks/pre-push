@@ -61,7 +61,9 @@ echo "[pre-push] ✓ SQL-injection checks passed"
 if ! command -v rg &>/dev/null; then
     echo ""
     echo "ERROR: rg (ripgrep) is required for PRAGMA checks but is not installed."
-    echo "  Install with: brew install ripgrep  (or see https://github.com/BurntSushi/ripgrep)"
+    echo "  macOS:   brew install ripgrep"
+    echo "  Windows: winget install BurntSushi.ripgrep.MSVC"
+    echo "  Linux:   apt install ripgrep  (or see https://github.com/BurntSushi/ripgrep)"
     exit 1
 fi
 echo "[pre-push] checking for string-interpolated PRAGMA construction..."
