@@ -4,7 +4,7 @@
 // R2 upload so a bug in the regeneration step fails the job, not users.
 'use strict';
 
-const yaml   = require('./node_modules/js-yaml');
+const yaml   = require('js-yaml');
 const crypto = require('crypto');
 const fs     = require('fs');
 const path   = require('path');
