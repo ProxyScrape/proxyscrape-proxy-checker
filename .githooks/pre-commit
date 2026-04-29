@@ -44,6 +44,36 @@ if [ -n "$STAGED" ]; then
     fi
 fi
 
+# ── Explicit node_modules require paths ──────────────────────────────────────
+# Catches require('./node_modules/...') or require('../node_modules/...')
+# in scripts/. Node resolves bare module names by walking up the tree, so
+# explicit paths are always wrong from a subdirectory and will break in CI.
+
+SCRIPT_STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep "^scripts/.*\.\(js\|cjs\|mjs\)$" || true)
+
+if [ -n "$SCRIPT_STAGED" ]; then
+    NM_VIOLATIONS=""
+    while IFS= read -r file; do
+        LINES=$(grep -nE "require\(['\"]\.\.?/node_modules/" "$file" 2>/dev/null || true)
+        if [ -n "$LINES" ]; then
+            while IFS= read -r line; do
+                NM_VIOLATIONS="${NM_VIOLATIONS}    ${file}: ${line}"$'\n'
+            done <<< "$LINES"
+        fi
+    done <<< "$SCRIPT_STAGED"
+
+    if [ -n "$NM_VIOLATIONS" ]; then
+        echo ""
+        echo "ERROR: Explicit node_modules path in require() found in scripts/:"
+        echo ""
+        echo "$NM_VIOLATIONS"
+        echo "    Use a bare module name instead — Node resolves it automatically:"
+        echo "      require('js-yaml')   not   require('./node_modules/js-yaml')"
+        echo ""
+        exit 1
+    fi
+fi
+
 # ── Version discipline (master only) ─────────────────────────────────────────
 # Blocks commits where package.json still has a -canary version, or where the
 # stable version X does not match the latest canary cycle X.
