@@ -18,6 +18,14 @@ const PROTOCOL_WARNING_INITIAL = {
     selectedProtocols: [],
 };
 
+// ⚠️  NULL-INIT RISK: core starts as null and stays null if SETTINGS_LOAD fires
+// without a valid action.settings.core (e.g. malformed API response). Several
+// mapStateToProps calls across ProtocolWarningDialog, Protocols, Result, and
+// getFilteredProxies access state.core.* without optional chaining and would
+// throw at render time if core is null. This is safe today only because the
+// ready gate in index.jsx guarantees SETTINGS_LOAD (with a fully populated core
+// from the backend) fires before <Main /> ever mounts. Consider restoring
+// MERGED_DEFAULT_SETTINGS.core as the fallback to make this resilient.
 const core = (state = null, action) => {
     switch (action.type) {
         case SETTINGS_LOAD:

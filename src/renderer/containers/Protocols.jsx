@@ -81,6 +81,7 @@ const Protocols = ({ protocols, overrideProtocols, hasProtocols, proxyCount, tog
     );
 };
 
+// ⚠️  state.core is null until SETTINGS_LOAD fires — see core.js reducer for details.
 const mapStateToProps = state => ({
     protocols: state.core.protocols,
     overrideProtocols: state.core.overrideProtocols,

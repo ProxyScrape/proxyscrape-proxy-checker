@@ -55,6 +55,10 @@ const ProtocolWarningDialog = ({ open, listProtocols, selectedProtocols, respond
     </Dialog>
 );
 
+// ⚠️  state.core is null until SETTINGS_LOAD fires (see core.js reducer).
+// Safe only because this component is inside <Main />, which never renders before
+// the ready gate in index.jsx has awaited loadSettings(). Consider adding ?.
+// optional chaining here if the null-init risk in core.js is ever addressed.
 const mapStateToProps = state => ({
     open: state.core.protocolWarning.open,
     listProtocols: state.core.protocolWarning.listProtocols,

@@ -12,11 +12,16 @@ export const checkAtAvailable = () => async dispatch => {
         // On canary, Update.jsx suppresses the overlay until electron-updater fires
         // (phase !== null guard). The API check still runs to populate the Info
         // slideout changelog and the portable update link.
+        // The backend returns canary entries in canaryReleases and stable entries
+        // in releases — pick whichever is populated for the current build.
+        const releases = versionData?.canaryReleases?.length
+            ? versionData.canaryReleases
+            : (versionData?.releases || []);
         dispatch(changeUpdateState({
             active: !!versionData?.hasUpdate && !isDev,
             isChecking: false,
             available: !!versionData?.hasUpdate && !isDev,
-            releases: versionData?.releases || [],
+            releases,
         }));
     } catch {
         await wait(500);

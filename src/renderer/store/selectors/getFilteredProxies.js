@@ -5,6 +5,7 @@ const getItems = state => state.result.items;
 
 const isOnlyKeepAlive = state => state.result.misc.onlyKeepAlive;
 
+// ⚠️  state.core is null until SETTINGS_LOAD fires — see core.js reducer for details.
 const getMaxTimeout = state => (state.result.timeout == state.core.timeout ? false : state.result.timeout);
 
 const getCurrentSorting = state => state.result.sorting;

@@ -489,6 +489,7 @@ class Result extends React.PureComponent {
     };
 }
 
+// ⚠️  state.core is null until SETTINGS_LOAD fires — see core.js reducer for details.
 const mapStateToProps = state => ({
     filteredItems: getFilteredProxies(state),
     state: state.result,

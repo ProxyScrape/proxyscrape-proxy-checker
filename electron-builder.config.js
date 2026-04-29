@@ -70,6 +70,9 @@ module.exports = {
     gatekeeperAssess: false,
     entitlements: 'build/entitlements.mac.plist',
     entitlementsInherit: 'build/entitlements.mac.inherit.plist',
+    // 'binaries' explicitly signs these bundled executables with the Developer ID
+    // during the mac build step. Verified on v2.4.3-canary: all four binaries carry
+    // a valid Developer ID signature inside the distributed .app bundle.
     binaries: [
       'bin/checker-darwin-arm64',
       'bin/checker-darwin-x64',
@@ -124,7 +127,6 @@ module.exports = {
     oneClick: false,
     perMachine: true,
     allowToChangeInstallationDirectory: true,
-    differentialPackage: true,
     buildUniversalInstaller: false,
     include: 'build/uninstall.nsh',
   },
