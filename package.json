@@ -22,7 +22,7 @@
   },
   "homepage": "https://proxyscrape.com/proxy-checker",
   "scripts": {
-    "predev": "bash scripts/build-host-local.sh",
+    "predev": "node scripts/build-host-local.mjs",
     "dev": "electron-vite dev",
     "dev:web": "vite --config vite.web.config.mjs",
     "dev:web:all": "concurrently --names \"go,vite\" --prefix-colors \"cyan,magenta\" \"cd backend && air\" \"vite --config vite.web.config.mjs\"",

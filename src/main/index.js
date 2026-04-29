@@ -457,9 +457,9 @@ function _isChromiumProfileDir(dir) {
            fs.existsSync(path.join(dir, 'Default', 'Preferences'));
 }
 
-function _makeScanEntry(name, nmDir, winRegKey = null) {
+function _makeScanEntry(name, nmDir, winRegKeys = []) {
     const id = `scan-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-    return { id, name, type: 'chromium', nmDir, winRegKey };
+    return { id, name, type: 'chromium', nmDir, winRegKeys };
 }
 
 // For reverse-DNS bundle IDs (e.g. "com.openai.atlas") derive a readable name
@@ -467,6 +467,37 @@ function _makeScanEntry(name, nmDir, winRegKey = null) {
 function _bundleDisplayName(bundleId) {
     const last = bundleId.split('.').pop();
     return last.charAt(0).toUpperCase() + last.slice(1);
+}
+
+// Returns the registry keys a scan-detected Chromium browser should register under.
+// Most unmodified Chromium forks never patch the hardcoded registry path they
+// inherited from upstream, so we write to all canonical paths:
+//   1. Chrome's path — covers Comet and the majority of unmodified forks
+//   2. Chromium's path — covers plain open-source Chromium builds
+//   3. The vendor-namespaced guess — covers forks that did customize their key
+// Writing to extra keys the browser doesn't read is harmless.
+function _scanWinRegKeys(vendor, browser = null) {
+    const guessedKey = browser
+        ? `HKCU\\Software\\${vendor}\\${browser}\\NativeMessagingHosts\\${NM_HOST_NAME}`
+        : `HKCU\\Software\\${vendor}\\NativeMessagingHosts\\${NM_HOST_NAME}`;
+    return [
+        `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NM_HOST_NAME}`,
+        `HKCU\\Software\\Chromium\\NativeMessagingHosts\\${NM_HOST_NAME}`,
+        guessedKey,
+    ];
+}
+
+// Normalises singular winRegKey (KNOWN_BROWSERS) and plural winRegKeys (scan entries)
+// into a single array so callers never need to branch.
+function _getWinRegKeys(browser) {
+    if (Array.isArray(browser.winRegKeys)) return browser.winRegKeys;
+    if (browser.winRegKey) return [browser.winRegKey];
+    return [];
+}
+
+// Only used in the startup self-healing check — not called on every UI refresh.
+function _isWinRegKeyPresent(key) {
+    return spawnSync('reg', ['query', key, '/ve'], { windowsHide: true }).status === 0;
 }
 
 function scanChromiumBrowsers() {
@@ -556,8 +587,7 @@ function scanChromiumBrowsers() {
                     // Depth-1: Chromium profile at "<vendor>/User Data/" (e.g. Thorium, Cent).
                     const userDataDir = path.join(base, entry.name, 'User Data');
                     if (_isChromiumProfileDir(userDataDir)) {
-                        const winRegKey = `HKCU\\Software\\${entry.name}\\NativeMessagingHosts\\${NM_HOST_NAME}`;
-                        results.push(_makeScanEntry(entry.name, null, winRegKey));
+                        results.push(_makeScanEntry(entry.name, null, _scanWinRegKeys(entry.name)));
                         continue;
                     }
 
@@ -567,10 +597,8 @@ function scanChromiumBrowsers() {
                         for (const sub of fs.readdirSync(path.join(base, entry.name), { withFileTypes: true })) {
                             if (!sub.isDirectory()) continue;
                             const subUserDataDir = path.join(base, entry.name, sub.name, 'User Data');
-                            if (_isChromiumProfileDir(subUserDataDir)) {
-                                const winRegKey = `HKCU\\Software\\${entry.name}\\${sub.name}\\NativeMessagingHosts\\${NM_HOST_NAME}`;
-                                results.push(_makeScanEntry(sub.name, null, winRegKey));
-                            }
+                            if (_isChromiumProfileDir(subUserDataDir))
+                                results.push(_makeScanEntry(sub.name, null, _scanWinRegKeys(entry.name, sub.name)));
                         }
                     } catch { /* skip */ }
                 }
@@ -688,8 +716,10 @@ function registerBrowser(browser) {
     const dest = path.join(nmDir, `${NM_HOST_NAME}.json`);
     fs.mkdirSync(nmDir, { recursive: true });
     fs.writeFileSync(dest, JSON.stringify(buildManifest(browser.type), null, 2), 'utf8');
-    if (process.platform === 'win32' && browser.winRegKey) {
-        spawnSync('reg', ['add', browser.winRegKey, '/ve', '/d', dest, '/f'], { windowsHide: true });
+    if (process.platform === 'win32') {
+        for (const key of _getWinRegKeys(browser)) {
+            spawnSync('reg', ['add', key, '/ve', '/d', dest, '/f'], { windowsHide: true });
+        }
     }
 }
 
@@ -703,8 +733,23 @@ function unregisterBrowser(browser) {
     const nmDir = getNmDir(browser);
     if (!nmDir) return;
     try { fs.unlinkSync(path.join(nmDir, `${NM_HOST_NAME}.json`)); } catch { /* already gone */ }
-    if (process.platform === 'win32' && browser.winRegKey) {
-        spawnSync('reg', ['delete', browser.winRegKey, '/f'], { windowsHide: true });
+    if (process.platform === 'win32') {
+        const keys = _getWinRegKeys(browser);
+        if (keys.length === 0) return;
+        // Build once — scanChromiumBrowsers() does filesystem I/O.
+        const others = [...KNOWN_BROWSERS, ...loadCustomBrowsers(), ...scanChromiumBrowsers()]
+            .filter(b => b.id !== browser.id && isBrowserRegistered(b));
+        for (const key of keys) {
+            const owner = others.find(b => _getWinRegKeys(b).includes(key));
+            if (owner) {
+                // Another registered browser shares this key — restore it to their manifest
+                // rather than deleting it (e.g. unregistering Comet must not break Chrome).
+                const ownerDest = path.join(getNmDir(owner), `${NM_HOST_NAME}.json`);
+                spawnSync('reg', ['add', key, '/ve', '/d', ownerDest, '/f'], { windowsHide: true });
+            } else {
+                spawnSync('reg', ['delete', key, '/f'], { windowsHide: true });
+            }
+        }
     }
 }
 
@@ -1062,9 +1107,18 @@ app.whenReady().then(async () => {
             if (window && !window.isDestroyed()) {
                 // Window is live — deliver immediately.
                 if (window.isMinimized()) window.restore();
-                window.show();
-                window.focus();
-                app.focus({ steal: true });
+                if (process.platform === 'win32') {
+                    // Windows blocks focus-stealing from background processes via SetForegroundWindow
+                    // policy. Briefly marking the window always-on-top bypasses the restriction.
+                    window.setAlwaysOnTop(true);
+                    window.show();
+                    window.focus();
+                    window.setAlwaysOnTop(false);
+                } else {
+                    window.show();
+                    window.focus();
+                    app.focus({ steal: true });
+                }
                 window.webContents.send('native-check-proxies', { proxies, source: source || null });
             } else {
                 // Window not yet created (cold-start: host launched us before this
@@ -1097,7 +1151,12 @@ app.whenReady().then(async () => {
         ...scanChromiumBrowsers(),
     ];
     for (const b of browsersToAutoRegister) {
-        if (!isBrowserRegistered(b) && !optedOut.has(b.id)) {
+        if (optedOut.has(b.id)) continue;
+        // Re-register if: (a) not registered, or (b) registered but an external actor
+        // (e.g. Chrome uninstaller) deleted one of the registry keys since last launch.
+        const needsRegistration = !isBrowserRegistered(b) ||
+            (process.platform === 'win32' && _getWinRegKeys(b).some(k => !_isWinRegKeyPresent(k)));
+        if (needsRegistration) {
             try { registerBrowser(b); } catch { /* non-fatal */ }
         }
     }

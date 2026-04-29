@@ -6,9 +6,21 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-PLATFORM=$(node -p "process.platform")
-ARCH=$(node -p "process.arch")
-VERSION=$(node -p "require('./package.json').version")
+case "$(uname -s)" in
+    MINGW*|CYGWIN*|MSYS*) PLATFORM=win32 ;;
+    Darwin) PLATFORM=darwin ;;
+    Linux)  PLATFORM=linux ;;
+    *) echo "Unsupported OS: $(uname -s)" >&2; exit 1 ;;
+esac
+
+case "$(uname -m)" in
+    x86_64)          ARCH=x64 ;;
+    aarch64|arm64)   ARCH=arm64 ;;
+    *) echo "Unsupported arch: $(uname -m)" >&2; exit 1 ;;
+esac
+
+# npm sets this automatically from package.json when running lifecycle scripts
+VERSION="${npm_package_version}"
 
 case "$PLATFORM/$ARCH" in
     darwin/arm64)  GOOS=darwin  GOARCH=arm64  OUT=proxychecker-host-darwin-arm64 ;;

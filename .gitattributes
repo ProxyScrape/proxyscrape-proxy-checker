@@ -1,1 +1,6 @@
 public/styles/* linguist-vendored
+
+# Normalize line endings: LF everywhere, shell scripts are LF-only
+* text=auto eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf

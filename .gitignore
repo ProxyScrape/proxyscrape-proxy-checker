@@ -23,3 +23,5 @@ backend/internal/api/web/
 workers/ip-geo/scripts/verify-geofeed.py
 
 workers/ip-geo/scripts/load-test-10k.py
+
+.claude/settings.local.json
