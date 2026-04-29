@@ -50,6 +50,11 @@ class Update extends React.PureComponent {
             this.setState({ phase: 'error', errorMsg: msg, dismissed: false });
         });
 
+        // Signal main process that all update listeners are registered; main
+        // replays any update-available / update-ready / update-error events that
+        // fired before this component mounted (fast startup / cached updates).
+        ipcRenderer.send('update-listener-ready');
+
         // ── Dev-only: Shift+U runs the full animated simulation ────────────────
         // Dead-code eliminated from production builds (isDev bakes to false).
         if (isDev) {
@@ -63,6 +68,10 @@ class Update extends React.PureComponent {
     componentWillUnmount() {
         this._clearSim();
         if (this._onSimKey) window.removeEventListener('keydown', this._onSimKey);
+        ipcRenderer.removeAllListeners('update-available');
+        ipcRenderer.removeAllListeners('download-progress');
+        ipcRenderer.removeAllListeners('update-ready');
+        ipcRenderer.removeAllListeners('update-error');
     }
 
     _startSim = () => {

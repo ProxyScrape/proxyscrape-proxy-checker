@@ -28,6 +28,12 @@ let isQuitting = false;
 // Buffered deep-link URL that arrived before the renderer window was ready.
 let pendingDeepLink = null;
 
+// Buffered update events that fired before the renderer registered its listeners.
+// Replayed when the renderer sends 'update-listener-ready'.
+let pendingUpdateAvailable = false;
+let pendingUpdateReady = false;
+let pendingUpdateError = null; // string | null
+
 // Buffered native-check payload written by the host binary before this process
 // existed (cold-start: host launched us, then wrote the file). Flushed to the
 // renderer via did-finish-load, the same way pendingDeepLink is handled.
@@ -770,6 +776,18 @@ ipcMain.on('install-update', () => {
     autoUpdater.quitAndInstall(false, true);
 });
 
+// Renderer signals that its update listeners are registered; replay any events
+// that fired before componentDidMount ran (fast startup / cached updates).
+ipcMain.on('update-listener-ready', () => {
+    if (!window || window.isDestroyed()) return;
+    if (pendingUpdateAvailable) window.webContents.send('update-available');
+    if (pendingUpdateReady)     window.webContents.send('update-ready');
+    if (pendingUpdateError)     window.webContents.send('update-error', pendingUpdateError);
+    pendingUpdateAvailable = false;
+    pendingUpdateReady     = false;
+    pendingUpdateError     = null;
+});
+
 ipcMain.handle('choose-directory', async () => {
     try {
         const { filePaths, canceled } = await dialog.showOpenDialog({
@@ -1146,8 +1164,11 @@ autoUpdater.logger = (() => {
 
 autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.on('update-available', () => {
+    pendingUpdateError = null; // a successful check supersedes any prior error
     if (window && !window.isDestroyed()) {
         window.webContents.send('update-available');
+    } else {
+        pendingUpdateAvailable = true;
     }
 });
 
@@ -1161,15 +1182,24 @@ autoUpdater.on('download-progress', (progressObj) => {
 // triggered by the renderer via the 'install-update' IPC channel after
 // the user confirms (or immediately for stable if the user hasn't dismissed).
 autoUpdater.on('update-downloaded', () => {
+    pendingUpdateAvailable = false; // ready supersedes available
+    pendingUpdateError = null;
     if (window && !window.isDestroyed()) {
         window.webContents.send('update-ready');
+    } else {
+        pendingUpdateReady = true;
     }
 });
 
 autoUpdater.on('error', (err) => {
-    console.error('[updater] error:', err?.message || err);
+    const msg = err?.message || String(err);
+    console.error('[updater] error:', msg);
+    pendingUpdateAvailable = false; // error supersedes in-progress download
+    pendingUpdateReady = false;
     if (window && !window.isDestroyed()) {
-        window.webContents.send('update-error', err?.message || String(err));
+        window.webContents.send('update-error', msg);
+    } else {
+        pendingUpdateError = msg;
     }
 });
 
