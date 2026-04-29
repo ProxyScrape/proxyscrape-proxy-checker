@@ -1126,6 +1126,24 @@ app.on('window-all-closed', async () => {
 
 // Explicitly set so the behaviour is documented — when an update is downloaded
 // but the user dismisses the toast, it installs silently on the next app quit.
+// Write updater events to a rolling log file so silent failures are
+// diagnosable without attaching a debugger. Log path on Windows:
+//   %APPDATA%\ProxyScrape Proxy Checker[ Canary]\logs\updater.log
+autoUpdater.logger = (() => {
+    try {
+        const logDir  = path.join(app.getPath('logs'));
+        fs.mkdirSync(logDir, { recursive: true });
+        const logFile = path.join(logDir, 'updater.log');
+        const stamp   = () => new Date().toISOString();
+        const write   = (level, msg) => {
+            try { fs.appendFileSync(logFile, `${stamp()} [${level}] ${msg}\n`); } catch { /* ignore write errors */ }
+        };
+        return { info: m => write('INFO', m), warn: m => write('WARN', m), error: m => write('ERROR', m), debug: m => write('DEBUG', m) };
+    } catch {
+        return null;
+    }
+})();
+
 autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.on('update-available', () => {
     if (window && !window.isDestroyed()) {
@@ -1150,6 +1168,9 @@ autoUpdater.on('update-downloaded', () => {
 
 autoUpdater.on('error', (err) => {
     console.error('[updater] error:', err?.message || err);
+    if (window && !window.isDestroyed()) {
+        window.webContents.send('update-error', err?.message || String(err));
+    }
 });
 
 ipcMain.on('window-minimize', () => {

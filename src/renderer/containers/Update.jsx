@@ -25,8 +25,9 @@ class Update extends React.PureComponent {
         super(props);
         this.state = {
             percent: 0,
-            phase: null,      // null | 'downloading' | 'ready'
+            phase: null,      // null | 'downloading' | 'ready' | 'error'
             dismissed: false, // hides the downloading card; ready still appears
+            errorMsg: null,
         };
     }
 
@@ -43,6 +44,10 @@ class Update extends React.PureComponent {
 
         ipcRenderer.on('update-ready', () => {
             this.setState({ phase: 'ready', dismissed: false });
+        });
+
+        ipcRenderer.on('update-error', (_e, msg) => {
+            this.setState({ phase: 'error', errorMsg: msg, dismissed: false });
         });
 
         // ── Dev-only: Shift+U runs the full animated simulation ────────────────
@@ -85,6 +90,7 @@ class Update extends React.PureComponent {
 
     handleDismiss       = () => this.setState({ dismissed: true });
     handleDismissReady  = () => { this._clearSim(); this.setState({ phase: null }); };
+    handleDismissError  = () => this.setState({ phase: null, errorMsg: null });
     handleInstall       = () => ipcRenderer.send('install-update');
 
     cardStyle = () => ({
@@ -99,7 +105,7 @@ class Update extends React.PureComponent {
 
     render() {
         const { available, portableAsset } = this.props;
-        const { percent, phase, dismissed } = this.state;
+        const { percent, phase, dismissed, errorMsg } = this.state;
 
         // ── Portable ───────────────────────────────────────────────────────────
         if (isPortable) {
@@ -134,6 +140,29 @@ class Update extends React.PureComponent {
 
         // ── Non-portable ───────────────────────────────────────────────────────
         if (IS_CANARY && phase === null) return null;
+
+        // ── Error card (shown above all other states) ──────────────────────────
+        if (phase === 'error') {
+            return (
+                <AnimatePresence>
+                    <motion.div key="update-error" style={this.cardStyle()}
+                        variants={CARD_VARIANTS} initial="hidden" animate="visible" exit="exit"
+                    >
+                        <ToastCard accentColor="#d32f2f">
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.75 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 600, flexGrow: 1, color: 'text.primary' }}>
+                                    Update failed
+                                </Typography>
+                                <ToastDismissButton onClick={this.handleDismissError} />
+                            </Box>
+                            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', lineHeight: 1.5 }}>
+                                {errorMsg || 'An unknown error occurred. Check the log file for details.'}
+                            </Typography>
+                        </ToastCard>
+                    </motion.div>
+                </AnimatePresence>
+            );
+        }
 
         const cardVisible  = (phase === 'downloading' && !dismissed) || phase === 'ready';
         const contentKey   = phase === 'ready' ? 'ready' : 'downloading';
