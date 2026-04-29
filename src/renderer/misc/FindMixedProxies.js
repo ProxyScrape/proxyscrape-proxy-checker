@@ -22,6 +22,10 @@ export const extractScheme = raw => {
  *
  * `protocol` is the declared scheme if it maps to a known protocol ('http',
  * 'https', 'socks4', 'socks5'), or '' when no scheme is present.
+ *
+ * TODO: IPv6 addresses (e.g. [::1]:8080) are not supported. All three patterns
+ * assume the host segment contains no colons, so an IPv6 literal would fail to
+ * parse or be misidentified. Requires bracket-aware parsing to fix.
  */
 const parseProxy = raw => {
     const s = raw.trim();
@@ -31,6 +35,9 @@ const parseProxy = raw => {
     const withoutScheme = s.replace(/^\w+:\/\//, '');
 
     // Pattern A: user:pass@host:port
+    // TODO: passwords containing '@' break this pattern — the regex splits on the first '@',
+    // turning "user:p@ss@host:port" into user="user", pass="p", host="ss@host". Pattern B
+    // (host:port:user:pass) is unaffected. Fix would require splitting on the *last* '@'.
     const withPrefixAuth = /^([^:@]+):([^@]*)@([^:]+):(\d{1,5})$/.exec(withoutScheme);
     if (withPrefixAuth) {
         const port = Number(withPrefixAuth[4]);

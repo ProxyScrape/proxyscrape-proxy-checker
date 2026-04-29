@@ -650,6 +650,11 @@ func (c *Checker) checkProtocol(ctx context.Context, p Proxy, protocol string, t
 		} else if strings.Contains(err.Error(), "refused") {
 			pr.err = "refused"
 		} else {
+			// TODO: SOCKS5 auth failures arrive here as "connection failed" because
+			// socks.go returns errors.New("username/password authentication failed")
+			// and this classifier only checks for "timeout" and "refused". Adding a
+			// check for "authentication failed" (or using a sentinel error type) would
+			// let us return a distinct "auth failed" status to the user.
 			pr.err = "connection failed"
 		}
 		return pr
@@ -673,6 +678,10 @@ func (c *Checker) checkProtocol(ctx context.Context, p Proxy, protocol string, t
 			tc.record("done", "invalid response")
 			pr.appTrace = finalizeAppTrace(tc, accTrace)
 		}
+		// TODO: HTTP 407 Proxy Authentication Required lands here as "invalid response"
+		// because the proxy returns its own HTML/error body rather than forwarding the
+		// judge response. Checking resp.StatusCode == 407 would let us surface a
+		// distinct "auth required" or "wrong credentials" error to the user.
 		pr.err = "invalid response"
 		return pr
 	}
