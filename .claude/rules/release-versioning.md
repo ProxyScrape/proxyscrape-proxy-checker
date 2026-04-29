@@ -28,6 +28,19 @@ alwaysApply: true
 **X is the same in canary and the stable it produces.**
 X only bumps when starting the *next* canary cycle after a stable promotion.
 
+## Before picking the next version number
+
+**Always run this first — never recall from memory or conversation history:**
+
+```bash
+git tag --sort=-version:refname | head -5
+```
+
+Pick the highest Y on the current X and increment by 1. If the output shows
+`v2.4.6-canary` as the latest, the next version is `2.4.7-canary` — even if
+you think a higher number was used earlier in the session (it may have been
+interrupted before the tag was pushed).
+
 ## Cutting a canary release
 
 `package.json` **must be updated and committed before `git tag`**. The CI version gate compares `package.json` against the tag and blocks all builds if they differ.
