@@ -529,12 +529,27 @@ function scanChromiumBrowsers() {
             try {
                 for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
                     if (!entry.isDirectory() || skipDirs.has(entry.name)) continue;
-                    // Chromium on Windows stores its profile under "<name>/User Data/".
+
+                    // Depth-1: Chromium profile at "<vendor>/User Data/" (e.g. Thorium, Cent).
                     const userDataDir = path.join(base, entry.name, 'User Data');
                     if (_isChromiumProfileDir(userDataDir)) {
                         const winRegKey = `HKCU\\Software\\${entry.name}\\NativeMessagingHosts\\${NM_HOST_NAME}`;
                         results.push(_makeScanEntry(entry.name, null, winRegKey));
+                        continue;
                     }
+
+                    // Depth-2: vendor-namespaced layout "<vendor>/<browser>/User Data/"
+                    // (e.g. Perplexity/Comet). Display the browser name, not the vendor.
+                    try {
+                        for (const sub of fs.readdirSync(path.join(base, entry.name), { withFileTypes: true })) {
+                            if (!sub.isDirectory()) continue;
+                            const subUserDataDir = path.join(base, entry.name, sub.name, 'User Data');
+                            if (_isChromiumProfileDir(subUserDataDir)) {
+                                const winRegKey = `HKCU\\Software\\${entry.name}\\${sub.name}\\NativeMessagingHosts\\${NM_HOST_NAME}`;
+                                results.push(_makeScanEntry(sub.name, null, winRegKey));
+                            }
+                        }
+                    } catch { /* skip */ }
                 }
             } catch { /* base unreadable */ }
         }
