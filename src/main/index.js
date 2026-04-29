@@ -13,6 +13,29 @@ import { isDev, isPortable, IS_CANARY } from '../shared/AppConstants';
 // productName controls the installer name but NOT app.getPath('userData') at
 // runtime — that comes from app.getName() which reads package.json `name`.
 // Appending " Canary" here mirrors what productName does for the install entry.
+//
+// NOTE — dev mode collision with installed canary:
+// IS_CANARY is a compile-time Vite constant derived from package.json version.
+// When the repo is on a -canary version, IS_CANARY is true in BOTH the installed
+// canary app and a `npm run dev` session, so both resolve to the same userData
+// path (e.g. "…/proxyscrape-proxy-checker Canary"). This causes
+// app.requestSingleInstanceLock() to fail in the dev process (the installed
+// canary holds it), which calls app.quit() immediately — the window flashes
+// briefly and vanishes with no error dialog.
+//
+// Secondary effects if the lock were somehow bypassed:
+//   - Both processes would open the same checker.db (SQLite SQLITE_BUSY crash)
+//   - os.tmpdir()/proxychecker.pid would be overwritten by the dev process
+//   - os.tmpdir()/proxychecker-check.json would be consumed by whichever
+//     process wakes first, silently losing the payload for the other
+//
+// Potential fix (needs audit before applying — other paths may also need updates):
+//   if (!app.isPackaged) {
+//       app.setPath('userData', app.getPath('userData') + ' Dev');
+//   }
+// This gives the dev process its own isolated userData, lock, and database,
+// allowing dev and any installed build to coexist. The temp file paths
+// (proxychecker.pid, proxychecker-check.json) would also need a dev suffix.
 if (IS_CANARY) {
     app.setPath('userData', app.getPath('userData') + ' Canary');
 }
