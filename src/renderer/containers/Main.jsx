@@ -195,7 +195,6 @@ class Main extends React.PureComponent {
         this.state = {
             showModal: false,
             tabIndex: 0,
-            settingsOpen: false,
         };
     }
 
@@ -262,7 +261,13 @@ class Main extends React.PureComponent {
             this.props.openDrawer('info');
         }
     };
-    toggleSettings = () => this.setState(s => ({ settingsOpen: !s.settingsOpen }));
+    toggleSettings = () => {
+        if (this.props.settingsActive) {
+            this.props.closeDrawer();
+        } else {
+            this.props.openDrawer('browsers');
+        }
+    };
     toggleModal = () => this.setState({ showModal: !this.state.showModal });
     setTabIndex = (e, v) => {
         if (this.props.resultIsOpened) {
@@ -316,9 +321,9 @@ class Main extends React.PureComponent {
                     <Footer toggleModal={this.toggleModal} closeDrawer={this.props.closeDrawer}/>
                     {isElectron && (
                         <SideDrawer
-                            open={this.state.settingsOpen}
+                            open={this.props.settingsActive}
                             onClose={this.toggleSettings}
-                            width={460}
+                            width={440}
                             zIndex={1200}
                             panelSx={{ maxWidth: { xs: '100vw', sm: '85vw' } }}
                             headerLeft={
@@ -342,6 +347,7 @@ const mapStateToProps = state => ({
     releases: state.update.releases,
     resultIsOpened: state.result.isOpened,
     infoActive: state.ui.activeDrawer === 'info',
+    settingsActive: state.ui.activeDrawer === 'browsers',
 });
 
 const mapDispatchToProps = {

@@ -4,7 +4,7 @@ import { UI_OPEN_DRAWER, UI_CLOSE_DRAWER, UI_OPEN_DETAILS, UI_CLOSE_DETAILS } fr
 // Opening any drawer automatically clears all others — no per-drawer
 // cross-wiring needed when new drawers are added in the future.
 const initialState = {
-    activeDrawer: null,  // 'info' | 'countries' | null
+    activeDrawer: null,  // 'info' | 'browsers' | 'countries' | null
     activeDetails: null, // { host, port } | null — the proxy details drawer
 };
 
