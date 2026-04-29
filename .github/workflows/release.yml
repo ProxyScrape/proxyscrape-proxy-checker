@@ -354,6 +354,12 @@ jobs:
         # Recompute them here so electron-updater's integrity check passes.
         run: node scripts/update-win-checksums.cjs
 
+      - name: Verify update-metadata checksums match signed installers
+        shell: bash
+        # Fails the job if any SHA512/size in the YML does not match the file on
+        # disk — catches bugs in update-win-checksums.cjs before R2 upload.
+        run: node scripts/validate-win-checksums.cjs
+
       - name: Install s5cmd
         shell: bash
         run: |
