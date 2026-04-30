@@ -1141,10 +1141,12 @@ app.whenReady().then(async () => {
         }
     }
 
-    // Auto-register any detected browsers that aren't already registered and
-    // haven't been explicitly opted out by the user via the Browsers settings tab.
+    // Auto-register all detected browsers that haven't been explicitly opted out.
+    // Always re-registers unconditionally so the manifest path is always current —
+    // this fixes stale manifests after reinstall to a different location or after
+    // an app bundle path change (e.g. canary → stable). The write is cheap (one
+    // JSON file + registry keys on Windows) and non-fatal on failure.
     // Scanned browsers (unconventional Chromium forks) are included.
-    // Runs silently — failures are non-fatal. The Browsers tab reflects the result.
     const optedOut = loadOptedOut();
     const browsersToAutoRegister = [
         ...KNOWN_BROWSERS.filter(b => isBrowserInstalled(b)),
@@ -1152,13 +1154,7 @@ app.whenReady().then(async () => {
     ];
     for (const b of browsersToAutoRegister) {
         if (optedOut.has(b.id)) continue;
-        // Re-register if: (a) not registered, or (b) registered but an external actor
-        // (e.g. Chrome uninstaller) deleted one of the registry keys since last launch.
-        const needsRegistration = !isBrowserRegistered(b) ||
-            (process.platform === 'win32' && _getWinRegKeys(b).some(k => !_isWinRegKeyPresent(k)));
-        if (needsRegistration) {
-            try { registerBrowser(b); } catch { /* non-fatal */ }
-        }
+        try { registerBrowser(b); } catch { /* non-fatal */ }
     }
 
     try {
