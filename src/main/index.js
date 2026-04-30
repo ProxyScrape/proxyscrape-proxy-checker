@@ -324,7 +324,8 @@ const NM_HOST_NAME = 'com.proxyscrape.checker';
 // stable ID when loaded as an unpacked extension, regardless of machine or path.
 // Add the production Chrome Web Store ID here once the extension is published.
 const CHROME_EXTENSION_IDS = [
-    'chrome-extension://nkpeakhnbfobegmpilfnbnkpncjblkgm/', // dev (unpacked) — pinned via manifest key
+    'chrome-extension://nkpeakhnbfobegmpilfnbnkpncjblkgm/', // proxy checker dev (unpacked) — pinned via manifest key
+    'chrome-extension://enilifngaoibpkjjnflcdgjojpmcgpac/', // proxy manager dev (unpacked) — pinned via manifest key
     'chrome-extension://cjfnemlhbadfcllkhcngoafjbphfppeo/', // production — Chrome Web Store
 ];
 
