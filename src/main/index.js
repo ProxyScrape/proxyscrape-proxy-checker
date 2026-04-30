@@ -325,6 +325,7 @@ const NM_HOST_NAME = 'com.proxyscrape.checker';
 // Add the production Chrome Web Store ID here once the extension is published.
 const CHROME_EXTENSION_IDS = [
     'chrome-extension://nkpeakhnbfobegmpilfnbnkpncjblkgm/', // dev (unpacked) — pinned via manifest key
+    'chrome-extension://cjfnemlhbadfcllkhcngoafjbphfppeo/', // production — Chrome Web Store
 ];
 
 // Firefox extension ID (different format — uses addon id, not chrome-extension://).
