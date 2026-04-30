@@ -59,6 +59,13 @@ module.exports = {
       provider: 'generic',
       url: `${process.env.R2_PUBLIC_URL}/${isCanary ? 'canary' : 'stable'}`,
       channel: isCanary ? 'canary' : 'latest',
+      // Cloudflare R2 does not support multipart byte-range requests, so the
+      // default multi-range differential downloader always fails with a 400 and
+      // falls back to a full installer download with no progress events. Setting
+      // this to false makes electron-updater use sequential single-range requests
+      // instead — R2 handles those correctly, differential downloads actually
+      // work, and download-progress events fire on Windows.
+      useMultipleRangeRequest: false,
     },
   ],
 
