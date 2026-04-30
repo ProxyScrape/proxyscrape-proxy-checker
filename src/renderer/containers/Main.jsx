@@ -195,6 +195,7 @@ class Main extends React.PureComponent {
         this.state = {
             showModal: false,
             tabIndex: 0,
+            pendingImport: null,
         };
     }
 
@@ -222,15 +223,14 @@ class Main extends React.PureComponent {
         if (!rawList?.length) return;
         const browserLabel = source ? `${source} Extension` : 'Browser Extension';
         if (this.props.resultIsOpened) this.props.closeResult();
-        this.setState({ tabIndex: 0 });
-        window.dispatchEvent(new CustomEvent('proxy-checker:load-lines', {
-            detail: {
-                lines: rawList,
-                meta:  { name: browserLabel, sourceType: 'extension' },
-            },
-        }));
+        this.setState({
+            tabIndex: 0,
+            pendingImport: { lines: rawList, meta: { name: browserLabel, sourceType: 'extension' } },
+        });
         trackAction('proxy_list_imported', { source: source || 'extension', proxy_count: rawList.length, unique_count: rawList.length, error_count: 0 });
     };
+
+    clearPendingImport = () => this.setState({ pendingImport: null });
 
     handleDeepLink = (url) => {
         try {
@@ -305,7 +305,7 @@ class Main extends React.PureComponent {
                         px: { xs: 2, sm: 5 },
                     }}>
                         <Box id="checker-content-root" data-active-tab={this.state.tabIndex} sx={{ pt: 3 }}>
-                            {this.state.tabIndex === 0 && <CorePage />}
+                            {this.state.tabIndex === 0 && <CorePage pendingImport={this.state.pendingImport} onImportConsumed={this.clearPendingImport} />}
                             {this.state.tabIndex > 0 && this.state.tabIndex <= 3 && <Settings tabIndex={this.state.tabIndex} />}
                             <History visible={this.state.tabIndex === HISTORY_TAB} />
                         </Box>

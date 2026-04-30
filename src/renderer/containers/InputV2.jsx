@@ -185,6 +185,8 @@ const InputV2 = ({
     shuffle, rotatingEnabled,
     applyParsedResult, clearInput, setInputParsing, showError, toggleOption, enableRotating,
     fillHeight,  // when true: stretch to fill the parent grid cell (desktop layout)
+    pendingImport,
+    onImportConsumed,
 }) => {
     const limits    = getGuestLimits();
     const overLimit = limits !== null && list.length > limits.inFlightProxies;
@@ -390,7 +392,7 @@ const InputV2 = ({
         return () => { view.destroy(); editorViewRef.current = null; };
     }, []); // intentionally run once — extensions use refs for fresh callbacks
 
-    // ── Extension deep-link listener (Option A) ────────────────────────────
+    // ── Extension deep-link listener (web / same-tab path) ────────────────
     useEffect(() => {
         const handler = (e) => {
             const { lines, meta } = e.detail;
@@ -408,6 +410,24 @@ const InputV2 = ({
         window.addEventListener('proxy-checker:load-lines', handler);
         return () => window.removeEventListener('proxy-checker:load-lines', handler);
     }, []);
+
+    // ── Extension import via prop (cross-tab path) ─────────────────────────
+    // Used when the import arrives while a different tab was active — Main.jsx
+    // stores the payload in state, switches to the Core tab, and React delivers
+    // it here as a prop after the component mounts. No event-timing race.
+    useEffect(() => {
+        if (!pendingImport) return;
+        const view = editorViewRef.current;
+        if (!view) return;
+        const text = pendingImport.lines.join('\n');
+        view.dispatch({
+            changes:   { from: 0, to: view.state.doc.length, insert: text },
+            selection: { anchor: text.length },
+        });
+        sourceMetaRef.current = pendingImport.meta ?? { name: 'Extension', sourceType: 'extension' };
+        triggerParseNowRef.current?.(text);
+        onImportConsumed?.();
+    }, [pendingImport]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Drag and drop ─────────────────────────────────────────────────────
 

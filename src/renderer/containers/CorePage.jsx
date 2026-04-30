@@ -20,7 +20,7 @@ import Protocols from './Protocols';
  *   Single column stack — editor → protocols → core settings.
  *   The Check button is rendered as a fixed floating bar just above the footer.
  */
-const CorePage = ({ proxyCount, overLimit, start }) => {
+const CorePage = ({ proxyCount, overLimit, start, pendingImport, onImportConsumed }) => {
     const isMobile = useMediaQuery('(max-width:839px)');
     const isEmpty = proxyCount === 0;
 
@@ -83,7 +83,7 @@ const CorePage = ({ proxyCount, overLimit, start }) => {
                         ? { display: 'flex', flexDirection: 'column' }
                         : { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' }
                     }>
-                        <InputV2 fillHeight={!isMobile} />
+                        <InputV2 fillHeight={!isMobile} pendingImport={pendingImport} onImportConsumed={onImportConsumed} />
                     </Box>
                 </Box>
 
