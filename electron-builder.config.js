@@ -78,19 +78,20 @@ module.exports = {
     entitlements: 'build/entitlements.mac.plist',
     entitlementsInherit: 'build/entitlements.mac.inherit.plist',
     // 'binaries' explicitly signs these bundled executables with the Developer ID
-    // during the mac build step. Verified on v2.4.3-canary: all four binaries carry
-    // a valid Developer ID signature inside the distributed .app bundle.
+    // during the mac build step. All four paths are listed; electron-builder skips
+    // any that don't exist in the staged .app (statOrNull check), so the wrong-arch
+    // entry is safely ignored when extraResources only copies one arch's binary.
     binaries: [
       'bin/checker-darwin-arm64',
       'bin/checker-darwin-x64',
       'bin/proxychecker-host-darwin-arm64',
       'bin/proxychecker-host-darwin-x64',
     ],
+    // ${arch} expands to 'arm64' or 'x64' per build target — each DMG/zip only
+    // bundles the binary matching its architecture, saving ~30-50 MB per download.
     extraResources: [
-      { from: 'bin/checker-darwin-arm64',            to: 'bin/checker-darwin-arm64'            },
-      { from: 'bin/checker-darwin-x64',              to: 'bin/checker-darwin-x64'              },
-      { from: 'bin/proxychecker-host-darwin-arm64',  to: 'bin/proxychecker-host-darwin-arm64'  },
-      { from: 'bin/proxychecker-host-darwin-x64',    to: 'bin/proxychecker-host-darwin-x64'    },
+      { from: 'bin/checker-darwin-${arch}',           to: 'bin/checker-darwin-${arch}'           },
+      { from: 'bin/proxychecker-host-darwin-${arch}', to: 'bin/proxychecker-host-darwin-${arch}' },
     ],
     target: [
       { target: 'dmg', arch: ['x64', 'arm64'] },
@@ -103,11 +104,11 @@ module.exports = {
   win: {
     icon: './public/icons/icon.ico',
     artifactName: '${name}-v${version}-${arch}-${os}-installer.${ext}',
+    // ${arch} expands to 'arm64' or 'x64' per build target — each installer only
+    // bundles the binary matching its architecture, saving ~25-40 MB per download.
     extraResources: [
-      { from: 'bin/checker-win-x64.exe',              to: 'bin/checker-win-x64.exe'              },
-      { from: 'bin/checker-win-arm64.exe',            to: 'bin/checker-win-arm64.exe'            },
-      { from: 'bin/proxychecker-host-win-x64.exe',    to: 'bin/proxychecker-host-win-x64.exe'    },
-      { from: 'bin/proxychecker-host-win-arm64.exe',  to: 'bin/proxychecker-host-win-arm64.exe'  },
+      { from: 'bin/checker-win-${arch}.exe',              to: 'bin/checker-win-${arch}.exe'              },
+      { from: 'bin/proxychecker-host-win-${arch}.exe',    to: 'bin/proxychecker-host-win-${arch}.exe'    },
     ],
     target: [
       { target: 'nsis',     arch: ['x64', 'arm64'] },
@@ -119,11 +120,11 @@ module.exports = {
     icon: './public/icons/icon.png',
     category: 'Network',
     artifactName: '${name}-v${version}-${arch}-${os}.${ext}',
+    // ${arch} expands to 'arm64' or 'x64' per build target — each AppImage only
+    // bundles the binary matching its architecture, saving ~25-40 MB per download.
     extraResources: [
-      { from: 'bin/checker-linux-x64',              to: 'bin/checker-linux-x64'              },
-      { from: 'bin/checker-linux-arm64',            to: 'bin/checker-linux-arm64'            },
-      { from: 'bin/proxychecker-host-linux-x64',    to: 'bin/proxychecker-host-linux-x64'    },
-      { from: 'bin/proxychecker-host-linux-arm64',  to: 'bin/proxychecker-host-linux-arm64'  },
+      { from: 'bin/checker-linux-${arch}',              to: 'bin/checker-linux-${arch}'              },
+      { from: 'bin/proxychecker-host-linux-${arch}',    to: 'bin/proxychecker-host-linux-${arch}'    },
     ],
     target: [
       { target: 'AppImage', arch: ['x64', 'arm64'] },
