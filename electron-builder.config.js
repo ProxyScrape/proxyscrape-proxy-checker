@@ -132,7 +132,6 @@ module.exports = {
 
   nsis: {
     oneClick: false,
-    perMachine: true,
     allowToChangeInstallationDirectory: true,
     buildUniversalInstaller: false,
     include: 'build/uninstall.nsh',

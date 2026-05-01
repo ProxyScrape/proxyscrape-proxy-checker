@@ -354,10 +354,17 @@ jobs:
         # Recompute them here so electron-updater's integrity check passes.
         run: node scripts/update-win-checksums.cjs
 
-      - name: Verify update-metadata checksums match signed installers
+      - name: Generate blockmaps for signed Windows installers
         shell: bash
-        # Fails the job if any SHA512/size in the YML does not match the file on
-        # disk — catches bugs in update-win-checksums.cjs before R2 upload.
+        # electron-builder generates blockmaps before signing; signing invalidates
+        # them. Regenerate from the signed .exe so electron-updater can do
+        # differential downloads. Also writes blockMapSize back into the YML.
+        run: node scripts/generate-win-blockmaps.cjs
+
+      - name: Verify update-metadata checksums and blockmaps match signed installers
+        shell: bash
+        # Fails the job if any SHA512/size/blockMapSize in the YML does not match
+        # the file on disk, or if any blockmap is missing or malformed.
         run: node scripts/validate-win-checksums.cjs
 
       - name: Install s5cmd
@@ -378,16 +385,22 @@ jobs:
         run: |
           [[ "${{ github.ref_name }}" == *"-canary"* ]] && CHANNEL=canary || CHANNEL=stable
 
-          # Upload signed installers only. Blockmap files are NOT uploaded: they
-          # are computed by electron-builder from the unsigned installer, so they
-          # would describe the wrong bytes after signing. Without blockmaps on R2,
-          # electron-updater falls back to a full download, which always passes
-          # the SHA512 check against the correctly-regenerated update YML.
+          # Upload signed installers and their freshly-regenerated blockmaps.
+          # Blockmaps are generated after signing (generate-win-blockmaps.cjs) so
+          # they describe the signed bytes and allow differential downloads.
           s5cmd --endpoint-url "$R2_ENDPOINT" --numworkers 10 \
             cp --concurrency 8 \
             --cache-control "public, max-age=31536000, immutable" \
             --content-type "application/octet-stream" \
-            "release/*.exe" "s3://$R2_BUCKET/$CHANNEL/"
+            "release/*.exe" "s3://$R2_BUCKET/$CHANNEL/" &
+
+          s5cmd --endpoint-url "$R2_ENDPOINT" --numworkers 10 \
+            cp --concurrency 8 \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "application/octet-stream" \
+            "release/*.blockmap" "s3://$R2_BUCKET/$CHANNEL/" &
+
+          wait
 
       # Only yml files are passed to the publish job — binaries are already on R2.
       - uses: actions/upload-artifact@v6
