@@ -20,6 +20,13 @@ module.exports = {
   appId: isCanary ? 'com.proxyscrape.checker.canary' : 'com.electron.proxyscrape-proxy-checker',
   productName: isCanary ? 'ProxyScrape Proxy Checker Canary' : 'ProxyScrape Proxy Checker',
   copyright: 'ProxyScrape',
+  // Strip all Chromium locale .pak files except English from every platform's
+  // packaged app. Saves ~25 MB per installer with no user-visible effect — the
+  // app UI is entirely custom React; the only Chromium-owned strings (native
+  // context menus) still render in English.
+  // Two values are required: 'en-US' matches en.lproj on macOS (prefix match)
+  // and en-US.pak on Windows/Linux (exact); 'en_GB' exact-matches en_GB.lproj.
+  electronLanguages: ['en-US', 'en_GB'],
 
   // electron-builder respects .gitignore by default, which would exclude the
   // `dist/` build output. An explicit files list overrides that behaviour so
